@@ -52,7 +52,11 @@ export async function proxy(request: NextRequest) {
         ? tx<{ staff_can_access: boolean }[]>`select public.staff_can_access(${requestedModule})`
         : Promise.resolve([{ staff_can_access: false }]),
     ]);
-    const profileRole = profileRows[0]?.role ?? 'admin';
+    // No `?? 'admin'` fallback here: a session whose `public.profiles` row is
+    // missing (e.g. not yet created for a brand-new login) must NOT be
+    // treated as an admin. `null` falls through every role-specific branch
+    // below and is explicitly denied just after this transaction returns.
+    const profileRole = profileRows[0]?.role ?? null;
     const staff = staffRows[0];
     return {
       role: profileRole,
@@ -60,6 +64,16 @@ export async function proxy(request: NextRequest) {
       canAccessModule: Boolean(accessRows[0]?.staff_can_access),
     };
   });
+
+  if (role !== 'admin' && role !== 'staff') {
+    // Fail closed: a valid session token with no matching profile row must
+    // never be routed as if it were an admin (previously defaulted to
+    // 'admin' above, which was a privilege-escalation bug).
+    if (path.startsWith('/staff-portal')) {
+      return NextResponse.redirect(new URL('/staff-portal/login', request.url));
+    }
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
 
   if (role === 'staff' && !staffAccountActive) {
     // Mirrors the original `supabase.auth.signOut()` on a deactivated staff

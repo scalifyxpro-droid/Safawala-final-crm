@@ -128,27 +128,60 @@ export async function createStaffLoginAction(input: {
   }
 }
 
-export async function setStaffTypeAction(userId: string, staffType: StaffType) {
-  await setAccountStaffType(await requireAdmin(), userId, staffType);
-  revalidatePath('/staff');
+export async function setStaffTypeAction(userId: string, staffType: StaffType): Promise<{ error: string }> {
+  try {
+    await setAccountStaffType(await requireAdmin(), userId, staffType);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update staff type.' };
+  }
 }
 
-export async function setStaffLoginActiveAction(userId: string, active: boolean) {
-  await setAccountActive(await requireAdmin(), userId, active);
-  revalidatePath('/staff');
+export async function setStaffLoginActiveAction(userId: string, active: boolean): Promise<{ error: string }> {
+  try {
+    await setAccountActive(await requireAdmin(), userId, active);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update staff login status.' };
+  }
 }
 
-export async function setStaffDepartmentAction(userId: string, department: StaffDepartment, active: boolean) {
-  await setDepartmentGrant(await requireAdmin(), userId, department, active);
-  revalidatePath('/staff');
+export async function setStaffDepartmentAction(
+  userId: string,
+  department: StaffDepartment,
+  active: boolean,
+): Promise<{ error: string }> {
+  try {
+    await setDepartmentGrant(await requireAdmin(), userId, department, active);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update department access.' };
+  }
 }
 
-export async function setStaffModuleAction(userId: string, module: AccessModule, enabled: boolean) {
-  await setAccountModule(await requireAdmin(), userId, module, enabled);
-  revalidatePath('/staff');
+export async function setStaffModuleAction(
+  userId: string,
+  module: AccessModule,
+  enabled: boolean,
+): Promise<{ error: string }> {
+  try {
+    await setAccountModule(await requireAdmin(), userId, module, enabled);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update module access.' };
+  }
 }
 
-export async function resetStaffLoginPasswordAction(userId: string, password: string) {
-  await resetAccountPassword(await requireAdmin(), userId, password);
-  revalidatePath('/staff');
+export async function resetStaffLoginPasswordAction(userId: string, password: string): Promise<{ error: string }> {
+  try {
+    await resetAccountPassword(await requireAdmin(), userId, password);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not reset the password.' };
+  }
 }
