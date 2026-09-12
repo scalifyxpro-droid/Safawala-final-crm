@@ -31,7 +31,7 @@ try {
   }
 
   const schemaDirectory = path.resolve('railway', 'schema');
-  for (const filename of ['001_auth_shim.sql', '002_app_schema.sql']) {
+  for (const filename of ['001_auth_shim.sql', '002_app_schema.sql', '003_authenticated_permissions.sql']) {
     const contents = psqlCompatible(await fs.readFile(path.join(schemaDirectory, filename), 'utf8'));
     console.log(`Applying ${filename}...`);
     await sql.unsafe(contents);
