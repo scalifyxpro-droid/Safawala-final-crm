@@ -1,18 +1,13 @@
 import { redirect } from 'next/navigation';
 import { BrandMark } from '@/components/brand-mark';
 import { LoginForm } from '@/components/auth/login-form';
-import { hasSupabaseEnv } from '@/lib/supabase/config';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
-  const configured = hasSupabaseEnv();
-  if (configured) {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    if (data.user) redirect('/dashboard');
-  }
+  const user = await getCurrentUser();
+  if (user) redirect('/dashboard');
 
   return (
     <main className="grid min-h-dvh place-items-center bg-surface px-4 py-6 sm:px-8 sm:py-10 lg:px-12">
@@ -38,8 +33,8 @@ export default async function LoginPage() {
               <p className="mt-2 text-sm leading-5 text-muted-foreground">Sign in to your Safawala CRM account</p>
             </div>
             <div className="my-7 h-px bg-border" />
-            <LoginForm configured={configured} />
-            <p className="mt-8 text-center text-xs text-muted-foreground">Securely powered by Supabase Authentication</p>
+            <LoginForm configured />
+            <p className="mt-8 text-center text-xs text-muted-foreground">Securely powered by Safawala CRM</p>
           </div>
         </div>
       </section>

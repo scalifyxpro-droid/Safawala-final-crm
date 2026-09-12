@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, type SyntheticEvent } from 'react';
+import { useEffect, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Banknote, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { createClient } from '@/lib/supabase/client';
+import { recordBookingPaymentAction, processRentalReturnAction } from '@/app/bookings/actions';
 
 type Booking = {
   id: number;
@@ -20,14 +20,16 @@ export function BookingActions({ booking }: { booking: Booking }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  async function invoke(name: string, args: Record<string, unknown>) {
-    setBusy(true);
-    setError('');
-    const result = await createClient().rpc(name, args);
-    if (result.error) setError(result.error.message);
-    else router.refresh();
-    setBusy(false);
-  }
+  useEffect(() => {
+    const handler = () => window.print();
+    document
+      .querySelector('[data-print-booking]')
+      ?.addEventListener('click', handler);
+    return () =>
+      document
+        .querySelector('[data-print-booking]')
+        ?.removeEventListener('click', handler);
+  }, []);
   async function payment(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -37,25 +39,34 @@ export function BookingActions({ booking }: { booking: Booking }) {
       setError('Enter a valid payment amount.');
       return;
     }
-    await invoke('record_booking_payment', {
-      booking_key: booking.id,
-      payment_amount:
+    setBusy(true);
+    setError('');
+    const methodValue = form.get('method');
+    const result = await recordBookingPaymentAction(booking.id, {
+      amount:
         requested >= remaining || requested === Math.round(remaining)
           ? remaining
           : requested,
-      method: form.get('method'),
-      reference: form.get('reference') || null,
+      method: typeof methodValue === 'string' ? methodValue : '',
+      reference: (form.get('reference') as string) || null,
     });
+    if (result.error) setError(result.error);
+    else router.refresh();
+    setBusy(false);
   }
   async function returned(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await invoke('process_rental_return', {
-      booking_key: booking.id,
+    setBusy(true);
+    setError('');
+    const result = await processRentalReturnAction(booking.id, {
       damage: Number(form.get('damage')),
       late: Number(form.get('late')),
-      condition_text: form.get('condition') || null,
+      condition: (form.get('condition') as string) || null,
     });
+    if (result.error) setError(result.error);
+    else router.refresh();
+    setBusy(false);
   }
   if (
     booking.paid_amount >= booking.total &&

@@ -3,7 +3,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { Download, Eye, FileText, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { createClient } from '@/lib/supabase/client';
+import { savePayrollAction } from '@/app/hr/actions';
 type Staff = { id: number; name: string };
 type Row = {
   id: number;
@@ -61,12 +61,8 @@ export function PayrollManager({
     };
     start(async () => {
       setErrorMessage('');
-      const s = createClient();
-      const { data: auth } = await s.auth.getUser();
-      const result = editing?.id
-        ? await s.from('hr_payroll').update(payload).eq('id', editing.id)
-        : await s.from('hr_payroll').upsert({ ...payload, owner_id: auth.user?.id }, { onConflict: 'owner_id,staff_id,period' });
-      if (result.error) setErrorMessage(result.error.message);
+      const result = await savePayrollAction(editing?.id ? { id: editing.id, ...payload } : payload);
+      if (result.error) setErrorMessage(result.error);
       else window.location.reload();
     });
   }

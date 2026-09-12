@@ -10,21 +10,20 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PaginatedList } from '@/components/ui/paginated-list';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { listJobs } from '@/lib/event-jobs/store';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TravelPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const rows = (await listJobs())
     .filter((job) => job.status === 'active' && job.bookingType === 'rental')
     .flatMap((job) => job.stylistInterests.filter((interest) => interest.status === 'approved').map((interest) => ({ job, interest, plan: job.travelPlans.find((entry) => entry.interestId === interest.id) })))
     .sort((a, b) => a.job.eventSummary.eventDate.localeCompare(b.job.eventSummary.eventDate));
   const sentCount = rows.filter(({ plan }) => plan?.ticketConfirmedAt).length;
 
-  return <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+  return <BookingPortalShell email={user.email ?? 'Safawala user'}>
     <div className="mx-auto max-w-[1180px] space-y-5">
       <DashboardHeader title="Travel Manager" subtitle="Confirm tickets for staff selected for rental events" backHref="/dashboard" />
 

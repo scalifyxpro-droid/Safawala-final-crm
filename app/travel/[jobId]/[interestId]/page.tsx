@@ -9,8 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { getJob } from '@/lib/event-jobs/store';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withServiceRole } from '@/lib/db/client';
+import { getSignedFileUrl } from '@/lib/storage/client';
 
 const TICKET_BUCKET = 'stylist-tickets';
 
@@ -23,9 +24,8 @@ export default async function TravelPlanPage({
   params: Promise<{ jobId: string; interestId: string }>;
   searchParams: Promise<{ confirmed?: string; error?: string }>;
 }) {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
   const { jobId, interestId } = await params;
   const job = await getJob(jobId);
@@ -34,26 +34,20 @@ export default async function TravelPlanPage({
   if (!interest || interest.status !== 'approved') notFound();
   const plan = job.travelPlans.find((entry) => entry.interestId === interestId);
   const { confirmed, error } = await searchParams;
-  const admin = createAdminClient();
-  const { data: selectedStaff } = await admin
-    .from('staff_members')
-    .select('name,phone,login_id')
-    .eq('user_id', interest.stylistAccountId)
-    .maybeSingle();
+  const [selectedStaff] = await withServiceRole((tx) => tx<{ name: string; phone: string | null; login_id: string | null }[]>`
+    select name, phone, login_id from public.staff_members where user_id = ${interest.stylistAccountId}
+  `);
 
   // The bucket is private, so the only way to view an uploaded ticket is a
-  // short-lived signed URL generated with the service-role client -- never a
-  // public link. 30 minutes is plenty for an admin to open and check it.
+  // short-lived signed URL generated server-side -- never a public link. 30
+  // minutes is plenty for an admin to open and check it.
   let ticketSignedUrl: string | null = null;
   if (plan?.ticketFilePath) {
-    const { data: signed } = await admin.storage
-      .from(TICKET_BUCKET)
-      .createSignedUrl(plan.ticketFilePath, 1800);
-    ticketSignedUrl = signed?.signedUrl ?? null;
+    ticketSignedUrl = await getSignedFileUrl(TICKET_BUCKET, plan.ticketFilePath);
   }
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1000px] space-y-5">
         <DashboardHeader title="Travel & Accommodation" subtitle={`${job.id} · ${job.bookingNumber}`} backHref="/travel" />
         <div className="overflow-hidden rounded-2xl border border-[#d9c7ad] bg-gradient-to-r from-[#5d422a] to-[#8d602b] p-5 text-white shadow-level-1 sm:p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><Badge variant="outline" className="border-white/30 bg-white/10 text-white">Rental event</Badge><h1 className="mt-3 text-2xl font-semibold">Travel &amp; Accommodation</h1><p className="mt-1 text-sm text-white/75">{job.id} · {job.bookingNumber}</p></div><p className="flex items-center gap-1.5 text-sm text-white/85"><CalendarClock className="size-4" />{friendlyDate(job.eventSummary.eventDate)} · {friendlyTime(job.eventSummary.eventTime)}</p></div></div>

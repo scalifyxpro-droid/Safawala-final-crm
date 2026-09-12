@@ -4,7 +4,7 @@ import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { listPerformanceCredits } from '@/lib/performance/store';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +17,8 @@ const DEPARTMENT_LABEL: Record<string, string> = {
 };
 
 export default async function PerformancePage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
   // Step 17 — this is deliberately just the STRUCTURE for future performance
   // reporting, counted only from Event Jobs that have actually been closed (see
@@ -28,7 +27,7 @@ export default async function PerformancePage() {
   const credits = await listPerformanceCredits();
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[900px] space-y-6">
         <DashboardHeader
           title="Performance"

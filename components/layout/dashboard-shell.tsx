@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { BrandMark } from '@/components/brand-mark';
 import { DashboardHeaderContext, type PageHeader } from '@/components/layout/dashboard-header-context';
 import { AdminNotificationPopover } from '@/components/layout/admin-notification-popover';
@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { createClient } from '@/lib/supabase/client';
+import { adminLogoutAction } from '@/lib/auth/logout-action';
 import {
   Archive,
   BarChart3,
@@ -116,18 +116,8 @@ function SidebarNavigation() {
 }
 
 function AccountPanel({ email }: { email: string }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const initials = email.slice(0, 2).toUpperCase();
-
-  async function signOut() {
-    try {
-      await createClient().auth.signOut();
-    } finally {
-      router.replace('/login');
-      router.refresh();
-    }
-  }
 
   return (
     <div className="rounded-xl border border-[#e4d2b6] bg-[#fcfaf7] dark:bg-[#241e17] p-1.5 shadow-level-1 dark:border-[#3a2f22] dark:bg-[#241e17]">
@@ -160,7 +150,7 @@ function AccountPanel({ email }: { email: string }) {
         <Button
           type="button"
           variant="ghost"
-          onClick={signOut}
+          onClick={() => adminLogoutAction()}
           className="mt-1 h-9 w-full justify-start px-3 text-muted-foreground hover:bg-red-50 hover:text-destructive dark:hover:bg-destructive/15"
           aria-label="Log out of Safawala CRM"
         >

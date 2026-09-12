@@ -1,18 +1,18 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { assignStylists, decideStylistInterest, setStylistsRequiredCount } from '@/lib/event-jobs/store';
 import type { StylistInterestStatus } from '@/lib/event-jobs/types';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 async function requireAdminEmail(): Promise<string> {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect('/login');
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+  const user = await requireUser();
+  const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`
+    select role from public.profiles where id = ${user.id}
+  `);
   if (profile?.role !== 'admin') throw new Error('Only an administrator can manage stylist assignments.');
-  return data.user.email ?? 'Admin';
+  return user.email ?? 'Admin';
 }
 
 const DECISIONS: StylistInterestStatus[] = ['approved', 'rejected', 'backup'];

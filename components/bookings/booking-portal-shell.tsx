@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { StaffPortalShell } from '@/components/staff-portal/staff-portal-shell';
 import { getStaffSession } from '@/lib/staff-portal/session';
 import { unreadCountForOwner } from '@/lib/notifications/admin-store';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export async function BookingPortalShell({
   email,
@@ -33,9 +33,8 @@ export async function BookingPortalShell({
   // every page in the app over a missing notifications count.
   let notificationCount = 0;
   try {
-    const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (auth.user) notificationCount = await unreadCountForOwner(auth.user.id);
+    const user = await getCurrentUser();
+    if (user) notificationCount = await unreadCountForOwner(user.id);
   } catch {
     notificationCount = 0;
   }

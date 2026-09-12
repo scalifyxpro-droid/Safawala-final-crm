@@ -3,35 +3,72 @@ import type { StaffDepartment } from './constants';
 import type { StaffSession } from './types';
 import { DEPARTMENT_STAFF_MODULES } from './modules';
 import type { AccessModule } from './access-modules';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionClaims, destroySession } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
+/**
+ * Rewrite of the original Supabase-backed getStaffSession(). Logic is
+ * unchanged; only the data access moved from supabase-js (`.auth.getClaims()`
+ * + a PostgREST nested/embedded select) to our own JWT session + two plain
+ * joined SQL queries run inside an RLS-scoped transaction.
+ */
 export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
-  const supabase = await createClient();
-  const { data: auth, error: claimsError } = await supabase.auth.getClaims();
-  const userId = auth?.claims?.sub;
-  if (claimsError || !userId) return null;
-  const [{ data: profile }, { data: account }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', userId).maybeSingle(),
-    supabase
-      .from('staff_members')
-      .select('id,name,login_id,portal_active,is_active,access_type,staff_type,staff_departments(department),staff_access_modules(module,enabled)')
-      .eq('user_id', userId)
-      .maybeSingle(),
-  ]);
+  const claims = await getSessionClaims();
+  const userId = claims?.sub;
+  if (!userId) return null;
+
+  const result = await withUserContext(userId, async (tx) => {
+    const [profileRows, accountRows] = await Promise.all([
+      tx<{ role: string }[]>`select role from public.profiles where id = ${userId}`,
+      tx<
+        {
+          id: number;
+          name: string;
+          login_id: string | null;
+          portal_active: boolean;
+          is_active: boolean;
+          access_type: string;
+          staff_type: string;
+        }[]
+      >`
+        select id, name, login_id, portal_active, is_active, access_type, staff_type
+        from public.staff_members
+        where user_id = ${userId}
+      `,
+    ]);
+    const profile = profileRows[0] ?? null;
+    const account = accountRows[0] ?? null;
+    if (!account) return { profile, account: null, departments: [], modules: [] as { module: string; enabled: boolean }[] };
+
+    const [departmentRows, moduleRows] = await Promise.all([
+      tx<{ department: string }[]>`
+        select department from public.staff_departments where staff_id = ${account.id}
+      `,
+      tx<{ module: string; enabled: boolean }[]>`
+        select module, enabled from public.staff_access_modules where staff_id = ${account.id}
+      `,
+    ]);
+    return { profile, account, departments: departmentRows, modules: moduleRows };
+  });
+
+  const { profile, account } = result;
   if (profile?.role !== 'staff') return null;
   if (!account?.portal_active || !account.is_active) return null;
-  const departments = (account.staff_departments ?? []).map(({ department }) => department as StaffDepartment);
+
+  const departments = result.departments.map((row) => row.department as StaffDepartment);
   const permissions = [...new Set(departments.flatMap((department) => DEPARTMENT_STAFF_MODULES[department]))];
   const accessType = account.access_type === 'main' ? 'main' : 'staff';
   const staffType = account.staff_type === 'stylist' ? 'stylist' : 'regular';
-  const configuredModules = (account.staff_access_modules ?? [])
-    .filter((item) => item.enabled)
-    .map((item) => item.module as AccessModule);
-  const accessModules: AccessModule[] = staffType === 'stylist'
-    ? []
-    : accessType === 'staff'
-    ? departments.includes('booking') ? ['quotations', 'create_booking'] : []
-    : [...new Set(configuredModules)];
+  const configuredModules = result.modules.filter((item) => item.enabled).map((item) => item.module as AccessModule);
+  const accessModules: AccessModule[] =
+    staffType === 'stylist'
+      ? []
+      : accessType === 'staff'
+      ? departments.includes('booking')
+        ? ['quotations', 'create_booking']
+        : []
+      : [...new Set(configuredModules)];
+
   return {
     id: userId,
     staffMemberId: account.id,
@@ -65,6 +102,5 @@ export function hasModule(session: StaffSession, permission: StaffSession['permi
 }
 
 export async function clearStaffSessionCookie() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  await destroySession();
 }

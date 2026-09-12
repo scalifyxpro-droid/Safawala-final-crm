@@ -3,13 +3,17 @@
 import { useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, Eye, FileText, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { createFinanceRecordAction, updateFinanceRecordAction, deleteFinanceRecordAction } from '@/app/finance/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
 export type FinanceMode = 'challans' | 'vouchers' | 'expenses';
 export type FinanceRecord = Record<string, unknown> & { id: number };
 const textValue = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 const config = {
   challans: { title: 'Delivery Challans', subtitle: 'Create and track delivery receipts and pickup sheets', add: 'Create Challan', table: 'challans', search: 'Search party, mobile, or challan number' },
@@ -32,12 +36,30 @@ export function FinanceManager({ mode, initialRecords, loadError, email }: { mod
   const setField = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const startAdd = () => { setEditing(null); setError(''); setForm({ date: new Date().toISOString().slice(0, 10), status: 'active', type: mode === 'vouchers' ? 'receipt' : 'active', payment_mode: 'cash', prepared_by: email.split('@')[0] }); setOpen(true); };
   const startEdit = (row: FinanceRecord) => { setEditing(row); setError(''); setForm({ ...Object.fromEntries(Object.entries(row).map(([key, value]) => [key, textValue(value)])), date: textValue(row.challan_date ?? row.voucher_date ?? row.expense_date).slice(0, 10), type: textValue(row.voucher_type ?? row.status) }); setOpen(true); };
-  async function save(event: SyntheticEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(''); const supabase = createClient(); const { data: auth } = await supabase.auth.getUser(); if (!auth.user) { setError('Please sign in again.'); setSaving(false); return; }
-    const payload = mode === 'challans' ? { owner_id: auth.user.id, challan_number: form.challan_number || `CHL-${Math.random().toString(36).slice(2, 10).toUpperCase()}`, challan_date: form.date, party_name: form.party_name, mobile: form.mobile || null, amount: Number(form.amount || 0), status: form.status || 'active', notes: form.notes || null } : mode === 'vouchers' ? { owner_id: auth.user.id, voucher_number: form.voucher_number || `VOU-${Math.random().toString(36).slice(2, 10).toUpperCase()}`, voucher_type: form.type || 'receipt', voucher_date: form.date, payment_mode: form.payment_mode || 'cash', amount: Number(form.amount || 0), account_name: form.account_name, narration: form.narration || null, receiver_name: form.receiver_name || null, prepared_by: form.prepared_by || null } : { owner_id: auth.user.id, amount: Number(form.amount || 0), expense_date: form.date, category: form.category || 'Uncategorized', receipt_number: form.receipt_number || null, description: form.description || null };
-    const result = editing ? await supabase.from(meta.table).update(payload as never).eq('id', editing.id).select().single() : await supabase.from(meta.table).insert(payload as never).select().single();
-    if (result.error) setError(result.error.message); else { setOpen(false); setRecords((current) => editing ? current.map((row) => row.id === editing.id ? result.data as FinanceRecord : row) : [result.data as FinanceRecord, ...current]); router.refresh(); } setSaving(false);
+  async function save(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); setError('');
+    const payload = mode === 'challans' ? { challan_number: form.challan_number, challan_date: form.date, party_name: form.party_name, mobile: form.mobile || null, amount: Number(form.amount || 0), status: form.status || 'active', notes: form.notes || null } : mode === 'vouchers' ? { voucher_number: form.voucher_number, voucher_type: form.type || 'receipt', voucher_date: form.date, payment_mode: form.payment_mode || 'cash', amount: Number(form.amount || 0), account_name: form.account_name, narration: form.narration || null, receiver_name: form.receiver_name || null, prepared_by: form.prepared_by || null } : { amount: Number(form.amount || 0), expense_date: form.date, category: form.category || 'Uncategorized', receipt_number: form.receipt_number || null, description: form.description || null };
+    try {
+      const saved = editing ? await updateFinanceRecordAction(mode, editing.id, payload) : await createFinanceRecordAction(mode, payload);
+      setOpen(false);
+      setRecords((current) => editing ? current.map((row) => row.id === editing.id ? saved : row) : [saved, ...current]);
+      router.refresh();
+    } catch (err) {
+      setError(errorMessage(err, 'Unable to save record.'));
+    } finally {
+      setSaving(false);
+    }
   }
-  async function remove(row: FinanceRecord) { if (!window.confirm('Delete this record?')) return; const result = await createClient().from(meta.table).delete().eq('id', row.id); if (result.error) setError(result.error.message); else { setRecords((current) => current.filter((item) => item.id !== row.id)); router.refresh(); } }
+  async function remove(row: FinanceRecord) {
+    if (!window.confirm('Delete this record?')) return;
+    try {
+      await deleteFinanceRecordAction(mode, row.id);
+      setRecords((current) => current.filter((item) => item.id !== row.id));
+      router.refresh();
+    } catch (err) {
+      setError(errorMessage(err, 'Unable to delete record.'));
+    }
+  }
   const columns = mode === 'challans' ? [['challan_number', 'Challan No.'], ['challan_date', 'Date'], ['party_name', 'Party'], ['mobile', 'Mobile'], ['amount', 'Amount'], ['status', 'Status']] : mode === 'vouchers' ? [['voucher_number', 'Voucher No.'], ['voucher_date', 'Date'], ['voucher_type', 'Type'], ['account_name', 'Particulars'], ['payment_mode', 'Mode'], ['amount', 'Amount']] : [['expense_date', 'Date'], ['category', 'Category'], ['description', 'Description'], ['receipt_number', 'Receipt #'], ['amount', 'Amount']];
   function exportCsv() {
     const headers = columns.map(([, label]) => label);

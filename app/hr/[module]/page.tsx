@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Card, CardContent } from '@/components/ui/card';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 import { HrRecordManager } from '@/components/hr/hr-record-manager';
 import { AttendanceManager } from '@/components/hr/attendance-manager';
 import { PayrollManager } from '@/components/hr/payroll-manager';
@@ -15,6 +16,7 @@ const modules = {
     title: 'Attendance',
     subtitle: 'Daily presence and leave records',
     table: 'hr_attendance',
+    staffColumn: 'staff_id',
     columns: [
       'attendance_date',
       'status',
@@ -28,6 +30,7 @@ const modules = {
     title: 'Payroll',
     subtitle: 'Salary processing and payment status',
     table: 'hr_payroll',
+    staffColumn: 'staff_id',
     columns: [
       'period',
       'base_salary',
@@ -42,12 +45,14 @@ const modules = {
     title: 'HR Letters',
     subtitle: 'Employee letters issued by HR',
     table: 'hr_letters',
+    staffColumn: 'staff_id',
     columns: ['letter_type', 'title', 'issued_on'],
   },
   kyc: {
     title: 'KYC & Documents',
     subtitle: 'Identity documents and verification status',
     table: 'hr_kyc_documents',
+    staffColumn: 'staff_id',
     columns: [
       'document_type',
       'document_number',
@@ -60,6 +65,7 @@ const modules = {
     title: 'Work Orders',
     subtitle: 'HR and department assignments',
     table: 'hr_work_orders',
+    staffColumn: 'assigned_staff_id',
     columns: ['title', 'department', 'status', 'due_date'],
   },
 } as const;
@@ -74,45 +80,71 @@ export default async function HrModulePage({
   const { module } = await params;
   const config = modules[module as keyof typeof modules];
   if (!config) redirect('/hr');
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
-  const [{ data, error }, { data: staff }] = await Promise.all([
-    supabase
-      .from(config.table)
-      .select(`*, staff_members(name)`)
-      .order(config.columns[0], { ascending: false })
-      .limit(100),
-    supabase
-      .from('staff_members')
-      .select('id,name')
-      .eq('is_active', true)
-      .order('name'),
-  ]);
-  const workflow =
-    module === 'work-orders'
-      ? await supabase
-          .from('event_job_stages')
-          .select(
-            'id,stage,status,assigned_staff_id,opened_at,completed_at,assigned:staff_members!event_job_stages_assigned_staff_id_fkey(name),event_jobs(job_number,status,bookings(event_name,event_date,event_location))',
-          )
-          .order('opened_at', { ascending: false })
-          .limit(200)
-      : null;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
+  let data: Record<string, unknown>[] = [];
+  let staff: { id: number; name: string }[] = [];
+  let workflow: Record<string, unknown>[] | null = null;
+  let error: Error | null = null;
+  let workflowError: Error | null = null;
+
+  try {
+    const result = await withUserContext(user.id, async (tx) => {
+      const [rows, staffRows] = await Promise.all([
+        tx.unsafe(
+          `select t.*, case when s.id is null then null else json_build_object('name', s.name) end as staff_members
+           from public.${config.table} t
+           left join public.staff_members s on s.id = t.${config.staffColumn}
+           order by t.${config.columns[0]} desc
+           limit 100`,
+        ),
+        tx<{ id: number; name: string }[]>`
+          select id, name from public.staff_members where is_active = true order by name
+        `,
+      ]);
+      let workflowRows: Record<string, unknown>[] | null = null;
+      if (module === 'work-orders') {
+        workflowRows = (await tx.unsafe(
+          `select
+             ejs.id, ejs.stage, ejs.status, ejs.assigned_staff_id, ejs.opened_at, ejs.completed_at,
+             case when s.id is null then null else json_build_object('name', s.name) end as assigned,
+             json_build_object(
+               'job_number', ej.job_number, 'status', ej.status,
+               'bookings', case when b.id is null then null else json_build_object(
+                 'event_name', b.event_name, 'event_date', b.event_date, 'event_location', b.event_location
+               ) end
+             ) as event_jobs
+           from public.event_job_stages ejs
+           left join public.staff_members s on s.id = ejs.assigned_staff_id
+           left join public.event_jobs ej on ej.id = ejs.event_job_id
+           left join public.bookings b on b.id = ej.booking_id
+           order by ejs.opened_at desc
+           limit 200`,
+        )) as unknown as Record<string, unknown>[];
+      }
+      return { rows: rows as unknown as Record<string, unknown>[], staffRows, workflowRows };
+    });
+    data = result.rows;
+    staff = result.staffRows;
+    workflow = result.workflowRows;
+  } catch (err) {
+    error = err instanceof Error ? err : new Error('Unable to load HR records.');
+    if (module === 'work-orders') workflowError = error;
+  }
+
   if (module === 'attendance')
     return (
-      <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+      <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
           <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
-                  One-time setup required
+                  HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apply the HR migration in Supabase SQL Editor.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
               </CardContent>
             </Card>
           )}
@@ -125,18 +157,16 @@ export default async function HrModulePage({
     );
   if (module === 'payroll')
     return (
-      <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+      <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
           <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
-                  One-time setup required
+                  HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apply the HR migration in Supabase SQL Editor.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
               </CardContent>
             </Card>
           )}
@@ -149,18 +179,16 @@ export default async function HrModulePage({
     );
   if (module === 'letters')
     return (
-      <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+      <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
           <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
-                  One-time setup required
+                  HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apply the HR migration in Supabase SQL Editor.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
               </CardContent>
             </Card>
           )}
@@ -173,18 +201,16 @@ export default async function HrModulePage({
     );
   if (module === 'kyc')
     return (
-      <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+      <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
           <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
-                  One-time setup required
+                  HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apply the HR migration in Supabase SQL Editor.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
               </CardContent>
             </Card>
           )}
@@ -197,49 +223,40 @@ export default async function HrModulePage({
     );
   if (module === 'work-orders')
     return (
-      <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+      <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
           <DashboardHeader backHref="/hr"
             title={config.title}
             subtitle="Live operational tasks from the existing event workflow"
           />
-          {workflow?.error && (
+          {workflowError && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
                   Event workflow is not available
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Apply the event operations migration in Supabase.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{workflowError.message}</p>
               </CardContent>
             </Card>
           )}
           <WorkOrdersManager
-            initialRecords={(workflow?.data ?? []) as never}
+            initialRecords={(workflow ?? []) as never}
             staff={(staff ?? []) as { id: number; name: string }[]}
           />
         </div>
       </DashboardShell>
     );
   return (
-    <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+    <DashboardShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1280px] space-y-6">
         <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
         {error && (
           <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
             <CardContent className="p-5">
               <p className="font-semibold text-[#70481c]">
-                One-time setup required
+                HR records could not be loaded
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Run{' '}
-                <code className="rounded bg-white dark:bg-card px-1.5 py-0.5 text-xs">
-                  supabase/migrations/20260908010000_hr_admin_module.sql
-                </code>{' '}
-                in the Supabase SQL Editor. After it runs, this page will load
-                and save HR records normally.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
             </CardContent>
           </Card>
         )}
@@ -289,7 +306,7 @@ export default async function HrModulePage({
                       className="px-5 py-12 text-center text-muted-foreground"
                     >
                       {error
-                        ? 'HR storage is waiting for the one-time Supabase setup above.'
+                        ? 'HR records could not be loaded.'
                         : 'No records yet.'}
                     </td>
                   </tr>

@@ -93,8 +93,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         </div>
         {showHelp && (
           <p className="text-xs leading-5 text-muted-foreground">
-            Ask your CRM administrator to send you a password reset from
-            Supabase.
+            Ask your CRM administrator to reset your password.
           </p>
         )}
       </div>
@@ -120,7 +119,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
           id="setup-note"
           className="text-center text-xs leading-5 text-muted-foreground"
         >
-          Supabase setup is required before sign-in is available.
+          Database setup is required before sign-in is available.
         </p>
       )}
     </form>

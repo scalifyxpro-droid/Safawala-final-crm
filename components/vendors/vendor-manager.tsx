@@ -177,7 +177,7 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Metric icon={<Truck />} label="Total Vendors" value={String(total)} note="Saved in Supabase" />
+        <Metric icon={<Truck />} label="Total Vendors" value={String(total)} note="Saved securely" />
         <Metric icon={<UserCheck />} label="Active Vendors" value={String(activeCount)} note="Currently supplying" />
         <Metric icon={<UserX />} label="Inactive Vendors" value={String(inactiveCount)} note="Not currently active" />
       </div>
@@ -388,7 +388,7 @@ function VendorFormModal({
                 <h2 className="text-xl font-semibold">{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Saved directly to your Supabase vendor directory.
+                Saved directly to your vendor directory.
               </p>
             </div>
             <Button type="button" variant="ghost" size="icon" onClick={close} aria-label="Close">

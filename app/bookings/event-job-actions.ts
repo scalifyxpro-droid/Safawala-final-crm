@@ -2,7 +2,8 @@
 
 import { syncEventJobs } from '@/lib/event-jobs/store';
 import type { ConfirmedBookingSummary } from '@/lib/event-jobs/types';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 type BookingForEventJob = {
   id: number;
@@ -22,18 +23,27 @@ type BookingForEventJob = {
   booking_items: { item_name: string; quantity: number }[];
 };
 
-async function initializeEventJob(bookingId: number) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(
-      'id,booking_number,booking_type,status,is_quote,event_name,event_date,event_time,event_location,total,paid_amount,balance_amount,security_deposit,payment_status,booking_items(item_name,quantity)',
-    )
-    .eq('id', bookingId)
-    .single();
-  if (error || !data) throw new Error(error?.message ?? 'Booking not found.');
+async function initializeEventJob(userId: string, bookingId: number) {
+  const booking = await withUserContext(userId, async (tx) => {
+    const rows = await tx.unsafe(
+      `
+        select b.id, b.booking_number, b.booking_type, b.status, b.is_quote, b.event_name,
+          b.event_date, b.event_time, b.event_location, b.total, b.paid_amount, b.balance_amount,
+          b.security_deposit, b.payment_status,
+          coalesce(items.rows, '[]'::json) as booking_items
+        from public.bookings b
+        left join lateral (
+          select json_agg(json_build_object('item_name', bi.item_name, 'quantity', bi.quantity)) as rows
+          from public.booking_items bi where bi.booking_id = b.id
+        ) items on true
+        where b.id = $1
+      `,
+      [bookingId],
+    );
+    return (rows as unknown as BookingForEventJob[])[0] ?? null;
+  });
+  if (!booking) throw new Error('Booking not found.');
 
-  const booking = data as unknown as BookingForEventJob;
   if (booking.is_quote || booking.status !== 'confirmed') {
     throw new Error('Only a confirmed booking can create an Event Job.');
   }
@@ -65,7 +75,8 @@ async function initializeEventJob(bookingId: number) {
 
 export async function initializeBookingEventJobAction(bookingId: number) {
   try {
-    await initializeEventJob(bookingId);
+    const user = await requireUser();
+    await initializeEventJob(user.id, bookingId);
     return { error: '' };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Event Job could not be initialized.' };
@@ -73,19 +84,23 @@ export async function initializeBookingEventJobAction(bookingId: number) {
 }
 
 export async function convertQuoteToBookingAction(quoteId: number) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc('convert_quote_to_booking', {
-    quote_key: quoteId,
-  });
-  if (error) return { id: null, error: error.message };
-
-  const bookingId = Number((data as { id?: number } | null)?.id);
+  const user = await requireUser();
+  let bookingId: number;
+  try {
+    const rows = await withUserContext(user.id, (tx) =>
+      tx.unsafe(`select * from public.convert_quote_to_booking($1)`, [quoteId]),
+    );
+    const created = (rows as unknown as { id: number }[])[0];
+    bookingId = Number(created?.id);
+  } catch (error) {
+    return { id: null, error: error instanceof Error ? error.message : 'Quote could not be converted.' };
+  }
   if (!Number.isFinite(bookingId)) {
     return { id: null, error: 'The booking was created without a valid ID.' };
   }
 
   try {
-    await initializeEventJob(bookingId);
+    await initializeEventJob(user.id, bookingId);
     return { id: bookingId, error: '' };
   } catch (initializationError) {
     // Conversion itself has already committed. Return the booking ID so the
@@ -98,5 +113,17 @@ export async function convertQuoteToBookingAction(quoteId: number) {
           ? initializationError.message
           : 'The booking was created, but its Event Job could not be initialized.',
     };
+  }
+}
+
+export async function changeBookingStatusAction(bookingId: number, nextStatus: string) {
+  try {
+    const user = await requireUser();
+    await withUserContext(user.id, (tx) =>
+      tx.unsafe(`select * from public.change_booking_status($1, $2)`, [bookingId, nextStatus]),
+    );
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Booking status could not be changed.' };
   }
 }

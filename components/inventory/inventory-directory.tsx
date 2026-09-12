@@ -38,7 +38,12 @@ import {
   INVENTORY_CATEGORIES,
   sameInventoryValue,
 } from '@/lib/inventory-catalog';
-import { createClient } from '@/lib/supabase/client';
+import {
+  deleteProductAction,
+  importProductAction,
+  saveProductAction,
+  updateProductStatusAction,
+} from '@/app/inventory/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import type { ProductReservation } from '@/lib/inventory-availability';
 
@@ -118,8 +123,6 @@ type VariantDraft = {
   barcode: string;
 };
 
-const productFields =
-  'id,sku,barcode,name,description,category,subcategory,size,color,material,cost_price,regular_price,sale_price,rental_price,security_deposit,stock_quantity,reorder_level,image_urls,is_active,created_at,updated_at,product_variants(id,name,size,color,material,stock_quantity,barcode)';
 const fieldClass =
   'mt-1.5 h-10 w-full rounded-lg border border-input bg-white dark:bg-card px-3 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20';
 const barcodePattern = /^[A-Za-z0-9_-]{1,50}$/;
@@ -375,13 +378,6 @@ export function InventoryDirectory({
       const values = parseCsvLine(line);
       return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
     });
-    const supabase = createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) {
-      setMessage('Your session has expired. Please sign in again.');
-      setImporting(false);
-      return;
-    }
     let imported = 0;
     for (const row of rows) {
       const name = String(row.product_name || row.name || '').trim();
@@ -409,11 +405,9 @@ export function InventoryDirectory({
         (barcode && product.barcode === barcode) ||
         (values.sku && product.sku === values.sku),
       );
-      const result = existing
-        ? await supabase.from('products').update(values).eq('id', existing.id).select(productFields).single()
-        : await supabase.from('products').insert({ owner_id: auth.user.id, ...values }).select(productFields).single();
+      const result = await importProductAction(existing?.id ?? null, values);
       if (result.error) {
-        setMessage(`Import stopped after ${imported} product${imported === 1 ? '' : 's'}: ${result.error.message}`);
+        setMessage(`Import stopped after ${imported} product${imported === 1 ? '' : 's'}: ${result.error}`);
         setImporting(false);
         return;
       }
@@ -440,9 +434,8 @@ export function InventoryDirectory({
   }
 
   async function updateProductStatus(product: InventoryProduct, isActive: boolean) {
-    const supabase = createClient();
-    const { error } = await supabase.from('products').update({ is_active: isActive }).eq('id', product.id);
-    if (error) { setMessage(error.message); return; }
+    const { error } = await updateProductStatusAction(product.id, isActive);
+    if (error) { setMessage(error); return; }
     setProducts((current) => current.map((item) => item.id === product.id ? { ...item, is_active: isActive } : item));
     setNotice(isActive ? `${product.name} was restored to inventory.` : `${product.name} was archived.`);
   }
@@ -453,9 +446,8 @@ export function InventoryDirectory({
 
   async function deleteProduct(product: InventoryProduct) {
     if (!window.confirm(`Delete ${product.name} permanently?`)) return;
-    const supabase = createClient();
-    const { error } = await supabase.from('products').delete().eq('id', product.id);
-    if (error) { setMessage(error.message); return; }
+    const { error } = await deleteProductAction(product.id);
+    if (error) { setMessage(error); return; }
     setProducts((current) => current.filter((item) => item.id !== product.id));
     setNotice(`${product.name} was deleted.`);
   }
@@ -1028,156 +1020,49 @@ function ProductDialog({
       return;
     }
     setBusy(true);
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setError('Your session has expired. Please sign in again.');
-      setBusy(false);
-      return;
-    }
 
-    const imageUrls: string[] = [...(product?.image_urls ?? [])];
-    for (const file of files) {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${auth.user.id}/${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(path, file, { contentType: file.type, upsert: false });
-      if (uploadError) {
-        setError(`Photo upload failed: ${uploadError.message}`);
-        setBusy(false);
-        return;
-      }
-      imageUrls.push(
-        supabase.storage.from('product-images').getPublicUrl(path).data
-          .publicUrl,
-      );
-    }
-
-    const number = (value: string) => Math.max(Number(value) || 0, 0);
-    const productValues = {
-      name: draft.name.trim(),
-      description: draft.description.trim() || null,
-      category: draft.category,
-      subcategory: draft.subcategory.trim() || null,
-      size: draft.size.trim() || null,
-      color: draft.color.trim() || null,
-      material: draft.material.trim() || null,
-      sku: draft.sku.trim() || draft.barcode,
-      barcode: draft.barcode,
-      cost_price: number(draft.costPrice),
-      regular_price: number(draft.regularPrice),
-      sale_price: number(draft.salePrice),
-      rental_price: number(draft.rentalPrice),
-      security_deposit: number(draft.securityDeposit),
-      stock_quantity: Math.floor(number(draft.stock)),
-      reorder_level: Math.floor(number(draft.reorderLevel)),
-      image_urls: imageUrls,
-      is_active: true,
-    };
-    const productQuery = product
-      ? supabase.from('products').update(productValues).eq('id', product.id)
-      : supabase.from('products').insert({
-          owner_id: auth.user.id,
-          ...productValues,
-        });
-    const { data, error: saveError } = await productQuery
-      .select(productFields)
-      .single();
-
-    if (saveError) {
-      setError(
-        saveError.code === '23505'
-          ? 'This barcode or SKU is already assigned to another product.'
-          : saveError.message.includes('column') ||
-              saveError.code === 'PGRST204'
-            ? 'The Supabase inventory migration has not been applied yet. Add the inventory columns before saving products.'
-            : saveError.message,
-      );
-      setBusy(false);
-      return;
-    }
-
-    const variantValues = (variant: VariantDraft) => ({
-      owner_id: auth.user!.id,
-      product_id: data.id,
-      name: variant.name.trim(),
-      size: variant.size.trim() || null,
-      color: variant.color.trim() || null,
-      material: variant.material.trim() || null,
-      stock_quantity: Math.floor(number(variant.stock)),
-      barcode: variant.barcode || null,
-    });
-
-    const existingVariants = variants.filter(
-      (variant): variant is VariantDraft & { id: number } =>
-        typeof variant.id === 'number',
+    const formData = new FormData();
+    if (product) formData.set('productId', String(product.id));
+    formData.set('name', draft.name.trim());
+    formData.set('description', draft.description.trim());
+    formData.set('category', draft.category);
+    formData.set('subcategory', draft.subcategory.trim());
+    formData.set('size', draft.size.trim());
+    formData.set('color', draft.color.trim());
+    formData.set('material', draft.material.trim());
+    formData.set('sku', draft.sku.trim());
+    formData.set('barcode', draft.barcode);
+    formData.set('costPrice', draft.costPrice);
+    formData.set('regularPrice', draft.regularPrice);
+    formData.set('salePrice', draft.salePrice);
+    formData.set('rentalPrice', draft.rentalPrice);
+    formData.set('securityDeposit', draft.securityDeposit);
+    formData.set('stock', draft.stock);
+    formData.set('reorderLevel', draft.reorderLevel);
+    formData.set('existingImageUrls', JSON.stringify(product?.image_urls ?? []));
+    formData.set(
+      'variants',
+      JSON.stringify(
+        variants.map((variant) => ({
+          id: variant.id,
+          name: variant.name,
+          size: variant.size,
+          color: variant.color,
+          material: variant.material,
+          stock: variant.stock,
+          barcode: variant.barcode,
+        })),
+      ),
     );
-    const newVariants = variants.filter(
-      (variant) => typeof variant.id !== 'number',
-    );
+    for (const file of files) formData.append('photos', file);
 
-    for (const variant of existingVariants) {
-      const { error: updateVariantError } = await supabase
-        .from('product_variants')
-        .update(variantValues(variant))
-        .eq('id', variant.id)
-        .eq('product_id', data.id);
-      if (updateVariantError) {
-        setError(
-          `Product saved, but variants need attention: ${updateVariantError.message}`,
-        );
-        setBusy(false);
-        return;
-      }
-    }
-
-    if (newVariants.length) {
-      const { error: insertVariantError } = await supabase
-        .from('product_variants')
-        .insert(newVariants.map(variantValues));
-      if (insertVariantError) {
-        setError(
-          `Product saved, but variants need attention: ${insertVariantError.message}`,
-        );
-        setBusy(false);
-        return;
-      }
-    }
-
-    if (product) {
-      const keptIds = variants
-        .map((variant) => variant.id)
-        .filter((id): id is number => typeof id === 'number');
-      let deleteQuery = supabase
-        .from('product_variants')
-        .delete()
-        .eq('product_id', data.id);
-      if (keptIds.length)
-        deleteQuery = deleteQuery.not('id', 'in', `(${keptIds.join(',')})`);
-      const { error: deleteError } = await deleteQuery;
-      if (deleteError) {
-        setError(
-          `Product saved, but removed variants need attention: ${deleteError.message}`,
-        );
-        setBusy(false);
-        return;
-      }
-    }
-
-    const { data: refreshedProduct, error: refreshError } = await supabase
-      .from('products')
-      .select(productFields)
-      .eq('id', data.id)
-      .single();
-    if (refreshError) {
-      setError(
-        `Product saved, but could not be refreshed: ${refreshError.message}`,
-      );
+    const result = await saveProductAction(formData);
+    if (result.error || !result.data) {
+      setError(result.error || 'Product could not be saved.');
       setBusy(false);
       return;
     }
-    onSaved(refreshedProduct as InventoryProduct, Boolean(product));
+    onSaved(result.data, Boolean(product));
   }
 
   return (

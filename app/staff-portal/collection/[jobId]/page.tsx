@@ -9,7 +9,7 @@ import { getJob } from '@/lib/event-jobs/store';
 import { CollectionCheckForm } from '@/components/staff-portal/collection-check-form';
 import { CollectionSlipButton } from '@/components/staff-portal/collection-slip-button';
 import { JobTracker } from '@/components/staff-portal/job-tracker';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,13 +39,19 @@ export default async function CollectionJobDetailPage({ params }: { params: Prom
   const isOpen = stage.status === 'open' || stage.status === 'in_progress';
   if (!isOpen && !job.collectionCheck) redirect('/staff-portal/collection');
 
-  const admin = createAdminClient();
-  const { data: bookingData } = await admin
-    .from('bookings')
-    .select('event_name,event_date,event_time,event_location,contact_name,alternate_mobile,customers(name,phone)')
-    .eq('id', job.bookingId)
-    .single();
-  const booking = bookingData as BookingContext | null;
+  const bookingRows = await withServiceRole((tx) =>
+    tx.unsafe(
+      `select
+         b.event_name, b.event_date, b.event_time, b.event_location, b.contact_name, b.alternate_mobile,
+         case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers
+       from public.bookings b
+       left join public.customers c on c.id = b.customer_id
+       where b.id = $1
+       limit 1`,
+      [job.bookingId],
+    ),
+  );
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
   const customer = firstRelation(booking?.customers);
   const customerName = customer?.name ?? booking?.contact_name ?? 'Customer';
   const customerPhone = booking?.alternate_mobile ?? customer?.phone ?? '';

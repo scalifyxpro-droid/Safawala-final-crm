@@ -42,9 +42,9 @@ import {
   INVENTORY_CATEGORIES,
   sameInventoryValue,
 } from '@/lib/inventory-catalog';
-import { createClient } from '@/lib/supabase/client';
 import { initializeBookingEventJobAction } from '@/app/bookings/event-job-actions';
 import { validateCouponAction } from '@/app/coupons/actions';
+import { createBookingAction, createBookingCustomerAction } from '@/app/bookings/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { BarcodeScannerModal } from '@/components/bookings/barcode-scanner-modal';
 import { useHardwareScannerListener } from '@/lib/hooks/use-hardware-scanner';
@@ -479,9 +479,15 @@ export function BookingForm({
     );
     if (!product && scanned) {
       try {
-        const response = await fetch('/api/barcode/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: rawValue.trim() }) });
+        const response = await fetch('/api/barcode/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barcode: rawValue.trim() }),
+        });
         if (response.ok) product = (await response.json()).product as Product;
-      } catch { /* Keep the existing not-found message when lookup is unavailable. */ }
+      } catch {
+        // Keep the existing not-found message when lookup is unavailable.
+      }
     }
     if (product) {
       addProduct(product);
@@ -901,16 +907,6 @@ export function BookingForm({
       payment_method: form.get('payment_method'),
       payment_reference: null,
     };
-    const supabase = createClient();
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError || !authData.user) {
-      setMessage({
-        title: 'Your session has expired',
-        text: 'Please sign in again before creating a booking.',
-      });
-      setBusy(false);
-      return;
-    }
     // Re-check the complete rental order immediately before saving. The list
     // can become stale if another booking was confirmed while this form was open.
     if (!isSale && pickupDate && dueDate) {
@@ -945,66 +941,27 @@ export function BookingForm({
         }
       }
     }
-    // RLS requires newly-created inventory rows to belong to the authenticated
-    // user. The booking RPC applies its own caller ownership separately.
-    const inventoryOwnerId = authData.user.id;
-    for (const item of payload.items) {
-      if (!item.product_id && !item.package_id) {
-        const { data: inventoryProduct, error: inventoryError } = await supabase
-          .from('products')
-          .insert({
-            owner_id: inventoryOwnerId,
-            name: item.item_name.trim(),
-            sale_price: item.unit_price,
-            rental_price: item.unit_price,
-            security_deposit: item.security_deposit,
-            stock_quantity: 0,
-            is_active: true,
-          })
-          .select('id')
-          .single();
-        if (inventoryError || !inventoryProduct) {
-          setMessage({
-            title: 'Inventory product was not saved',
-            text: inventoryError?.message ?? 'Please try again.',
-          });
-          setBusy(false);
-          return;
-        }
-        item.product_id = inventoryProduct.id;
-      }
-    }
-    const { data, error } = await supabase.rpc(
-      quote ? 'create_booking_quote' : 'create_booking',
-      { payload },
-    );
-    if (error) {
+    const result = await createBookingAction(payload, {
+      quote,
+      bookingDate: typeof bookingDate === 'string' ? bookingDate : null,
+    });
+    if (result.error) {
+      const titleByStage: Record<string, string> = {
+        auth: 'Your session has expired',
+        inventory: 'Inventory product was not saved',
+        booking: quote ? 'Quote was not saved' : 'Order was not created',
+        date: 'Booking saved, but the date was not updated',
+      };
       setMessage({
-        title: quote ? 'Quote was not saved' : 'Order was not created',
-        text: error.message,
+        title: titleByStage[result.stage] ?? (quote ? 'Quote was not saved' : 'Order was not created'),
+        text: result.error,
       });
       setBusy(false);
       return;
     }
-    if (typeof bookingDate === 'string' && bookingDate) {
-      const { error: dateError } = await supabase
-        .from('bookings')
-        .update({ created_at: `${bookingDate}T12:00:00+05:30` })
-        .eq('id', data.id)
-        .select('id')
-        .single();
-      if (dateError) {
-        setMessage({
-          title: 'Booking saved, but the date was not updated',
-          text: dateError.message,
-        });
-        setBusy(false);
-        return;
-      }
-    }
     if (!quote) {
       const eventJobResult = await initializeBookingEventJobAction(
-        Number(data.id),
+        Number(result.id),
       );
       if (eventJobResult.error) {
         setMessage({
@@ -1016,7 +973,7 @@ export function BookingForm({
       }
     }
     router.push(
-      `${quote ? '/quotes' : '/bookings'}?created=${encodeURIComponent(data.booking_number ?? String(data.id))}`,
+      `${quote ? '/quotes' : '/bookings'}?created=${encodeURIComponent(result.bookingNumber ?? String(result.id))}`,
     );
   }
 
@@ -1471,8 +1428,8 @@ export function BookingForm({
                             value={productSearch}
                             onChange={(e) => handleProductSearchInput(e.target.value)}
                             onKeyDown={(event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
+                              if (event.key !== 'Enter') return;
+                              event.preventDefault();
                               void handleProductScan(productSearch);
                             }}
                             placeholder="Search products or barcode…"
@@ -3159,31 +3116,13 @@ function NewCustomerDialog({
       const value = form.get(key);
       return typeof value === 'string' ? value.trim() : '';
     };
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setError('Your session has expired. Please sign in again.');
-      setBusy(false);
-      return;
-    }
-    const { data, error: insertError } = await supabase
-      .from('customers')
-      .insert({
-        owner_id: ownerId,
-        name: formText('name'),
-        phone: formText('phone'),
-        email: null,
-        address: formText('address') || null,
-        notes: null,
-      })
-      .select('id,name,phone,email,address')
-      .single();
-    if (insertError) {
-      setError(
-        insertError.code === '23505'
-          ? 'A customer with this phone number already exists.'
-          : insertError.message,
-      );
+    const { data, error: insertError } = await createBookingCustomerAction(ownerId, {
+      name: formText('name'),
+      phone: formText('phone'),
+      address: formText('address'),
+    });
+    if (insertError || !data) {
+      setError(insertError || 'Your session has expired. Please sign in again.');
       setBusy(false);
       return;
     }
@@ -3210,7 +3149,7 @@ function NewCustomerDialog({
                 Add new customer
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Saved immediately to your secure Supabase customer directory.
+                Saved immediately to your secure customer directory.
               </p>
             </div>
           </div>
@@ -3488,7 +3427,7 @@ function EmptyCatalog() {
         No products in your catalog yet
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Use Quick custom product now, or add products in Supabase.
+        Use Quick custom product now, or add products from Inventory.
       </p>
     </div>
   );

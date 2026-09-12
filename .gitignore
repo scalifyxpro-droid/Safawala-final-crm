@@ -40,6 +40,7 @@ next-env.d.ts
 /output/
 /tmp/
 /work/
+/Claude outputs/
 /supabase/.temp/
 /migration/legacy-inventory/images/
 *.tsbuildinfo

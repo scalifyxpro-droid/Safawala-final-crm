@@ -10,7 +10,23 @@ import { PackingChecklistForm } from '@/components/staff-portal/packing-checklis
 import { PackingSlipButton } from '@/components/staff-portal/packing-slip-button';
 import { ReturnQualityCheckForm } from '@/components/staff-portal/return-quality-check-form';
 import { ReturnQcSlipButton } from '@/components/staff-portal/return-slips';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
+
+type Relation<T> = T | T[] | null;
+type BookingContext = {
+  event_name: string;
+  event_date: string;
+  event_time: string | null;
+  event_location: string | null;
+  contact_name: string | null;
+  alternate_mobile: string | null;
+  customers: Relation<{ name: string; phone: string }>;
+  booking_items: {
+    item_name: string;
+    quantity: number;
+    products: Relation<{ barcode: string | null }>;
+  }[];
+};
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
@@ -37,18 +53,33 @@ export async function QcJobModal({
     (stage) => stage.key === 'warehouse_pick',
   );
   if (!qcStage || !packingStage || !returnStage) return null;
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('bookings')
-    .select(
-      'event_name,event_date,event_time,event_location,contact_name,alternate_mobile,customers(name,phone),booking_items(item_name,quantity,products(barcode))',
-    )
-    .eq('id', job.bookingId)
-    .single();
-  const booking = data as any;
+  const bookingRows = await withServiceRole((tx) =>
+    tx.unsafe(
+      `select
+         b.event_name, b.event_date, b.event_time, b.event_location, b.contact_name, b.alternate_mobile,
+         case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+         coalesce(items.rows, '[]'::json) as booking_items
+       from public.bookings b
+       left join public.customers c on c.id = b.customer_id
+       left join lateral (
+         select json_agg(json_build_object(
+           'item_name', bi.item_name,
+           'quantity', bi.quantity,
+           'products', case when p.id is null then null else json_build_object('barcode', p.barcode) end
+         )) as rows
+         from public.booking_items bi
+         left join public.products p on p.id = bi.product_id
+         where bi.booking_id = b.id
+       ) items on true
+       where b.id = $1
+       limit 1`,
+      [job.bookingId],
+    ),
+  );
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
   const customer = first(booking?.customers);
   const barcode = new Map<string, string | null>(
-    (booking?.booking_items ?? []).map((item: any) => [
+    (booking?.booking_items ?? []).map((item) => [
       item.item_name,
       first(item.products)?.barcode ?? null,
     ]),

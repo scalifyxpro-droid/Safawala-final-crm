@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 import {
   getAvailabilityForWindow,
   findNextAvailableWindow,
@@ -7,14 +7,13 @@ import {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Your session has expired.' }, { status: 401 });
     }
 
     const body = await request.json();
-    const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : auth.user.id;
+    const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : user.id;
     const pickupDate = String(body.pickupDate ?? '').trim();
     const dueDate = String(body.dueDate ?? '').trim();
     const productIds = Array.isArray(body.productIds)

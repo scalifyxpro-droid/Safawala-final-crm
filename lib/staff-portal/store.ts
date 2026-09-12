@@ -1,13 +1,10 @@
 import 'server-only';
 
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
-import { supabaseConfig } from '@/lib/supabase/config';
+import { withUserContext, withServiceRole, type Tx } from '@/lib/db/client';
+import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import type { StaffDepartment } from './constants';
-import type { StaffPortalAccount, StaffType } from './types';
+import type { StaffPortalAccount, StaffType, StaffAccessType } from './types';
 import type { AccessModule } from './access-modules';
-import type { StaffAccessType } from './types';
 import { normalizeStaffLoginId, staffAuthEmail } from './credentials';
 
 type StaffRow = {
@@ -23,6 +20,23 @@ type StaffRow = {
   staff_departments: { department: StaffDepartment }[] | null;
   staff_access_modules: { module: AccessModule; enabled: boolean }[] | null;
 };
+
+// Hand-written replacement for the PostgREST embedded select
+// `staff_members(...staff_departments(department),staff_access_modules(module,enabled))`.
+const STAFF_ROW_QUERY = `
+  select sm.id, sm.user_id, sm.name, sm.login_id, sm.portal_active, sm.access_type, sm.staff_type, sm.created_at, sm.updated_at,
+    coalesce(dept.rows, '[]'::json) as staff_departments,
+    coalesce(mod.rows, '[]'::json) as staff_access_modules
+  from public.staff_members sm
+  left join lateral (
+    select json_agg(json_build_object('department', d.department)) as rows
+    from public.staff_departments d where d.staff_id = sm.id
+  ) dept on true
+  left join lateral (
+    select json_agg(json_build_object('module', m.module, 'enabled', m.enabled)) as rows
+    from public.staff_access_modules m where m.staff_id = sm.id
+  ) mod on true
+`;
 
 function toAccount(row: StaffRow): StaffPortalAccount {
   return {
@@ -45,17 +59,11 @@ function toAccount(row: StaffRow): StaffPortalAccount {
 }
 
 export async function listAccounts(ownerId: string): Promise<StaffPortalAccount[]> {
-  // Listing is an owner-scoped read and must not require the service-role secret.
-  // This keeps the page available in hosted environments while RLS enforces ownership.
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('staff_members')
-    .select('id,user_id,name,login_id,portal_active,access_type,staff_type,created_at,updated_at,staff_departments(department),staff_access_modules(module,enabled)')
-    .eq('owner_id', ownerId)
-    .not('user_id', 'is', null)
-    .order('name');
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as StaffRow[]).map(toAccount);
+  // Owner-scoped read under RLS (authenticated role + app.user_id = ownerId) — no service-role secret needed.
+  const rows = await withUserContext(ownerId, (tx) =>
+    tx.unsafe(`${STAFF_ROW_QUERY} where sm.owner_id = $1 and sm.user_id is not null order by sm.name`, [ownerId])
+  );
+  return (rows as unknown as StaffRow[]).map(toAccount);
 }
 
 export async function createAccount(ownerId: string, input: {
@@ -69,218 +77,169 @@ export async function createAccount(ownerId: string, input: {
   modules?: AccessModule[];
   removeStaffMemberOnFailure?: boolean;
 }): Promise<{ account?: StaffPortalAccount; error?: string }> {
-  const admin = createAdminClient();
   const loginId = normalizeStaffLoginId(input.loginId);
   const email = staffAuthEmail(loginId);
   const accessType = input.accessType ?? 'staff';
   const staffType = input.staffType ?? 'regular';
   if (input.name.trim().length < 2) return { error: 'Enter the staff member’s name.' };
   if (input.password.length < 6) return { error: 'Password must be at least 6 characters.' };
-  async function removePendingStaffMember() {
-    if (!input.removeStaffMemberOnFailure || !input.staffMemberId) return null;
-    const { error } = await admin
-      .from('staff_members')
-      .delete()
-      .eq('id', input.staffMemberId)
-      .eq('owner_id', ownerId)
-      .is('user_id', null);
-    return error?.message ?? null;
-  }
-  const { data: created, error: authError } = await admin.auth.admin.createUser({
-    email,
-    password: input.password,
-    email_confirm: true,
-    user_metadata: { display_name: input.name.trim(), login_id: loginId },
-    app_metadata: { portal: 'staff', staff_type: staffType },
-  });
-  if (authError || !created.user) {
-    const cleanupError = await removePendingStaffMember();
-    return {
-      error: cleanupError
-        ? `${authError?.message ?? 'Could not create staff login.'} The incomplete staff record also could not be removed: ${cleanupError}`
-        : authError?.message ?? 'Could not create staff login.',
-    };
-  }
 
-  const userId = created.user.id;
-  const { error: profileError } = await admin.from('profiles').upsert({ id: userId, full_name: input.name.trim(), role: 'staff' });
-  if (profileError) {
-    await admin.auth.admin.deleteUser(userId);
-    await removePendingStaffMember();
-    return { error: profileError.message };
-  }
+  return withServiceRole(async (tx) => {
+    async function removePendingStaffMember() {
+      if (!input.removeStaffMemberOnFailure || !input.staffMemberId) return;
+      await tx`delete from public.staff_members where id = ${input.staffMemberId} and owner_id = ${ownerId} and user_id is null`;
+    }
 
-  let staffId = input.staffMemberId;
-  if (staffId) {
-    const { data, error } = await admin.from('staff_members').update({
-      user_id: userId, login_id: loginId, portal_active: true, is_active: true,
-      name: input.name.trim(), access_type: staffType === 'stylist' ? 'staff' : accessType, staff_type: staffType,
-    }).eq('id', staffId).eq('owner_id', ownerId).select('id').single();
-    if (error || !data) {
-      await admin.auth.admin.deleteUser(userId);
+    const existing = await tx<{ id: string }[]>`select id from auth.users where lower(email) = lower(${email})`;
+    if (existing.length) return { error: 'That Login ID is already in use.' };
+
+    const encryptedPassword = await hashPassword(input.password);
+    const [createdUser] = await tx<{ id: string }[]>`
+      insert into auth.users (email, encrypted_password) values (${email}, ${encryptedPassword}) returning id
+    `;
+    if (!createdUser) {
       await removePendingStaffMember();
-      return { error: error?.message ?? 'Could not link the staff directory record.' };
+      return { error: 'Could not create staff login.' };
     }
-  } else {
-    const { data, error } = await admin.from('staff_members').insert({
-      owner_id: ownerId, user_id: userId, login_id: loginId, portal_active: true,
-      name: input.name.trim(), is_active: true, access_type: staffType === 'stylist' ? 'staff' : accessType, staff_type: staffType,
-    }).select('id').single();
-    if (error || !data) {
-      await admin.auth.admin.deleteUser(userId);
-      return { error: error?.message ?? 'Could not link staff directory record.' };
-    }
-    staffId = Number(data.id);
-  }
+    const userId = createdUser.id;
 
-  const linkedStaffId = staffId;
-  async function rollbackCreatedLogin() {
-    await admin.from('staff_access_modules').delete().eq('staff_id', linkedStaffId);
-    await admin.from('staff_departments').delete().eq('staff_id', linkedStaffId);
-    if (input.staffMemberId && !input.removeStaffMemberOnFailure) {
-      await admin.from('staff_members').update({
-        user_id: null,
-        login_id: null,
-        portal_active: false,
-      }).eq('id', linkedStaffId).eq('owner_id', ownerId);
+    await tx`update public.profiles set full_name = ${input.name.trim()}, role = 'staff' where id = ${userId}`;
+
+    let staffId = input.staffMemberId;
+    if (staffId) {
+      const linked = await tx`
+        update public.staff_members set
+          user_id = ${userId}, login_id = ${loginId}, portal_active = true, is_active = true,
+          name = ${input.name.trim()}, access_type = ${staffType === 'stylist' ? 'staff' : accessType}, staff_type = ${staffType}
+        where id = ${staffId} and owner_id = ${ownerId}
+      `;
+      if (linked.count === 0) {
+        await tx`delete from auth.users where id = ${userId}`;
+        await removePendingStaffMember();
+        return { error: 'Could not link the staff directory record.' };
+      }
     } else {
-      await admin.from('staff_members').delete().eq('id', linkedStaffId).eq('owner_id', ownerId);
+      const [inserted] = await tx<{ id: number }[]>`
+        insert into public.staff_members (owner_id, user_id, login_id, portal_active, name, is_active, access_type, staff_type)
+        values (${ownerId}, ${userId}, ${loginId}, true, ${input.name.trim()}, true, ${staffType === 'stylist' ? 'staff' : accessType}, ${staffType})
+        returning id
+      `;
+      if (!inserted) {
+        await tx`delete from auth.users where id = ${userId}`;
+        return { error: 'Could not link staff directory record.' };
+      }
+      staffId = inserted.id;
     }
-    await admin.auth.admin.deleteUser(userId);
-  }
 
-  const departments: StaffDepartment[] = staffType === 'stylist'
-    ? ['stylist']
-    : accessType === 'staff' ? ['booking'] : input.departments;
-  if (accessType === 'staff' || staffType === 'stylist') {
-    const { error } = await admin.from('staff_departments').delete().eq('staff_id', linkedStaffId);
-    if (error) {
-      await rollbackCreatedLogin();
-      return { error: error.message };
+    const linkedStaffId = staffId;
+    async function rollbackCreatedLogin() {
+      await tx`delete from public.staff_access_modules where staff_id = ${linkedStaffId}`;
+      await tx`delete from public.staff_departments where staff_id = ${linkedStaffId}`;
+      if (input.staffMemberId && !input.removeStaffMemberOnFailure) {
+        await tx`update public.staff_members set user_id = null, login_id = null, portal_active = false where id = ${linkedStaffId} and owner_id = ${ownerId}`;
+      } else {
+        await tx`delete from public.staff_members where id = ${linkedStaffId} and owner_id = ${ownerId}`;
+      }
+      await tx`delete from auth.users where id = ${userId}`;
     }
-  }
-  if (departments.length) {
-    const { error } = await admin.from('staff_departments').upsert(
-      departments.map((department) => ({ staff_id: linkedStaffId, department, granted_by: ownerId })),
-      { onConflict: 'staff_id,department' },
-    );
-    if (error) {
-      await rollbackCreatedLogin();
-      return { error: error.message };
-    }
-  }
 
-  const modules = staffType === 'stylist'
-    ? []
-    : accessType === 'staff' ? ['quotations', 'create_booking'] : (input.modules ?? []);
-  if (modules.length) {
-    const { error } = await admin.from('staff_access_modules').upsert(
-      modules.map((module) => ({ owner_id: ownerId, staff_id: linkedStaffId, module, enabled: true })),
-      { onConflict: 'staff_id,module' },
-    );
-    if (error) {
-      await rollbackCreatedLogin();
-      return { error: error.message };
+    const departments: StaffDepartment[] = staffType === 'stylist' ? ['stylist'] : accessType === 'staff' ? ['booking'] : input.departments;
+    if (accessType === 'staff' || staffType === 'stylist') {
+      await tx`delete from public.staff_departments where staff_id = ${linkedStaffId}`;
     }
-  }
+    for (const department of departments) {
+      await tx`
+        insert into public.staff_departments (staff_id, department, granted_by) values (${linkedStaffId}, ${department}, ${ownerId})
+        on conflict (staff_id, department) do nothing
+      `;
+    }
 
-  // Verify the exact credentials before reporting success. A separate,
-  // non-persistent client keeps the service-role client untouched.
-  const verifier = createSupabaseClient(supabaseConfig.url, supabaseConfig.key, {
-    auth: { autoRefreshToken: false, persistSession: false },
+    const modules = staffType === 'stylist' ? [] : accessType === 'staff' ? ['quotations', 'create_booking'] : input.modules ?? [];
+    for (const accessModule of modules) {
+      await tx`
+        insert into public.staff_access_modules (owner_id, staff_id, module, enabled) values (${ownerId}, ${linkedStaffId}, ${accessModule}, true)
+        on conflict (staff_id, module) do update set enabled = true
+      `;
+    }
+
+    // Sanity check: confirm the stored hash actually verifies the password we
+    // just set, before reporting success (catches hashing/encoding mistakes;
+    // there's no separate auth service round trip to double-check anymore).
+    const [check] = await tx<{ encrypted_password: string }[]>`select encrypted_password from auth.users where id = ${userId}`;
+    if (!check || !(await verifyPassword(input.password, check.encrypted_password))) {
+      await rollbackCreatedLogin();
+      return { error: 'The login could not be verified after creation.' };
+    }
+
+    const rows = await tx.unsafe(`${STAFF_ROW_QUERY} where sm.id = $1 and sm.owner_id = $2`, [linkedStaffId, ownerId]);
+    const accountRow = (rows as unknown as StaffRow[])[0];
+    if (!accountRow) {
+      await rollbackCreatedLogin();
+      return { error: 'The staff login was created but could not be loaded.' };
+    }
+    return { account: toAccount(accountRow) };
   });
-  const { error: verificationError } = await verifier.auth.signInWithPassword({
-    email,
-    password: input.password,
-  });
-  if (verificationError) {
-    await rollbackCreatedLogin();
-    return { error: `The login could not be verified: ${verificationError.message}` };
-  }
-
-  const { data: accountRow, error: accountError } = await admin
-    .from('staff_members')
-    .select('id,user_id,name,login_id,portal_active,access_type,staff_type,created_at,updated_at,staff_departments(department),staff_access_modules(module,enabled)')
-    .eq('id', linkedStaffId)
-    .eq('owner_id', ownerId)
-    .single();
-  if (accountError || !accountRow) {
-    await rollbackCreatedLogin();
-    return { error: accountError?.message ?? 'The staff login was created but could not be loaded.' };
-  }
-  return { account: toAccount(accountRow as StaffRow) };
 }
 
-async function getOwnedStaff(ownerId: string, userId: string) {
-  const admin = createAdminClient();
-  const { data, error } = await admin.from('staff_members').select('id').eq('owner_id', ownerId).eq('user_id', userId).single();
-  if (error || !data) throw new Error('Staff portal account was not found.');
-  return { admin, staffId: Number(data.id) };
+async function getOwnedStaffId(tx: Tx, ownerId: string, userId: string) {
+  const rows = await tx<{ id: number }[]>`select id from public.staff_members where owner_id = ${ownerId} and user_id = ${userId}`;
+  if (!rows[0]) throw new Error('Staff portal account was not found.');
+  return rows[0].id;
 }
 
 export async function setAccountActive(ownerId: string, userId: string, active: boolean) {
-  const { admin } = await getOwnedStaff(ownerId, userId);
-  const { error } = await admin.from('staff_members').update(
-    active ? { portal_active: true, is_active: true } : { portal_active: false },
-  ).eq('owner_id', ownerId).eq('user_id', userId);
-  if (error) throw new Error(error.message);
-  const { error: authError } = await admin.auth.admin.updateUserById(userId, { ban_duration: active ? 'none' : '876000h' });
-  if (authError) throw new Error(authError.message);
+  await withServiceRole(async (tx) => {
+    await getOwnedStaffId(tx, ownerId, userId);
+    if (active) {
+      await tx`update public.staff_members set portal_active = true, is_active = true where owner_id = ${ownerId} and user_id = ${userId}`;
+    } else {
+      await tx`update public.staff_members set portal_active = false where owner_id = ${ownerId} and user_id = ${userId}`;
+    }
+  });
 }
 
 export async function setDepartmentGrant(ownerId: string, userId: string, department: StaffDepartment, active: boolean) {
-  const { admin, staffId } = await getOwnedStaff(ownerId, userId);
-  const { data: account, error: accountError } = await admin
-    .from('staff_members')
-    .select('access_type,staff_type')
-    .eq('id', staffId)
-    .eq('owner_id', ownerId)
-    .single();
-  if (accountError) throw new Error(accountError.message);
-  if (account.staff_type === 'stylist') {
-    if (department !== 'stylist' || !active) {
-      throw new Error('Stylist accounts are fixed to the Stylist department.');
+  await withServiceRole(async (tx) => {
+    const staffId = await getOwnedStaffId(tx, ownerId, userId);
+    const [account] = await tx<{ access_type: StaffAccessType; staff_type: StaffType }[]>`
+      select access_type, staff_type from public.staff_members where id = ${staffId} and owner_id = ${ownerId}
+    `;
+    if (!account) throw new Error('Staff portal account was not found.');
+    if (account.staff_type === 'stylist') {
+      if (department !== 'stylist' || !active) throw new Error('Stylist accounts are fixed to the Stylist department.');
+    } else if (account.access_type === 'staff') {
+      if (department !== 'booking' || !active) throw new Error('Staff IDs are fixed to the Booking department for quote creation.');
     }
-  } else if (account.access_type === 'staff') {
-    if (department !== 'booking' || !active) {
-      throw new Error('Staff IDs are fixed to the Booking department for quote creation.');
+    if (active) {
+      await tx`
+        insert into public.staff_departments (staff_id, department, granted_by) values (${staffId}, ${department}, ${ownerId})
+        on conflict (staff_id, department) do nothing
+      `;
+    } else {
+      await tx`delete from public.staff_departments where staff_id = ${staffId} and department = ${department}`;
     }
-  }
-  const query = active
-    ? admin.from('staff_departments').upsert({ staff_id: staffId, department, granted_by: ownerId })
-    : admin.from('staff_departments').delete().eq('staff_id', staffId).eq('department', department);
-  const { error } = await query;
-  if (error) throw new Error(error.message);
+  });
 }
 
 export async function setAccountStaffType(ownerId: string, userId: string, staffType: StaffType) {
-  const { admin } = await getOwnedStaff(ownerId, userId);
-  const supabase = await createClient();
-  const { error: configureError } = await supabase.rpc('configure_staff_type', {
-    staff_user_id: userId,
-    requested_type: staffType,
-  });
-  if (configureError) throw new Error(configureError.message);
-
-  const { data: authUser, error: authReadError } = await admin.auth.admin.getUserById(userId);
-  if (authReadError) throw new Error(authReadError.message);
-  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
-    app_metadata: { ...authUser.user.app_metadata, portal: 'staff', staff_type: staffType },
-  });
-  if (authError) throw new Error(authError.message);
+  await withUserContext(ownerId, (tx) => tx`select public.configure_staff_type(${userId}, ${staffType})`);
 }
 
 export async function resetAccountPassword(ownerId: string, userId: string, password: string) {
-  const { admin } = await getOwnedStaff(ownerId, userId);
-  const { error } = await admin.auth.admin.updateUserById(userId, { password });
-  if (error) throw new Error(error.message);
+  if (password.length < 6) throw new Error('Password must be at least 6 characters.');
+  const encrypted = await hashPassword(password);
+  await withServiceRole(async (tx) => {
+    await getOwnedStaffId(tx, ownerId, userId);
+    await tx`update auth.users set encrypted_password = ${encrypted}, updated_at = now() where id = ${userId}`;
+  });
 }
 
 export async function setAccountModule(ownerId: string, userId: string, module: AccessModule, enabled: boolean) {
-  const { admin, staffId } = await getOwnedStaff(ownerId, userId);
-  const { error } = await admin.from('staff_access_modules').upsert(
-    { owner_id: ownerId, staff_id: staffId, module, enabled },
-    { onConflict: 'staff_id,module' },
-  );
-  if (error) throw new Error(error.message);
+  await withServiceRole(async (tx) => {
+    const staffId = await getOwnedStaffId(tx, ownerId, userId);
+    await tx`
+      insert into public.staff_access_modules (owner_id, staff_id, module, enabled) values (${ownerId}, ${staffId}, ${module}, ${enabled})
+      on conflict (staff_id, module) do update set enabled = excluded.enabled
+    `;
+  });
 }

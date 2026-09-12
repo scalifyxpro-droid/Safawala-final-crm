@@ -13,7 +13,10 @@ import { PackingChecklistForm } from '@/components/staff-portal/packing-checklis
 import { PackingSlipButton } from '@/components/staff-portal/packing-slip-button';
 import { ReturnQualityCheckForm } from '@/components/staff-portal/return-quality-check-form';
 import { ReturnQcSlipButton } from '@/components/staff-portal/return-slips';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
+import { getSignedFileUrl } from '@/lib/storage/client';
+
+const PROOF_BUCKET = 'event-operation-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +59,30 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
     redirect('/staff-portal/qc');
   }
 
-  const admin = createAdminClient();
-  const { data: bookingData } = await admin
-    .from('bookings')
-    .select('event_name,event_date,event_time,event_location,contact_name,alternate_mobile,customers(name,phone),booking_items(item_name,quantity,products(barcode))')
-    .eq('id', job.bookingId)
-    .single();
-  const booking = bookingData as BookingContext | null;
+  const bookingRows = await withServiceRole((tx) =>
+    tx.unsafe(
+      `select
+         b.event_name, b.event_date, b.event_time, b.event_location, b.contact_name, b.alternate_mobile,
+         case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+         coalesce(items.rows, '[]'::json) as booking_items
+       from public.bookings b
+       left join public.customers c on c.id = b.customer_id
+       left join lateral (
+         select json_agg(json_build_object(
+           'item_name', bi.item_name,
+           'quantity', bi.quantity,
+           'products', case when p.id is null then null else json_build_object('barcode', p.barcode) end
+         )) as rows
+         from public.booking_items bi
+         left join public.products p on p.id = bi.product_id
+         where bi.booking_id = b.id
+       ) items on true
+       where b.id = $1
+       limit 1`,
+      [job.bookingId],
+    ),
+  );
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
   const customer = firstRelation(booking?.customers);
   const barcodeByItem = new Map(
     (booking?.booking_items ?? []).map((item) => [item.item_name, firstRelation(item.products)?.barcode ?? null]),
@@ -96,17 +116,13 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
     venue: booking?.event_location ?? job.eventSummary.venue,
   };
   const proofPaths = job.packingChecklist?.proofPhotoPaths ?? [];
-  const proofPhotoUrls = proofPaths.length
-    ? (await admin.storage.from('event-operation-files').createSignedUrls(proofPaths, 60 * 60)).data
-        ?.map((item) => item.signedUrl)
-        .filter((url): url is string => typeof url === 'string' && url.length > 0) ?? []
-    : [];
+  const proofPhotoUrls = (
+    await Promise.all(proofPaths.map((path) => getSignedFileUrl(PROOF_BUCKET, path)))
+  ).filter((url): url is string => typeof url === 'string' && url.length > 0);
   const returnProofPaths = job.returnQualityCheck?.proofPhotoPaths ?? [];
-  const returnProofPhotoUrls = returnProofPaths.length
-    ? (await admin.storage.from('event-operation-files').createSignedUrls(returnProofPaths, 60 * 60)).data
-        ?.map((item) => item.signedUrl)
-        .filter((url): url is string => typeof url === 'string' && url.length > 0) ?? []
-    : [];
+  const returnProofPhotoUrls = (
+    await Promise.all(returnProofPaths.map((path) => getSignedFileUrl(PROOF_BUCKET, path)))
+  ).filter((url): url is string => typeof url === 'string' && url.length > 0);
   const returnQcItems = (job.collectionCheck?.items ?? []).map((item) => ({
     itemName: item.itemName,
     returnedQuantity: item.returnedQuantity ?? 0,

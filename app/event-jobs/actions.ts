@@ -4,22 +4,25 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { addIssue, resolveIssue } from '@/lib/event-jobs/store';
 import type { EventJobStageKey } from '@/lib/event-jobs/constants';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
 
 async function requireAdminEmail(): Promise<string> {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect('/login');
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
-  if (profile?.role !== 'admin') redirect('/staff-portal?denied=permission');
-  return data.user.email ?? 'Admin';
+  const user = await requireUser().catch(() => null);
+  if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/staff-portal?denied=permission');
+  return user.email || 'Admin';
+}
+
+function value(formData: FormData, name: string) {
+  const input = formData.get(name);
+  return typeof input === 'string' ? input : '';
 }
 
 export async function addIssueAction(formData: FormData) {
   const raisedBy = await requireAdminEmail();
-  const jobId = String(formData.get('jobId') ?? '');
-  const description = String(formData.get('description') ?? '').trim();
-  const stageRaw = String(formData.get('stage') ?? '');
+  const jobId = value(formData, 'jobId');
+  const description = value(formData, 'description').trim();
+  const stageRaw = value(formData, 'stage');
   if (!jobId || !description) return;
   await addIssue(jobId, description, raisedBy, stageRaw ? (stageRaw as EventJobStageKey) : null);
   revalidatePath(`/event-jobs/${jobId}`);
@@ -27,8 +30,8 @@ export async function addIssueAction(formData: FormData) {
 
 export async function resolveIssueAction(formData: FormData) {
   const resolvedBy = await requireAdminEmail();
-  const jobId = String(formData.get('jobId') ?? '');
-  const issueId = String(formData.get('issueId') ?? '');
+  const jobId = value(formData, 'jobId');
+  const issueId = value(formData, 'issueId');
   if (!jobId || !issueId) return;
   await resolveIssue(jobId, issueId, resolvedBy);
   revalidatePath(`/event-jobs/${jobId}`);

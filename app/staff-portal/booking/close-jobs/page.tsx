@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { friendlyDate, money } from '@/lib/bookings';
 import { listActiveJobs } from '@/lib/event-jobs/store';
-import { createClient } from '@/lib/supabase/server';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,15 +21,22 @@ export default async function CloseJobsPage() {
     const finalStage = job.stages.find((stage) => stage.key === 'booking_final_check');
     return finalStage?.status === 'open' || finalStage?.status === 'in_progress';
   });
-  const supabase = await createClient();
   const bookingIds = jobs.map((job) => job.bookingId);
-  const { data: bookings } = bookingIds.length
-    ? await supabase.from('bookings').select('id,customers(name)').in('id', bookingIds)
-    : { data: [] };
+  const bookings = bookingIds.length
+    ? await withUserContext(session.id, (tx) =>
+        tx.unsafe(
+          `select b.id, case when c.id is null then null else json_build_object('name', c.name) end as customers
+           from public.bookings b
+           left join public.customers c on c.id = b.customer_id
+           where b.id = any($1::bigint[])`,
+          [bookingIds],
+        ),
+      )
+    : [];
   const customerByBooking = new Map(
-    (bookings ?? []).map((booking) => [
+    (bookings as unknown as { id: number; customers: { name: string } | null }[]).map((booking) => [
       Number(booking.id),
-      (booking.customers as unknown as { name: string } | null)?.name ?? 'Customer',
+      booking.customers?.name ?? 'Customer',
     ]),
   );
 

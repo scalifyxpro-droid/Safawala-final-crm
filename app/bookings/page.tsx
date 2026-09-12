@@ -28,7 +28,8 @@ import {
   statusLabel,
   statusTone,
 } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext, type DbParameter } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 const PAGE_SIZES = [10, 25, 50, 100] as const;
@@ -52,45 +53,97 @@ export default async function BookingsPage({ searchParams }: Props) {
   const status = typeof params.status === 'string' ? params.status : '';
   const payment = typeof params.payment === 'string' ? params.payment : '';
   const created = typeof params.created === 'string' ? params.created : '';
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  let customerIds: number[] = [];
-  if (search) {
-    const { data } = await supabase
-      .from('customers')
-      .select('id')
-      .or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
-      .limit(50);
-    customerIds = (data ?? []).map((row) => row.id);
-  }
-  let query = supabase
-    .from('bookings')
-    .select(
-      'id,booking_number,booking_type,status,payment_status,is_quote,event_name,event_date,event_time,event_location,pickup_date,due_date,subtotal,discount,tax,total,paid_amount,balance_amount,security_deposit,created_at,customers(name,phone,address),staff_members:staff_members!bookings_assigned_staff_id_fkey(name),booking_items(item_name,quantity,unit_price,line_total,product_id,products(image_urls,barcode))',
-      { count: 'exact' },
-    )
-    // Quotes stay exclusively in the Quotes module, even after conversion.
-    .eq('is_quote', false);
-  if (search) {
-    const clauses = [
-      `booking_number.ilike.%${search}%`,
-      `event_name.ilike.%${search}%`,
-      `event_location.ilike.%${search}%`,
-    ];
-    if (customerIds.length)
-      clauses.push(`customer_id.in.(${customerIds.join(',')})`);
-    query = query.or(clauses.join(','));
-  }
-  query = query.eq('booking_type', type);
-  if (status) query = query.eq('status', status);
-  if (payment) query = query.eq('payment_status', payment);
   const from = (page - 1) * pageSize;
-  const { data, count, error } = await query
-    .order('created_at', { ascending: false })
-    .range(from, from + pageSize - 1);
-  const bookings = (data ?? []) as unknown as (BookingRow & PdfBooking)[];
+
+  const { bookings, count, error } = await withUserContext(user.id, async (tx) => {
+    let customerIds: number[] = [];
+    if (search) {
+      const rows = (await tx.unsafe(
+        `select id from public.customers where (name ilike $1 or phone ilike $1) limit 50`,
+        [`%${search}%`],
+      )) as unknown as { id: number }[];
+      customerIds = rows.map((row) => row.id);
+    }
+
+    // Quotes stay exclusively in the Quotes module, even after conversion.
+    const conditions: string[] = ['b.is_quote = false', 'b.booking_type = $1'];
+    const params: DbParameter[] = [type];
+    if (search) {
+      const searchConditions: string[] = [];
+      params.push(`%${search}%`);
+      const searchIndex = params.length;
+      searchConditions.push(`b.booking_number ilike $${searchIndex}`);
+      searchConditions.push(`b.event_name ilike $${searchIndex}`);
+      searchConditions.push(`b.event_location ilike $${searchIndex}`);
+      if (customerIds.length) {
+        params.push(customerIds);
+        searchConditions.push(`b.customer_id = any($${params.length}::bigint[])`);
+      }
+      conditions.push(`(${searchConditions.join(' or ')})`);
+    }
+    if (status) {
+      params.push(status);
+      conditions.push(`b.status = $${params.length}`);
+    }
+    if (payment) {
+      params.push(payment);
+      conditions.push(`b.payment_status = $${params.length}`);
+    }
+    const whereClause = conditions.join(' and ');
+
+    const countQuery = `select count(*)::int as count from public.bookings b where ${whereClause}`;
+
+    const listParams = [...params, pageSize, from];
+    const limitIndex = params.length + 1;
+    const offsetIndex = params.length + 2;
+    const listQuery = `
+      select
+        b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote,
+        b.event_name, b.event_date, b.event_time, b.event_location, b.pickup_date, b.due_date,
+        b.subtotal, b.discount, b.tax, b.total, b.paid_amount, b.balance_amount, b.security_deposit,
+        b.created_at,
+        case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone, 'address', c.address) end as customers,
+        case when s.id is null then null else json_build_object('name', s.name) end as staff_members,
+        coalesce(items.rows, '[]'::json) as booking_items
+      from public.bookings b
+      left join public.customers c on c.id = b.customer_id
+      left join public.staff_members s on s.id = b.assigned_staff_id
+      left join lateral (
+        select json_agg(json_build_object(
+          'item_name', bi.item_name,
+          'quantity', bi.quantity,
+          'unit_price', bi.unit_price,
+          'line_total', bi.line_total,
+          'product_id', bi.product_id,
+          'products', case when p.id is null then null else json_build_object('image_urls', p.image_urls, 'barcode', p.barcode) end
+        )) as rows
+        from public.booking_items bi
+        left join public.products p on p.id = bi.product_id
+        where bi.booking_id = b.id
+      ) items on true
+      where ${whereClause}
+      order by b.created_at desc
+      limit $${limitIndex} offset $${offsetIndex}
+    `;
+
+    try {
+      const [countRows, listRows] = (await Promise.all([
+        tx.unsafe(countQuery, params),
+        tx.unsafe(listQuery, listParams),
+      ])) as unknown as [{ count: number }[], (BookingRow & PdfBooking)[]];
+      return { bookings: listRows, count: countRows[0]?.count ?? 0, error: null };
+    } catch (queryError) {
+      return {
+        bookings: [] as (BookingRow & PdfBooking)[],
+        count: 0,
+        error: queryError instanceof Error ? queryError : new Error('Failed to load bookings.'),
+      };
+    }
+  });
+
   const pageCount = Math.max(1, Math.ceil((count ?? 0) / pageSize));
   const queryString = (nextPage: number) => {
     const copy = new URLSearchParams();
@@ -104,7 +157,7 @@ export default async function BookingsPage({ searchParams }: Props) {
   };
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1440px] space-y-6">
         <DashboardHeader
           title="All bookings"

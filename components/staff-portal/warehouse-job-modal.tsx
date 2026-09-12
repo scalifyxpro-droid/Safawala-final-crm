@@ -9,7 +9,7 @@ import { WarehousePrepForm } from '@/components/staff-portal/warehouse-prep-form
 import { WarehousePickSlipButton } from '@/components/staff-portal/warehouse-pick-slip-button';
 import { ReturnWarehouseForm } from '@/components/staff-portal/return-warehouse-form';
 import { ReturnWarehouseSlipButton } from '@/components/staff-portal/return-slips';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 
 type BookingContext = {
   booking_number: string;
@@ -61,15 +61,31 @@ export async function WarehouseJobModal({
   );
   if (!stage || !returnStage) return null;
 
-  const admin = createAdminClient();
-  const { data: bookingData } = await admin
-    .from('bookings')
-    .select(
-      'booking_number,event_name,event_date,event_time,event_location,contact_name,alternate_mobile,customers(name,phone),booking_items(item_name,quantity,products(barcode))',
-    )
-    .eq('id', job.bookingId)
-    .single();
-  const booking = bookingData as BookingContext | null;
+  const bookingRows = await withServiceRole((tx) =>
+    tx.unsafe(
+      `select
+         b.booking_number, b.event_name, b.event_date, b.event_time, b.event_location,
+         b.contact_name, b.alternate_mobile,
+         case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+         coalesce(items.rows, '[]'::json) as booking_items
+       from public.bookings b
+       left join public.customers c on c.id = b.customer_id
+       left join lateral (
+         select json_agg(json_build_object(
+           'item_name', bi.item_name,
+           'quantity', bi.quantity,
+           'products', case when p.id is null then null else json_build_object('barcode', p.barcode) end
+         )) as rows
+         from public.booking_items bi
+         left join public.products p on p.id = bi.product_id
+         where bi.booking_id = b.id
+       ) items on true
+       where b.id = $1
+       limit 1`,
+      [job.bookingId],
+    ),
+  );
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
   const customer = firstRelation(booking?.customers);
   const items = booking?.booking_items?.length
     ? booking.booking_items.map((item) => ({
