@@ -75,9 +75,12 @@ export function displayQuoteNumber(
   return `SW-Q-${quoteType}-${match[1]}-${String(sequence).padStart(4, '0')}`;
 }
 
-export const friendlyDate = (value: string | null | undefined) => {
+export const friendlyDate = (value: string | Date | null | undefined) => {
   if (!value) return 'Not added';
-  const date = new Date(value.includes('T') ? value : `${value}T00:00:00`);
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(value.includes('T') ? value : `${value}T00:00:00`);
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -85,7 +88,7 @@ export const friendlyDate = (value: string | null | undefined) => {
   }).format(date);
 };
 
-export const friendlyDateTime = (value: string) =>
+export const friendlyDateTime = (value: string | Date) =>
   new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: '2-digit',
