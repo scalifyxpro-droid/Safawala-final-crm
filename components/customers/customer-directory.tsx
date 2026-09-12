@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/client';
+import { saveCustomerAction } from '@/app/customers/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 
 export type CustomerRecord = {
@@ -142,7 +142,7 @@ export function CustomerDirectory({
           icon={<UsersRound />}
           label="Total customers"
           value={String(customers.length)}
-          note="Saved in Supabase"
+          note="Saved in your database"
         />
         <Metric
           icon={<ShoppingBag />}
@@ -438,38 +438,15 @@ function CustomerDialog({
       email: customer?.email ?? null,
       notes: customer?.notes ?? null,
     };
-    const supabase = createClient();
-    let result;
-    if (customer)
-      result = await supabase
-        .from('customers')
-        .update(payload)
-        .eq('id', customer.id)
-        .select('id,name,phone,email,address,notes,created_at,updated_at')
-        .single();
-    else {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      if (authError || !auth.user) {
-        setError('Your session has expired. Please sign in again.');
-        setBusy(false);
-        return;
-      }
-      result = await supabase
-        .from('customers')
-        .insert({ ...payload, owner_id: auth.user.id })
-        .select('id,name,phone,email,address,notes,created_at,updated_at')
-        .single();
-    }
-    if (result.error) {
-      setError(
-        result.error.code === '23505'
-          ? 'A customer with this phone number already exists.'
-          : result.error.message,
-      );
+    const result = await saveCustomerAction(
+      customer ? { id: customer.id, ...payload } : payload,
+    );
+    if (result.error || !result.data) {
+      setError(result.error || 'Customer could not be saved.');
       setBusy(false);
       return;
     }
-    onSaved(result.data as CustomerRecord);
+    onSaved(result.data);
   }
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-[#211d18]/70 p-4 backdrop-blur-sm">
@@ -491,7 +468,7 @@ function CustomerDialog({
                 {customer ? 'Edit customer' : 'Add new customer'}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Saved immediately to your secure Supabase customer directory.
+                Saved immediately to your secure customer directory.
               </p>
             </div>
           </div>

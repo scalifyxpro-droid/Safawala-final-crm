@@ -4,26 +4,33 @@ import {
   SettingsPanel,
   type DocumentNumberSetting,
 } from '@/components/settings/settings-panel';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  const { data, error } = await supabase
-    .from('document_number_settings')
-    .select('series,prefix,next_number,number_padding,sequence_year')
-    .order('series');
+  let data: DocumentNumberSetting[] = [];
+  let loadError = '';
+  try {
+    data = await withUserContext(user.id, (tx) => tx<DocumentNumberSetting[]>`
+      select series, prefix, next_number, number_padding, sequence_year
+      from public.document_number_settings
+      order by series
+    `);
+  } catch (error) {
+    loadError = error instanceof Error ? error.message : 'Unable to load document numbering settings.';
+  }
 
   return (
-    <DashboardShell email={auth.user.email ?? 'Safawala user'}>
+    <DashboardShell email={user.email ?? 'Safawala user'}>
       <SettingsPanel
-        currentEmail={auth.user.email ?? ''}
-        initialSettings={(data ?? []) as DocumentNumberSetting[]}
-        loadError={error?.message ?? ''}
+        currentEmail={user.email ?? ''}
+        initialSettings={data}
+        loadError={loadError}
       />
     </DashboardShell>
   );

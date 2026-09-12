@@ -2,9 +2,27 @@ import { notFound, redirect } from 'next/navigation';
 import { CustomerLedgerDetail } from '@/components/ledger/customer-ledger-detail';
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import type { LedgerBooking, LedgerCustomer } from '@/lib/ledger';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
+
+const BOOKINGS_QUERY = `
+  select b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.customer_id,
+    b.event_name, b.event_date, b.total, b.paid_amount, b.balance_amount, b.created_at,
+    coalesce(payments.rows, '[]'::json) as booking_payments
+  from public.bookings b
+  left join lateral (
+    select json_agg(json_build_object(
+      'id', p.id, 'amount', p.amount, 'payment_method', p.payment_method,
+      'reference_number', p.reference_number, 'notes', p.notes,
+      'paid_at', p.paid_at, 'created_at', p.created_at
+    )) as rows
+    from public.booking_payments p where p.booking_id = b.id
+  ) payments on true
+  where b.customer_id = $1 and b.is_quote = false and b.status <> 'cancelled'
+  order by b.created_at
+`;
 
 export default async function CustomerLedgerDetailPage({
   params,
@@ -13,34 +31,34 @@ export default async function CustomerLedgerDetailPage({
 }) {
   const { customerId } = await params;
   if (!/^\d+$/.test(customerId)) notFound();
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  const [customerResult, bookingResult] = await Promise.all([
-    supabase
-      .from('customers')
-      .select('id,name,phone,email,address,created_at')
-      .eq('id', Number(customerId))
-      .single(),
-    supabase
-      .from('bookings')
-      .select(
-        'id,booking_number,booking_type,status,payment_status,customer_id,event_name,event_date,total,paid_amount,balance_amount,created_at,booking_payments(id,amount,payment_method,reference_number,notes,paid_at,created_at)',
-      )
-      .eq('customer_id', Number(customerId))
-      .eq('is_quote', false)
-      .neq('status', 'cancelled')
-      .order('created_at'),
-  ]);
-  if (customerResult.error || !customerResult.data) notFound();
+  const numericId = Number(customerId);
+  let customer: LedgerCustomer | null = null;
+  let bookings: LedgerBooking[] = [];
+  let loadError = '';
+  try {
+    const result = await withUserContext(user.id, async (tx) => {
+      const [customerRow] = await tx<LedgerCustomer[]>`
+        select id, name, phone, email, address, created_at from public.customers where id = ${numericId}
+      `;
+      const bookings = await tx.unsafe(BOOKINGS_QUERY, [numericId]);
+      return { customerRow, bookings: bookings as unknown as LedgerBooking[] };
+    });
+    customer = result.customerRow ?? null;
+    bookings = result.bookings;
+  } catch (error) {
+    loadError = error instanceof Error ? error.message : 'Unable to load this customer.';
+  }
+  if (!customer) notFound();
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <CustomerLedgerDetail
-        customer={customerResult.data as LedgerCustomer}
-        bookings={(bookingResult.data ?? []) as unknown as LedgerBooking[]}
-        loadError={bookingResult.error?.message ?? ''}
+        customer={customer}
+        bookings={bookings}
+        loadError={loadError}
       />
     </BookingPortalShell>
   );

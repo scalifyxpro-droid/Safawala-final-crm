@@ -12,15 +12,88 @@ import {
   setAccountStaffType,
   setDepartmentGrant,
 } from '@/lib/staff-portal/store';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 async function requireAdmin() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Admin session required.');
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+  const user = await requireUser();
+  const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`select role from public.profiles where id = ${user.id}`);
   if (profile?.role !== 'admin') throw new Error('Only an administrator can manage staff access.');
-  return data.user.id;
+  return user.id;
+}
+
+export type StaffMemberRecord = {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SaveStaffMemberInput = {
+  id?: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  is_active: boolean;
+};
+
+export async function saveStaffMemberAction(
+  input: SaveStaffMemberInput,
+): Promise<{ data: StaffMemberRecord | null; error: string }> {
+  try {
+    const ownerId = await requireAdmin();
+    const record = await withUserContext(ownerId, async (tx) => {
+      if (input.id) {
+        const [row] = await tx<StaffMemberRecord[]>`
+          update public.staff_members
+          set name = ${input.name}, phone = ${input.phone}, email = ${input.email},
+            address = ${input.address}, is_active = ${input.is_active}, updated_at = now()
+          where id = ${input.id}
+          returning id, name, phone, email, address, is_active, created_at, updated_at
+        `;
+        return row ?? null;
+      }
+      const [row] = await tx<StaffMemberRecord[]>`
+        insert into public.staff_members (owner_id, name, phone, email, address, is_active)
+        values (${ownerId}, ${input.name}, ${input.phone}, ${input.email}, ${input.address}, ${input.is_active})
+        returning id, name, phone, email, address, is_active, created_at, updated_at
+      `;
+      return row ?? null;
+    });
+    revalidatePath('/staff');
+    return { data: record, error: '' };
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === '23505') {
+      return { data: null, error: 'A staff member with this name already exists.' };
+    }
+    return { data: null, error: error instanceof Error ? error.message : 'Staff member could not be saved.' };
+  }
+}
+
+export async function toggleStaffStatusAction(
+  staffMemberId: number,
+  isActive: boolean,
+): Promise<{ data: StaffMemberRecord | null; error: string }> {
+  try {
+    const ownerId = await requireAdmin();
+    const record = await withUserContext(ownerId, async (tx) => {
+      const [row] = await tx<StaffMemberRecord[]>`
+        update public.staff_members set is_active = ${isActive}
+        where id = ${staffMemberId}
+        returning id, name, phone, email, address, is_active, created_at, updated_at
+      `;
+      return row ?? null;
+    });
+    revalidatePath('/staff');
+    return { data: record, error: '' };
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error.message : 'Staff status could not be updated.' };
+  }
 }
 
 export async function createStaffLoginAction(input: {
@@ -50,9 +123,7 @@ export async function createStaffLoginAction(input: {
     return result;
   } catch (error) {
     return {
-      error: error instanceof Error && error.message.includes('environment variables')
-        ? 'Staff credential service is not configured on this deployment.'
-        : error instanceof Error ? error.message : 'Could not create this login.',
+      error: error instanceof Error ? error.message : 'Could not create this login.',
     };
   }
 }

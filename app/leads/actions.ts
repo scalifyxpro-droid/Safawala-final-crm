@@ -1,49 +1,74 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
-async function owner() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Admin session required.');
-  return { supabase, ownerId: data.user.id };
-}
-
-function databaseError(error: { message?: string; code?: string }, fallback: string) {
-  if (error.code === 'PGRST205' || error.message?.includes("Could not find the table")) {
-    return 'Leads database tables are not installed. Apply the Leads Center Supabase migration, then try again.';
+function databaseError(error: unknown, fallback: string) {
+  const err = error as { code?: string; message?: string };
+  if (err?.code === '42P01') {
+    return 'Leads database tables are not installed. Apply railway/schema/002_app_schema.sql, then try again.';
   }
-  return error.message || fallback;
+  return err?.message || fallback;
 }
 
 export async function createLeadAction(formData: FormData) {
-  const { supabase, ownerId } = await owner();
-  const text = (name: string) => String(formData.get(name) ?? '').trim();
+  const user = await requireUser();
+  const text = (name: string) => {
+    const value = formData.get(name);
+    return typeof value === 'string' ? value.trim() : '';
+  };
   if (!/^\d{10}$/.test(text('phone'))) throw new Error('WhatsApp / Phone must contain exactly 10 digits.');
-  const { error } = await supabase.from('leads').insert({
-    owner_id: ownerId, full_name: text('full_name'), phone: text('phone'), email: text('email') || null,
-    event_date: text('event_date'), location: text('location') || null, package_interest: text('package_interest') || null,
-    source: text('source') || 'Manual Entry', status: text('status') || 'new', assigned_staff_id: text('assigned_staff_id') ? Number(text('assigned_staff_id')) : null,
-    requirements: text('requirements') || null, internal_notes: text('internal_notes') || null,
-  });
-  if (error) throw new Error(databaseError(error, 'Unable to save lead.'));
-  await supabase.from('admin_notifications').insert({ owner_id: ownerId, title: 'New Lead Added', message: `${text('full_name')} has been added to the leads center.`, href: '/leads' });
+  const assignedStaffId = text('assigned_staff_id') ? Number(text('assigned_staff_id')) : null;
+  try {
+    await withUserContext(user.id, async (tx) => {
+      await tx`
+        insert into public.leads (owner_id, full_name, phone, email, event_date, location, package_interest, source, status, assigned_staff_id, requirements, internal_notes)
+        values (${user.id}, ${text('full_name')}, ${text('phone')}, ${text('email') || null}, ${text('event_date')}, ${text('location') || null},
+                ${text('package_interest') || null}, ${text('source') || 'Manual Entry'}, ${text('status') || 'new'}, ${assignedStaffId},
+                ${text('requirements') || null}, ${text('internal_notes') || null})
+      `;
+      await tx`
+        insert into public.admin_notifications (owner_id, title, message, href)
+        values (${user.id}, 'New Lead Added', ${`${text('full_name')} has been added to the leads center.`}, '/leads')
+      `;
+    });
+  } catch (error) {
+    throw new Error(databaseError(error, 'Unable to save lead.'));
+  }
   revalidatePath('/leads');
 }
 
 export async function createLockedDateAction(formData: FormData) {
-  const { supabase, ownerId } = await owner();
-  const date = String(formData.get('locked_date') ?? '').trim();
-  const label = String(formData.get('label') ?? '').trim();
-  const { error } = await supabase.from('lead_locked_dates').insert({ owner_id: ownerId, locked_date: date, label, notes: String(formData.get('notes') ?? '').trim() || null });
-  if (error) throw new Error(error.code === '23505' ? 'That date is already locked.' : databaseError(error, 'Unable to lock date.'));
-  await supabase.from('admin_notifications').insert({ owner_id: ownerId, title: 'Date Locked', message: `${label} · ${date}`, href: '/leads?view=locked-dates' });
+  const user = await requireUser();
+  const text = (name: string) => {
+    const value = formData.get(name);
+    return typeof value === 'string' ? value.trim() : '';
+  };
+  const date = text('locked_date');
+  const label = text('label');
+  const notes = text('notes') || null;
+  try {
+    await withUserContext(user.id, async (tx) => {
+      await tx`
+        insert into public.lead_locked_dates (owner_id, locked_date, label, notes)
+        values (${user.id}, ${date}, ${label}, ${notes})
+      `;
+      await tx`
+        insert into public.admin_notifications (owner_id, title, message, href)
+        values (${user.id}, 'Date Locked', ${`${label} · ${date}`}, '/leads?view=locked-dates')
+      `;
+    });
+  } catch (error) {
+    const err = error as { code?: string };
+    throw new Error(err?.code === '23505' ? 'That date is already locked.' : databaseError(error, 'Unable to lock date.'));
+  }
   revalidatePath('/leads');
 }
 
 export async function deleteLockedDateAction(formData: FormData) {
-  const { supabase, ownerId } = await owner();
-  await supabase.from('lead_locked_dates').delete().eq('id', Number(formData.get('id'))).eq('owner_id', ownerId);
+  const user = await requireUser();
+  const id = Number(formData.get('id'));
+  await withUserContext(user.id, (tx) => tx`delete from public.lead_locked_dates where id = ${id} and owner_id = ${user.id}`);
   revalidatePath('/leads');
 }

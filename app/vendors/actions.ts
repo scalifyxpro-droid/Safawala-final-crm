@@ -1,24 +1,29 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 async function owner() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Admin session required.');
-  return { supabase, ownerId: data.user.id };
+  const user = await requireUser().catch(() => null);
+  if (!user) throw new Error('Admin session required.');
+  return { ownerId: user.id };
 }
 
 function text(form: FormData, key: string) {
-  return String(form.get(key) ?? '').trim();
+  const value = form.get(key);
+  return typeof value === 'string' ? value.trim() : '';
 }
 
-function databaseError(error: { message?: string; code?: string }, fallback: string) {
-  if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-    return 'Vendors database table is not installed. Apply the vendor management Supabase migration, then try again.';
+// Postgres unique-violation / undefined-table codes, kept distinct from the
+// old PGRST205 (PostgREST-specific) check now that we talk to Postgres
+// directly — `42P01` is Postgres's own "undefined_table".
+function databaseError(error: unknown, fallback: string) {
+  const err = error as { code?: string; message?: string };
+  if (err?.code === '42P01') {
+    return 'Vendors database table is not installed. Apply railway/schema/002_app_schema.sql, then try again.';
   }
-  return error.message || fallback;
+  return err?.message || fallback;
 }
 
 function parseVendor(form: FormData) {
@@ -37,22 +42,34 @@ function parseVendor(form: FormData) {
 }
 
 export async function createVendorAction(form: FormData) {
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('vendors').insert({ owner_id: ownerId, ...parseVendor(form), is_active: true });
-  if (error) throw new Error(databaseError(error, 'Unable to save vendor.'));
+  const { ownerId } = await owner();
+  const v = parseVendor(form);
+  try {
+    await withUserContext(ownerId, (tx) => tx`
+      insert into public.vendors (owner_id, name, phone, contact_person, email, address, notes, is_active)
+      values (${ownerId}, ${v.name}, ${v.phone}, ${v.contact_person}, ${v.email}, ${v.address}, ${v.notes}, true)
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error, 'Unable to save vendor.'));
+  }
   revalidatePath('/vendors');
 }
 
 export async function updateVendorAction(form: FormData) {
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase
-    .from('vendors')
-    .update({ ...parseVendor(form), updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error, 'Unable to update vendor.'));
+  const { ownerId } = await owner();
+  const v = parseVendor(form);
+  try {
+    await withUserContext(ownerId, (tx) => tx`
+      update public.vendors
+      set name = ${v.name}, phone = ${v.phone}, contact_person = ${v.contact_person},
+          email = ${v.email}, address = ${v.address}, notes = ${v.notes}, updated_at = now()
+      where id = ${id} and owner_id = ${ownerId}
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error, 'Unable to update vendor.'));
+  }
   revalidatePath('/vendors');
 }
 
@@ -60,21 +77,29 @@ export async function toggleVendorStatusAction(form: FormData) {
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
   const active = text(form, 'is_active') === 'true';
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase
-    .from('vendors')
-    .update({ is_active: active, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error, 'Unable to update vendor status.'));
+  const { ownerId } = await owner();
+  try {
+    await withUserContext(ownerId, (tx) => tx`
+      update public.vendors
+      set is_active = ${active}, updated_at = now()
+      where id = ${id} and owner_id = ${ownerId}
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error, 'Unable to update vendor status.'));
+  }
   revalidatePath('/vendors');
 }
 
 export async function deleteVendorAction(form: FormData) {
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('vendors').delete().eq('id', id).eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error, 'Unable to delete vendor.'));
+  const { ownerId } = await owner();
+  try {
+    await withUserContext(ownerId, (tx) => tx`
+      delete from public.vendors where id = ${id} and owner_id = ${ownerId}
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error, 'Unable to delete vendor.'));
+  }
   revalidatePath('/vendors');
 }

@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 
 /**
  * Product availability for rental bookings.
@@ -55,11 +55,12 @@ function daySpan(start: string, end: string): string[] {
 const maxDate = (a: string, b: string) => (a > b ? a : b);
 const minDate = (a: string, b: string) => (a < b ? a : b);
 
-type BookingJoin = { id: number; pickup_date: string | null; due_date: string | null };
 type ReservationRow = {
   product_id: number | null;
   quantity: number;
-  bookings: BookingJoin | BookingJoin[] | null;
+  booking_id: number;
+  pickup_date: string | null;
+  due_date: string | null;
 };
 
 /**
@@ -74,25 +75,24 @@ async function loadDailyReserved(params: {
   excludeBookingId?: number;
 }): Promise<Map<string, number>> {
   const { ownerId, productId, rangeStart, rangeEnd, excludeBookingId } = params;
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('booking_items')
-    .select('product_id,quantity,bookings!inner(id,pickup_date,due_date,booking_type,status)')
-    .eq('owner_id', ownerId)
-    .eq('product_id', productId)
-    .eq('bookings.booking_type', 'rental')
-    .in('bookings.status', ACTIVE_RENTAL_STATUSES as unknown as string[])
-    .lte('bookings.pickup_date', rangeEnd)
-    .gte('bookings.due_date', rangeStart);
-  if (error) throw error;
+  const rows = await withServiceRole((tx) => tx<ReservationRow[]>`
+    select bi.product_id, bi.quantity, b.id as booking_id, b.pickup_date, b.due_date
+    from public.booking_items bi
+    join public.bookings b on b.id = bi.booking_id
+    where bi.owner_id = ${ownerId}
+      and bi.product_id = ${productId}
+      and b.booking_type = 'rental'
+      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+      and b.pickup_date <= ${rangeEnd}
+      and b.due_date >= ${rangeStart}
+  `);
 
   const daily = new Map<string, number>();
-  for (const row of (data ?? []) as ReservationRow[]) {
-    const booking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
-    if (!booking || !booking.pickup_date || !booking.due_date) continue;
-    if (excludeBookingId && booking.id === excludeBookingId) continue;
-    const overlapStart = maxDate(booking.pickup_date, rangeStart);
-    const overlapEnd = minDate(booking.due_date, rangeEnd);
+  for (const row of rows) {
+    if (!row.pickup_date || !row.due_date) continue;
+    if (excludeBookingId && row.booking_id === excludeBookingId) continue;
+    const overlapStart = maxDate(row.pickup_date, rangeStart);
+    const overlapEnd = minDate(row.due_date, rangeEnd);
     if (overlapStart > overlapEnd) continue;
     for (const day of daySpan(overlapStart, overlapEnd)) {
       daily.set(day, (daily.get(day) ?? 0) + row.quantity);
@@ -117,35 +117,34 @@ export async function getAvailabilityForWindow(params: {
   const uniqueIds = Array.from(new Set(productIds));
   if (uniqueIds.length === 0) return results;
 
-  const admin = createAdminClient();
-  const { data: products, error: productsError } = await admin
-    .from('products')
-    .select('id,stock_quantity')
-    .eq('owner_id', ownerId)
-    .in('id', uniqueIds);
-  if (productsError) throw productsError;
-
-  const { data: reservations, error: reservationsError } = await admin
-    .from('booking_items')
-    .select('product_id,quantity,bookings!inner(id,pickup_date,due_date,booking_type,status)')
-    .eq('owner_id', ownerId)
-    .in('product_id', uniqueIds)
-    .eq('bookings.booking_type', 'rental')
-    .in('bookings.status', ACTIVE_RENTAL_STATUSES as unknown as string[])
-    .lte('bookings.pickup_date', dueDate)
-    .gte('bookings.due_date', pickupDate);
-  if (reservationsError) throw reservationsError;
+  const { products, reservations } = await withServiceRole(async (tx) => {
+    const products = await tx<{ id: number; stock_quantity: number | null }[]>`
+      select id, stock_quantity from public.products
+      where owner_id = ${ownerId} and id = any(${tx.array(uniqueIds)})
+    `;
+    const reservations = await tx<ReservationRow[]>`
+      select bi.product_id, bi.quantity, b.id as booking_id, b.pickup_date, b.due_date
+      from public.booking_items bi
+      join public.bookings b on b.id = bi.booking_id
+      where bi.owner_id = ${ownerId}
+        and bi.product_id = any(${tx.array(uniqueIds)})
+        and b.booking_type = 'rental'
+        and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+        and b.pickup_date <= ${dueDate}
+        and b.due_date >= ${pickupDate}
+    `;
+    return { products, reservations };
+  });
 
   const windowDates = daySpan(pickupDate, dueDate);
   const dailyByProduct = new Map<number, Map<string, number>>();
-  for (const row of (reservations ?? []) as ReservationRow[]) {
-    const booking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
-    if (!booking || !booking.pickup_date || !booking.due_date) continue;
-    if (excludeBookingId && booking.id === excludeBookingId) continue;
+  for (const row of reservations) {
+    if (!row.pickup_date || !row.due_date) continue;
+    if (excludeBookingId && row.booking_id === excludeBookingId) continue;
     const productId = row.product_id;
     if (productId == null) continue;
-    const overlapStart = maxDate(booking.pickup_date, pickupDate);
-    const overlapEnd = minDate(booking.due_date, dueDate);
+    const overlapStart = maxDate(row.pickup_date, pickupDate);
+    const overlapEnd = minDate(row.due_date, dueDate);
     if (overlapStart > overlapEnd) continue;
     let dayMap = dailyByProduct.get(productId);
     if (!dayMap) {
@@ -158,7 +157,7 @@ export async function getAvailabilityForWindow(params: {
   }
 
   const stockByProduct = new Map<number, number>();
-  for (const product of products ?? []) stockByProduct.set(product.id, product.stock_quantity ?? 0);
+  for (const product of products) stockByProduct.set(product.id, product.stock_quantity ?? 0);
 
   for (const productId of uniqueIds) {
     const totalStock = stockByProduct.get(productId) ?? 0;
@@ -231,14 +230,9 @@ export async function findNextAvailableWindow(params: {
     maxLookaheadDays = MAX_LOOKAHEAD_DAYS,
   } = params;
 
-  const admin = createAdminClient();
-  const { data: product, error: productError } = await admin
-    .from('products')
-    .select('stock_quantity')
-    .eq('owner_id', ownerId)
-    .eq('id', productId)
-    .maybeSingle();
-  if (productError) throw productError;
+  const [product] = await withServiceRole((tx) => tx<{ stock_quantity: number | null }[]>`
+    select stock_quantity from public.products where owner_id = ${ownerId} and id = ${productId}
+  `);
   const totalStock = product?.stock_quantity ?? 0;
   if (quantity > totalStock) return null; // can never fit, regardless of dates
 
@@ -284,10 +278,9 @@ export type ProductReservation = {
 type ReservationJoinRow = {
   product_id: number | null;
   quantity: number;
-  bookings:
-    | { pickup_date: string | null; due_date: string | null; booking_number: string }
-    | { pickup_date: string | null; due_date: string | null; booking_number: string }[]
-    | null;
+  pickup_date: string | null;
+  due_date: string | null;
+  booking_number: string;
 };
 
 /**
@@ -298,27 +291,26 @@ export async function getUpcomingReservations(params: {
   ownerId: string;
   fromDate: string;
 }): Promise<ProductReservation[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from('booking_items')
-    .select('product_id,quantity,bookings!inner(pickup_date,due_date,booking_number,booking_type,status)')
-    .eq('owner_id', params.ownerId)
-    .not('product_id', 'is', null)
-    .eq('bookings.booking_type', 'rental')
-    .in('bookings.status', ACTIVE_RENTAL_STATUSES as unknown as string[])
-    .gte('bookings.due_date', params.fromDate);
-  if (error) throw error;
+  const rows = await withServiceRole((tx) => tx<ReservationJoinRow[]>`
+    select bi.product_id, bi.quantity, b.pickup_date, b.due_date, b.booking_number
+    from public.booking_items bi
+    join public.bookings b on b.id = bi.booking_id
+    where bi.owner_id = ${params.ownerId}
+      and bi.product_id is not null
+      and b.booking_type = 'rental'
+      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+      and b.due_date >= ${params.fromDate}
+  `);
 
   const results: ProductReservation[] = [];
-  for (const row of (data ?? []) as ReservationJoinRow[]) {
-    const booking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
-    if (!booking?.pickup_date || !booking?.due_date || row.product_id == null) continue;
+  for (const row of rows) {
+    if (!row.pickup_date || !row.due_date || row.product_id == null) continue;
     results.push({
       productId: row.product_id,
-      pickupDate: booking.pickup_date,
-      dueDate: booking.due_date,
+      pickupDate: row.pickup_date,
+      dueDate: row.due_date,
       quantity: row.quantity,
-      bookingNumber: booking.booking_number,
+      bookingNumber: row.booking_number,
     });
   }
   return results.sort((a, b) => a.pickupDate.localeCompare(b.pickupDate));

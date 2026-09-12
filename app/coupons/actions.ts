@@ -1,25 +1,21 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
-
-async function owner() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Admin session required.');
-  return { supabase, ownerId: data.user.id };
-}
+import { requireUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 function value(form: FormData, key: string) {
-  return String(form.get(key) ?? '').trim();
+  const input = form.get(key);
+  return typeof input === 'string' ? input.trim() : '';
 }
 
-function databaseError(error: { message?: string; code?: string }) {
-  if (error.code === 'PGRST205' || error.message?.includes("Could not find the table")) {
-    return 'Coupons database table is not installed. Apply the coupon offers Supabase migration, then try again.';
+function databaseError(error: unknown) {
+  const err = error as { code?: string; message?: string };
+  if (err?.code === '42P01') {
+    return 'Coupons database table is not installed. Apply railway/schema/002_app_schema.sql, then try again.';
   }
-  if (error.code === '23505') return 'That coupon code already exists.';
-  return error.message || 'Unable to save coupon offer.';
+  if (err?.code === '23505') return 'That coupon code already exists.';
+  return err?.message || 'Unable to save coupon offer.';
 }
 
 function parseOffer(form: FormData) {
@@ -31,39 +27,62 @@ function parseOffer(form: FormData) {
   if (!name) throw new Error('Offer name is required.');
   if (!['percentage', 'fixed'].includes(discountType)) throw new Error('Choose a valid discount type.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Value must be greater than zero.');
-  return { code, name, discount_type: discountType, value: amount, is_active: form.get('is_active') === 'on' };
+  return { code, name, discountType, value: amount, isActive: form.get('is_active') === 'on' };
 }
 
 export async function createCouponAction(form: FormData) {
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('coupon_offers').insert({ owner_id: ownerId, ...parseOffer(form) });
-  if (error) throw new Error(databaseError(error));
+  const user = await requireUser();
+  const o = parseOffer(form);
+  try {
+    await withUserContext(user.id, (tx) => tx`
+      insert into public.coupon_offers (owner_id, code, name, discount_type, value, is_active)
+      values (${user.id}, ${o.code}, ${o.name}, ${o.discountType}, ${o.value}, ${o.isActive})
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error));
+  }
   revalidatePath('/coupons');
 }
 
 export async function updateCouponAction(form: FormData) {
   const id = Number(value(form, 'id'));
   if (!Number.isInteger(id)) throw new Error('Invalid coupon offer.');
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('coupon_offers').update({ ...parseOffer(form), updated_at: new Date().toISOString() }).eq('id', id).eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error));
+  const user = await requireUser();
+  const o = parseOffer(form);
+  try {
+    await withUserContext(user.id, (tx) => tx`
+      update public.coupon_offers
+      set code = ${o.code}, name = ${o.name}, discount_type = ${o.discountType}, value = ${o.value}, is_active = ${o.isActive}, updated_at = now()
+      where id = ${id} and owner_id = ${user.id}
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error));
+  }
   revalidatePath('/coupons');
 }
 
 export async function toggleCouponAction(form: FormData) {
   const id = Number(value(form, 'id'));
   const active = value(form, 'is_active') === 'true';
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('coupon_offers').update({ is_active: active, updated_at: new Date().toISOString() }).eq('id', id).eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error));
+  const user = await requireUser();
+  try {
+    await withUserContext(user.id, (tx) => tx`
+      update public.coupon_offers set is_active = ${active}, updated_at = now() where id = ${id} and owner_id = ${user.id}
+    `);
+  } catch (error) {
+    throw new Error(databaseError(error));
+  }
   revalidatePath('/coupons');
 }
 
 export async function deleteCouponAction(form: FormData) {
   const id = Number(value(form, 'id'));
-  const { supabase, ownerId } = await owner();
-  const { error } = await supabase.from('coupon_offers').delete().eq('id', id).eq('owner_id', ownerId);
-  if (error) throw new Error(databaseError(error));
+  const user = await requireUser();
+  try {
+    await withUserContext(user.id, (tx) => tx`delete from public.coupon_offers where id = ${id} and owner_id = ${user.id}`);
+  } catch (error) {
+    throw new Error(databaseError(error));
+  }
   revalidatePath('/coupons');
 }
 
@@ -71,10 +90,18 @@ export async function validateCouponAction(codeInput: string, subtotalInput: num
   const code = codeInput.trim().toUpperCase().replace(/\s+/g, '');
   const subtotal = Number(subtotalInput);
   if (!code || !Number.isFinite(subtotal) || subtotal <= 0) throw new Error('Enter a coupon code after adding items.');
-  const { supabase, ownerId } = await owner();
-  const { data, error } = await supabase.from('coupon_offers').select('code,name,discount_type,value').eq('owner_id', ownerId).eq('code', code).eq('is_active', true).maybeSingle();
-  if (error) throw new Error(databaseError(error));
-  if (!data) throw new Error('That coupon code is invalid or inactive.');
-  const discount = data.discount_type === 'percentage' ? Math.min(subtotal, subtotal * Number(data.value) / 100) : Math.min(subtotal, Number(data.value));
-  return { code: data.code, name: data.name, discount };
+  const user = await requireUser();
+  let row: { code: string; name: string; discount_type: string; value: string } | undefined;
+  try {
+    const rows = await withUserContext(user.id, (tx) => tx<{ code: string; name: string; discount_type: string; value: string }[]>`
+      select code, name, discount_type, value from public.coupon_offers
+      where owner_id = ${user.id} and code = ${code} and is_active = true
+    `);
+    row = rows[0];
+  } catch (error) {
+    throw new Error(databaseError(error));
+  }
+  if (!row) throw new Error('That coupon code is invalid or inactive.');
+  const discount = row.discount_type === 'percentage' ? Math.min(subtotal, (subtotal * Number(row.value)) / 100) : Math.min(subtotal, Number(row.value));
+  return { code: row.code, name: row.name, discount };
 }

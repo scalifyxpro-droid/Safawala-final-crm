@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, CircleCheck, CircleX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/lib/supabase/client';
 import type { QuoteState } from '@/lib/bookings';
-import { convertQuoteToBookingAction } from '@/app/bookings/event-job-actions';
+import { changeBookingStatusAction, convertQuoteToBookingAction } from '@/app/bookings/event-job-actions';
 
 function StatusIcon({
   icon: Icon,
@@ -51,12 +50,9 @@ export function QuoteActions({
     if (busy) return;
     setBusy(which);
     setError('');
-    const { error: rpcError } = await createClient().rpc(
-      'change_booking_status',
-      { booking_key: bookingId, next_status: nextStatus },
-    );
+    const result = await changeBookingStatusAction(bookingId, nextStatus);
     setBusy(null);
-    if (rpcError) setError(rpcError.message);
+    if (result.error) setError(result.error);
     else router.refresh();
   }
 

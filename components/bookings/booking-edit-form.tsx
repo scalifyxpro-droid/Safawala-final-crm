@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { displayQuoteNumber, money, statusLabel } from '@/lib/bookings';
 import { useHardwareScannerListener } from '@/lib/hooks/use-hardware-scanner';
-import { createClient } from '@/lib/supabase/client';
+import { updateBookingDetailsAction, updateBookingFieldsAction } from '@/app/bookings/actions';
 import { validateCouponAction } from '@/app/coupons/actions';
 
 type BookingItem = {
@@ -278,9 +278,15 @@ export function BookingEditForm({
     );
     if (!match) {
       try {
-        const response = await fetch('/api/barcode/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: rawValue.trim() }) });
+        const response = await fetch('/api/barcode/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barcode: rawValue.trim() }),
+        });
         if (response.ok) match = (await response.json()).product as Product;
-      } catch { /* Fall through to the existing not-found message. */ }
+      } catch {
+        // Fall through to the existing not-found message.
+      }
     }
     if (match) {
       addProduct(match);
@@ -431,48 +437,43 @@ export function BookingEditForm({
         discount,
         tax,
       };
-      const { error: rpcError } = await createClient().rpc(
-        'update_booking_details',
-        { booking_key: booking.id, payload },
+      const { error: rpcErrorMessage } = await updateBookingDetailsAction(
+        booking.id,
+        payload,
       );
-      if (rpcError) {
-        setError(rpcError.message);
+      if (rpcErrorMessage) {
+        setError(rpcErrorMessage);
         setBusy(false);
         return;
       }
     } else {
-      const { error: updateError } = await createClient()
-        .from('bookings')
-        .update({
-          customer_id: Number(form.get('customer_id')),
-          assigned_staff_id: text('assigned_staff_id')
-            ? Number(form.get('assigned_staff_id'))
+      const { error: updateErrorMessage } = await updateBookingFieldsAction(booking.id, {
+        customer_id: Number(form.get('customer_id')),
+        assigned_staff_id: text('assigned_staff_id')
+          ? Number(form.get('assigned_staff_id'))
+          : null,
+        event_name: text('event_name'),
+        event_date: text('event_date'),
+        event_time: text('event_time') || null,
+        event_location: text('event_location') || null,
+        contact_name:
+          booking.booking_type === 'rental'
+            ? text('contact_name') || null
             : null,
-          event_name: text('event_name'),
-          event_date: text('event_date'),
-          event_time: text('event_time') || null,
-          event_location: text('event_location') || null,
-          contact_name:
-            booking.booking_type === 'rental'
-              ? text('contact_name') || null
-              : null,
-          alternate_mobile:
-            booking.booking_type === 'rental'
-              ? text('alternate_mobile') || null
-              : null,
-          pickup_date:
-            booking.booking_type === 'rental'
-              ? text('pickup_date') || null
-              : null,
-          due_date:
-            booking.booking_type === 'rental' ? text('due_date') || null : null,
-          notes: text('notes') || null,
-        })
-        .eq('id', booking.id)
-        .select('id')
-        .single();
-      if (updateError) {
-        setError(updateError.message);
+        alternate_mobile:
+          booking.booking_type === 'rental'
+            ? text('alternate_mobile') || null
+            : null,
+        pickup_date:
+          booking.booking_type === 'rental'
+            ? text('pickup_date') || null
+            : null,
+        due_date:
+          booking.booking_type === 'rental' ? text('due_date') || null : null,
+        notes: text('notes') || null,
+      });
+      if (updateErrorMessage) {
+        setError(updateErrorMessage);
         setBusy(false);
         return;
       }

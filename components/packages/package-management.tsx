@@ -18,7 +18,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { createClient } from '@/lib/supabase/client';
+import {
+  createPackageCategoryAction,
+  deletePackageVariantAction,
+  savePackageVariantAction,
+} from '@/app/packages/actions';
 
 export type PackageVariant = {
   id: number;
@@ -42,9 +46,6 @@ export type PackageCategory = {
   package_variants: PackageVariant[];
 };
 
-const categoryFields = 'id,name,is_active,created_at,updated_at';
-const variantFields =
-  'id,category_id,name,base_price,inclusions,extra_safa_price,missing_safa_penalty,security_deposit,created_at,updated_at';
 const fieldClass =
   'mt-1.5 h-10 w-full rounded-lg border border-input bg-white dark:bg-card px-3 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20';
 
@@ -140,30 +141,15 @@ export function PackageManagement({
 
     setBusy(true);
     setError('');
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setError('Your session has expired. Please sign in again.');
-      setBusy(false);
-      return;
-    }
-    const result = await supabase
-      .from('package_categories')
-      .insert({ owner_id: auth.user.id, name, is_active: true })
-      .select(categoryFields)
-      .single();
-    if (result.error) {
-      setError(
-        result.error.code === '23505'
-          ? 'This category already exists.'
-          : 'The category could not be created. Please try again.',
-      );
+    const result = await createPackageCategoryAction(name);
+    if (result.error || !result.data) {
+      setError(result.error || 'The category could not be created. Please try again.');
       setBusy(false);
       return;
     }
 
     const created: PackageCategory = {
-      ...(result.data as Omit<PackageCategory, 'package_variants'>),
+      ...result.data,
       package_variants: [],
     };
     setCategories((current) => [...current, created]);
@@ -205,51 +191,25 @@ export function PackageManagement({
 
     setBusy(true);
     setError('');
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setError('Your session has expired. Please sign in again.');
-      setBusy(false);
-      return;
-    }
 
-    const payload = {
-      category_id: selectedCategory.id,
+    const result = await savePackageVariantAction({
+      id: editingVariant?.id,
+      categoryId: selectedCategory.id,
       name,
-      base_price: basePrice,
+      basePrice,
       inclusions,
-      extra_safa_price: extraSafaPrice,
-      missing_safa_penalty: missingSafaPenalty,
-      security_deposit: securityDeposit,
-    };
-    let result;
-    if (editingVariant) {
-      result = await supabase
-        .from('package_variants')
-        .update(payload)
-        .eq('id', editingVariant.id)
-        .eq('category_id', selectedCategory.id)
-        .select(variantFields)
-        .single();
-    } else {
-      result = await supabase
-        .from('package_variants')
-        .insert({ ...payload, owner_id: auth.user.id })
-        .select(variantFields)
-        .single();
-    }
+      extraSafaPrice,
+      missingSafaPenalty,
+      securityDeposit,
+    });
 
-    if (result.error) {
-      setError(
-        result.error.code === '23505'
-          ? 'A variant with this name already exists in this category.'
-          : 'The variant could not be saved. Please try again.',
-      );
+    if (result.error || !result.data) {
+      setError(result.error || 'The variant could not be saved. Please try again.');
       setBusy(false);
       return;
     }
 
-    const saved = result.data as PackageVariant;
+    const saved = result.data;
     setCategories((current) =>
       current.map((category) =>
         category.id === selectedCategory.id
@@ -278,12 +238,9 @@ export function PackageManagement({
     if (!deletingVariant || busy) return;
     setBusy(true);
     setError('');
-    const result = await createClient()
-      .from('package_variants')
-      .delete()
-      .eq('id', deletingVariant.id);
+    const result = await deletePackageVariantAction(deletingVariant.id);
     if (result.error) {
-      setError('The variant could not be deleted. Please try again.');
+      setError(result.error);
       setBusy(false);
       return;
     }

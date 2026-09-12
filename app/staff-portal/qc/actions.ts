@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { requireDepartment } from '@/lib/staff-portal/guard';
 import { getJob, submitQualityCheck, submitPackingChecklist, submitReturnQualityCheck } from '@/lib/event-jobs/store';
 import type { PackingChecklist, QcIssueType, QcItemCheck, ReturnQcItemCheck } from '@/lib/event-jobs/types';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
+import { deleteFiles, uploadFile } from '@/lib/storage/client';
 
 export type QcFormState = { error: string; success?: boolean };
 
@@ -24,6 +25,13 @@ function revalidateJob(jobId: string) {
   revalidatePath('/staff-portal/warehouse');
   revalidatePath('/event-jobs');
   revalidatePath(`/event-jobs/${jobId}`);
+}
+
+async function ownerIdForJob(jobId: string): Promise<string | null> {
+  const rows = await withServiceRole((tx) =>
+    tx<{ owner_id: string }[]>`select owner_id from public.event_jobs where id = ${jobId}`,
+  );
+  return rows[0]?.owner_id ?? null;
 }
 
 export async function submitQualityCheckAction(
@@ -96,33 +104,26 @@ export async function submitPackingChecklistAction(
     return { error: 'Packing is not open for this rental job.' };
   }
 
-  const admin = createAdminClient();
-  const { data: eventJob, error: eventJobError } = await admin
-    .from('event_jobs')
-    .select('owner_id')
-    .eq('id', jobId)
-    .single();
-  if (eventJobError || !eventJob?.owner_id) return { error: 'Could not verify this job for proof upload.' };
+  const ownerId = await ownerIdForJob(jobId);
+  if (!ownerId) return { error: 'Could not verify this job for proof upload.' };
 
   const uploadedPaths: string[] = [];
-  for (const [index, photo] of proofPhotos.entries()) {
-    const extension = photo.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg';
-    const path = `${eventJob.owner_id}/qc/${jobId}/${Date.now()}-${index}.${extension}`;
-    const { error: uploadError } = await admin.storage.from(PROOF_BUCKET).upload(path, await photo.arrayBuffer(), {
-      contentType: photo.type,
-      upsert: false,
-    });
-    if (uploadError) {
-      if (uploadedPaths.length) await admin.storage.from(PROOF_BUCKET).remove(uploadedPaths);
-      return { error: `Proof photo upload failed: ${uploadError.message}` };
+  try {
+    for (const [index, photo] of proofPhotos.entries()) {
+      const extension = photo.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg';
+      const path = `${ownerId}/qc/${jobId}/${Date.now()}-${index}.${extension}`;
+      const uploaded = await uploadFile(PROOF_BUCKET, path, photo);
+      uploadedPaths.push(uploaded.path);
     }
-    uploadedPaths.push(path);
+  } catch (error) {
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
+    return { error: error instanceof Error ? `Proof photo upload failed: ${error.message}` : 'Proof photo upload failed.' };
   }
   checklist.proofPhotoPaths = uploadedPaths;
 
   const result = await submitPackingChecklist(jobId, checklist, session.name);
   if (result.error) {
-    await admin.storage.from(PROOF_BUCKET).remove(uploadedPaths);
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
     return { error: result.error };
   }
 
@@ -179,32 +180,25 @@ export async function submitReturnQualityCheckAction(
 
   const uploadedPaths: string[] = [];
   if (issuePhotos.length) {
-    const admin = createAdminClient();
-    const { data: eventJob, error: eventJobError } = await admin
-      .from('event_jobs')
-      .select('owner_id')
-      .eq('id', jobId)
-      .single();
-    if (eventJobError || !eventJob?.owner_id) return { error: 'Could not verify this job for issue-photo upload.' };
+    const ownerId = await ownerIdForJob(jobId);
+    if (!ownerId) return { error: 'Could not verify this job for issue-photo upload.' };
 
-    for (const [index, photo] of issuePhotos.entries()) {
-      const extension = photo.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg';
-      const path = `${eventJob.owner_id}/return-qc/${jobId}/${Date.now()}-${index}.${extension}`;
-      const { error: uploadError } = await admin.storage.from(PROOF_BUCKET).upload(path, await photo.arrayBuffer(), {
-        contentType: photo.type,
-        upsert: false,
-      });
-      if (uploadError) {
-        if (uploadedPaths.length) await admin.storage.from(PROOF_BUCKET).remove(uploadedPaths);
-        return { error: `Issue photo upload failed: ${uploadError.message}` };
+    try {
+      for (const [index, photo] of issuePhotos.entries()) {
+        const extension = photo.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg';
+        const path = `${ownerId}/return-qc/${jobId}/${Date.now()}-${index}.${extension}`;
+        const uploaded = await uploadFile(PROOF_BUCKET, path, photo);
+        uploadedPaths.push(uploaded.path);
       }
-      uploadedPaths.push(path);
+    } catch (error) {
+      await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
+      return { error: error instanceof Error ? `Issue photo upload failed: ${error.message}` : 'Issue photo upload failed.' };
     }
   }
 
   const result = await submitReturnQualityCheck(jobId, items, session.name, uploadedPaths);
   if (result.error) {
-    if (uploadedPaths.length) await createAdminClient().storage.from(PROOF_BUCKET).remove(uploadedPaths);
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
     return { error: result.error };
   }
 

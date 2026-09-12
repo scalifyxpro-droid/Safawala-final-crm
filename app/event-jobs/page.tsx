@@ -9,7 +9,8 @@ import { friendlyDate } from '@/lib/bookings';
 import { currentStageSummary, listJobs, syncEventJobs } from '@/lib/event-jobs/store';
 import type { ConfirmedBookingSummary } from '@/lib/event-jobs/types';
 import { getStaffSession } from '@/lib/staff-portal/session';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +38,8 @@ type BookingItemRow = {
 };
 
 export default async function EventJobsPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const staffSession = await getStaffSession();
 
   if (staffSession) {
@@ -51,7 +51,7 @@ export default async function EventJobsPage() {
       ? allStaffJobs.filter((job) => job.bookingType === 'rental')
       : allStaffJobs;
     return (
-      <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+      <BookingPortalShell email={user.email || 'Safawala user'}>
         <div className="mx-auto max-w-[1440px] space-y-6">
           <DashboardHeader
             title="Event Jobs"
@@ -75,23 +75,38 @@ export default async function EventJobsPage() {
   // A Central Event Job is created only for a real, confirmed booking — never a
   // quote (is_quote = false) and never a draft/cancelled one. This mirrors the
   // "Booking Confirmed" trigger point decided during the Step 1 audit.
-  const { data: bookingsRaw, error } = await supabase
-    .from('bookings')
-    .select(
-      'id,booking_number,booking_type,status,event_name,event_date,event_time,event_location,customers(name,phone),total,paid_amount,balance_amount,security_deposit,payment_status',
-    )
-    .eq('is_quote', false)
-    .not('status', 'in', '(draft,cancelled)')
-    .order('event_date', { ascending: false });
-  const bookings = bookingsRaw as unknown as JobListBookingRow[] | null;
-  const bookingIds = (bookings ?? []).map((booking) => booking.id);
-
-  // Required items per job come from booking_items — fetched in one batched query for
-  // every confirmed booking on this page rather than one query per booking.
-  const { data: itemsRaw } = bookingIds.length
-    ? await supabase.from('booking_items').select('booking_id,item_name,quantity').in('booking_id', bookingIds)
-    : { data: [] as BookingItemRow[] };
-  const items = (itemsRaw ?? []) as unknown as BookingItemRow[];
+  let bookings: JobListBookingRow[] = [];
+  let items: BookingItemRow[] = [];
+  let error: Error | null = null;
+  try {
+    const result = await withUserContext(user.id, async (tx) => {
+      const bookingRows = await tx<JobListBookingRow[]>`
+        select
+          b.id, b.booking_number, b.booking_type, b.status, b.event_name,
+          b.event_date, b.event_time, b.event_location,
+          case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+          b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status
+        from public.bookings b
+        left join public.customers c on c.id = b.customer_id
+        where b.is_quote = false
+          and b.status not in ('draft', 'cancelled')
+        order by b.event_date desc
+      `;
+      const bookingIds = bookingRows.map((booking) => booking.id);
+      const itemRows = bookingIds.length
+        ? await tx<BookingItemRow[]>`
+            select booking_id, item_name, quantity
+            from public.booking_items
+            where booking_id = any(${tx.array(bookingIds)}::bigint[])
+          `
+        : [];
+      return { bookings: [...bookingRows], items: [...itemRows] };
+    });
+    bookings = result.bookings;
+    items = result.items;
+  } catch (cause) {
+    error = cause instanceof Error ? cause : new Error('Event jobs could not be loaded.');
+  }
   const itemsByBookingId = new Map<number, { itemName: string; quantity: number }[]>();
   for (const item of items) {
     const list = itemsByBookingId.get(item.booking_id) ?? [];
@@ -99,7 +114,7 @@ export default async function EventJobsPage() {
     itemsByBookingId.set(item.booking_id, list);
   }
 
-  const summaries: ConfirmedBookingSummary[] = (bookings ?? []).map((booking) => ({
+  const summaries: ConfirmedBookingSummary[] = bookings.map((booking) => ({
     bookingId: booking.id,
     bookingNumber: booking.booking_number,
     bookingType: booking.booking_type,
@@ -123,7 +138,7 @@ export default async function EventJobsPage() {
   // Refreshes the Supabase-backed state for every confirmed booking. New confirmed
   // bookings are also opened by the database trigger, so this remains duplicate-safe.
   const jobs = await syncEventJobs(summaries);
-  const bookingById = new Map((bookings ?? []).map((booking) => [booking.id, booking]));
+  const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
 
   const rows = jobs
     .map((job) => ({ job, booking: bookingById.get(job.bookingId) }))
@@ -133,7 +148,7 @@ export default async function EventJobsPage() {
     .sort((a, b) => (a.booking.event_date < b.booking.event_date ? 1 : -1));
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email || 'Safawala user'}>
       <div className="mx-auto max-w-[1440px] space-y-6">
         <DashboardHeader
           title="Event Jobs"

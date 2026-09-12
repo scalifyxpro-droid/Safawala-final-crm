@@ -37,7 +37,8 @@ import {
   QUOTE_STATE_LABEL,
   type QuoteState,
 } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext, type DbParameter } from '@/lib/db/client';
 import { getStaffSession } from '@/lib/staff-portal/session';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +48,9 @@ const DEFAULT_PAGE_SIZE = 10;
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type QuoteListRow = BookingRow & PdfBooking;
+type QuoteSummaryRow = { id: number; status: string; created_at: string; booking_number: string };
 
 export default async function QuotesPage({ searchParams }: Props) {
   const params = await searchParams;
@@ -62,9 +66,8 @@ export default async function QuotesPage({ searchParams }: Props) {
   const state = typeof params.state === 'string' ? params.state : '';
   const time = typeof params.time === 'string' ? params.time : '';
   const createdRaw = typeof params.created === 'string' ? params.created : '';
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const staffSession = await getStaffSession();
   const quoteOnly = staffSession?.accessType === 'staff';
 
@@ -83,55 +86,117 @@ export default async function QuotesPage({ searchParams }: Props) {
           ? monthStart
           : null;
 
-  let customerIds: number[] = [];
-  if (search) {
-    const { data } = await supabase
-      .from('customers')
-      .select('id')
-      .or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
-      .limit(50);
-    customerIds = (data ?? []).map((row) => row.id);
-  }
-
-  const baseFields =
-    'id,booking_number,booking_type,status,payment_status,is_quote,converted_booking_id,created_by_staff_id,event_name,event_date,event_time,event_location,pickup_date,due_date,subtotal,discount,tax,total,paid_amount,balance_amount,security_deposit,created_at,customers(name,phone,address),staff_members:staff_members!bookings_assigned_staff_id_fkey(name),booking_items(item_name,quantity,unit_price,line_total,product_id,products(image_urls,barcode))';
-
-  let query = supabase
-    .from('bookings')
-    .select(baseFields, { count: 'exact' })
-    .eq('is_quote', true);
-  if (quoteOnly && staffSession) query = query.eq('created_by_staff_id', staffSession.staffMemberId);
-  if (search) {
-    const clauses = [
-      `booking_number.ilike.%${search}%`,
-      `event_name.ilike.%${search}%`,
-      `event_location.ilike.%${search}%`,
-    ];
-    if (customerIds.length)
-      clauses.push(`customer_id.in.(${customerIds.join(',')})`);
-    query = query.or(clauses.join(','));
-  }
-  query = query.eq('booking_type', type);
-  if (state === 'generated') query = query.eq('status', 'draft');
-  else if (state === 'rejected') query = query.eq('status', 'cancelled');
-  else if (state === 'converted')
-    query = query.not('status', 'in', '(draft,cancelled)');
-  if (timeFrom) query = query.gte('created_at', timeFrom.toISOString());
-
   const from = (page - 1) * pageSize;
-  let summaryQuery = supabase
-    .from('bookings')
-    .select('id,status,created_at,booking_number', { count: 'exact' })
-    .eq('is_quote', true)
-    .eq('booking_type', type);
-  if (quoteOnly && staffSession) summaryQuery = summaryQuery.eq('created_by_staff_id', staffSession.staffMemberId);
 
-  const [{ data, count, error }, summaryResult] = await Promise.all([
-    query.order('created_at', { ascending: false }).range(from, from + pageSize - 1),
-    summaryQuery.order('created_at', { ascending: true }).limit(10000),
-  ]);
+  let data: QuoteListRow[] = [];
+  let count = 0;
+  let quoteSummary: QuoteSummaryRow[] = [];
+  let error: Error | null = null;
 
-  const quoteSummary = summaryResult.data ?? [];
+  try {
+    const result = await withUserContext(user.id, async (tx) => {
+      let customerIds: number[] = [];
+      if (search) {
+        const rows = (await tx.unsafe(
+          `select id from public.customers where (name ilike $1 or phone ilike $1) limit 50`,
+          [`%${search}%`],
+        )) as unknown as { id: number }[];
+        customerIds = rows.map((row) => row.id);
+      }
+
+      const conditions: string[] = ['b.is_quote = true', 'b.booking_type = $1'];
+      const listParams: DbParameter[] = [type];
+      if (quoteOnly && staffSession) {
+        listParams.push(staffSession.staffMemberId);
+        conditions.push(`b.created_by_staff_id = $${listParams.length}`);
+      }
+      if (search) {
+        listParams.push(`%${search}%`);
+        const searchIdx = listParams.length;
+        let clause = `(b.booking_number ilike $${searchIdx} or b.event_name ilike $${searchIdx} or b.event_location ilike $${searchIdx}`;
+        if (customerIds.length) {
+          listParams.push(customerIds);
+          clause += ` or b.customer_id = any($${listParams.length}::bigint[])`;
+        }
+        clause += ')';
+        conditions.push(clause);
+      }
+      if (state === 'generated') {
+        listParams.push('draft');
+        conditions.push(`b.status = $${listParams.length}`);
+      } else if (state === 'rejected') {
+        listParams.push('cancelled');
+        conditions.push(`b.status = $${listParams.length}`);
+      } else if (state === 'converted') {
+        conditions.push(`b.status not in ('draft','cancelled')`);
+      }
+      if (timeFrom) {
+        listParams.push(timeFrom.toISOString());
+        conditions.push(`b.created_at >= $${listParams.length}`);
+      }
+      const whereClause = conditions.join(' and ');
+
+      const countQuery = `select count(*)::int as count from public.bookings b where ${whereClause}`;
+
+      const listQuery = `
+        select
+          b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote,
+          b.converted_booking_id, b.created_by_staff_id, b.event_name, b.event_date, b.event_time,
+          b.event_location, b.pickup_date, b.due_date, b.subtotal, b.discount, b.tax, b.total,
+          b.paid_amount, b.balance_amount, b.security_deposit, b.created_at,
+          case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone, 'address', c.address) end as customers,
+          case when s.id is null then null else json_build_object('name', s.name) end as staff_members,
+          coalesce(items.rows, '[]'::json) as booking_items
+        from public.bookings b
+        left join public.customers c on c.id = b.customer_id
+        left join public.staff_members s on s.id = b.assigned_staff_id
+        left join lateral (
+          select json_agg(json_build_object(
+            'item_name', bi.item_name, 'quantity', bi.quantity, 'unit_price', bi.unit_price,
+            'line_total', bi.line_total, 'product_id', bi.product_id,
+            'products', case when p.id is null then null else json_build_object('image_urls', p.image_urls, 'barcode', p.barcode) end
+          )) as rows
+          from public.booking_items bi
+          left join public.products p on p.id = bi.product_id
+          where bi.booking_id = b.id
+        ) items on true
+        where ${whereClause}
+        order by b.created_at desc
+        limit $${listParams.length + 1} offset $${listParams.length + 2}
+      `;
+
+      const summaryConditions: string[] = ['is_quote = true', 'booking_type = $1'];
+      const summaryParams: DbParameter[] = [type];
+      if (quoteOnly && staffSession) {
+        summaryParams.push(staffSession.staffMemberId);
+        summaryConditions.push(`created_by_staff_id = $${summaryParams.length}`);
+      }
+      const summaryQuery = `
+        select id, status, created_at, booking_number from public.bookings
+        where ${summaryConditions.join(' and ')}
+        order by created_at asc
+        limit 10000
+      `;
+
+      const [countRows, listRows, summaryRows] = (await Promise.all([
+        tx.unsafe(countQuery, listParams),
+        tx.unsafe(listQuery, [...listParams, pageSize, from]),
+        tx.unsafe(summaryQuery, summaryParams),
+      ])) as unknown as [{ count: number }[], QuoteListRow[], QuoteSummaryRow[]];
+
+      return {
+        count: countRows[0]?.count ?? 0,
+        data: listRows,
+        quoteSummary: summaryRows,
+      };
+    });
+    count = result.count;
+    data = result.data;
+    quoteSummary = result.quoteSummary;
+  } catch (err) {
+    error = err instanceof Error ? err : new Error('Unable to load quotes.');
+  }
+
   const sequenceById = new Map<number, number>();
   const yearlyCounts = new Map<string, number>();
   quoteSummary.forEach((quote) => {
@@ -140,7 +205,7 @@ export default async function QuotesPage({ searchParams }: Props) {
     yearlyCounts.set(year, next);
     sequenceById.set(quote.id, next);
   });
-  const totalCount = summaryResult.count ?? quoteSummary.length;
+  const totalCount = quoteSummary.length;
   const generatedCount = quoteSummary.filter(
     (quote) => quote.status === 'draft',
   ).length;
@@ -169,7 +234,7 @@ export default async function QuotesPage({ searchParams }: Props) {
         createdQuote ? sequenceById.get(createdQuote.id) : undefined,
       )
     : '';
-  const loadError = error ?? summaryResult.error;
+  const loadError = error;
   const pageCount = Math.max(1, Math.ceil((count ?? 0) / pageSize));
   const queryString = (nextPage: number) => {
     const copy = new URLSearchParams();
@@ -220,7 +285,7 @@ export default async function QuotesPage({ searchParams }: Props) {
   ];
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1440px] space-y-6">
         <DashboardHeader
           title="Quote Management"

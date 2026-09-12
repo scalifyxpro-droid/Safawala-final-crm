@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { assignedJobsForStylist, stylistJobsForMainAccount } from '@/lib/event-jobs/store';
 import { unreadCountForSession } from '@/lib/notifications/store';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { getSignedFileUrl } from '@/lib/storage/client';
 import type { ExecutionAction } from '@/lib/event-jobs/store';
 import type { StylistExecutionStatus } from '@/lib/event-jobs/types';
 import { recordExecutionAction } from '@/app/staff-portal/stylist/execution-actions';
@@ -43,7 +43,6 @@ export default async function StylistAssignedEventsPage() {
   // bucket is private, so this is the only way a stylist ever sees the file --
   // there's no public link, and it's scoped to exactly the assignments shown
   // on this page (i.e. this stylist's own approved events).
-  const admin = createAdminClient();
   const ticketUrlByInterestId = new Map<string, string>();
   await Promise.all(
     jobs.flatMap((job) => {
@@ -51,12 +50,9 @@ export default async function StylistAssignedEventsPage() {
       const plan = job.travelPlans.find((entry) => entry.interestId === interest?.id);
       if (!plan?.ticketFilePath || !interest) return [];
       return [
-        admin.storage
-          .from(TICKET_BUCKET)
-          .createSignedUrl(plan.ticketFilePath, 1800)
-          .then(({ data }) => {
-            if (data?.signedUrl) ticketUrlByInterestId.set(interest.id, data.signedUrl);
-          }),
+        getSignedFileUrl(TICKET_BUCKET, plan.ticketFilePath).then((url) => {
+          if (url) ticketUrlByInterestId.set(interest.id, url);
+        }),
       ];
     }),
   );

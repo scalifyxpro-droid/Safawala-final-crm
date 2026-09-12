@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type SyntheticEvent } from 'react';
+import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, FileDigit, KeyRound, Save, UserRound } from 'lucide-react';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
@@ -14,7 +14,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { createClient } from '@/lib/supabase/client';
+import {
+  changeLoginEmailAction,
+  changePasswordAction,
+  saveDocumentNumbersAction,
+  type SettingsActionState,
+} from '@/app/settings/actions';
 
 export type DocumentSeries =
   | 'sale_booking'
@@ -63,6 +68,8 @@ const seriesConfig: Array<{
   },
 ];
 
+const INITIAL_ACTION_STATE: SettingsActionState = { error: '', notice: '' };
+
 function normalizedPrefix(value: string) {
   const compact = value
     .trim()
@@ -85,11 +92,6 @@ function initialRows(rows: DocumentNumberSetting[]) {
   });
 }
 
-function formText(form: FormData, key: string) {
-  const value = form.get(key);
-  return typeof value === 'string' ? value : '';
-}
-
 export function SettingsPanel({
   currentEmail,
   initialSettings,
@@ -101,68 +103,19 @@ export function SettingsPanel({
 }) {
   const router = useRouter();
   const [settings, setSettings] = useState(() => initialRows(initialSettings));
-  const [accountBusy, setAccountBusy] = useState(false);
   const [numberBusy, setNumberBusy] = useState(false);
   const [error, setError] = useState(loadError);
   const [notice, setNotice] = useState('');
+  const [, startTransition] = useTransition();
+
+  const [emailState, emailAction, emailPending] = useActionState(changeLoginEmailAction, INITIAL_ACTION_STATE);
+  const [passwordState, passwordAction, passwordPending] = useActionState(changePasswordAction, INITIAL_ACTION_STATE);
+  const displayedError = emailState.error || passwordState.error || error;
+  const displayedNotice = emailState.notice || passwordState.notice || notice;
 
   function message(text: string) {
     setError('');
     setNotice(text);
-  }
-
-  async function changeLoginEmail(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (accountBusy) return;
-    const form = new FormData(event.currentTarget);
-    const email = formText(form, 'email').trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      setError('Enter a valid login email address.');
-      return;
-    }
-    if (email === currentEmail.toLowerCase()) {
-      setError('Enter a different email address.');
-      return;
-    }
-
-    setAccountBusy(true);
-    setError('');
-    setNotice('');
-    const { error: updateError } = await createClient().auth.updateUser({ email });
-    setAccountBusy(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-    message('Confirmation links were sent. The login email changes after confirmation.');
-  }
-
-  async function changePassword(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (accountBusy) return;
-    const form = new FormData(event.currentTarget);
-    const password = formText(form, 'password');
-    const confirmation = formText(form, 'password_confirmation');
-    if (password.length < 8) {
-      setError('The new password must contain at least 8 characters.');
-      return;
-    }
-    if (password !== confirmation) {
-      setError('The password confirmation does not match.');
-      return;
-    }
-
-    setAccountBusy(true);
-    setError('');
-    setNotice('');
-    const { error: updateError } = await createClient().auth.updateUser({ password });
-    setAccountBusy(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-    event.currentTarget.reset();
-    message('Password changed successfully.');
   }
 
   async function saveDocumentNumbers() {
@@ -196,29 +149,16 @@ export function SettingsPanel({
     setNumberBusy(true);
     setError('');
     setNotice('');
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setError('Your session has expired. Please sign in again.');
+    try {
+      const saved = await saveDocumentNumbersAction(normalized);
+      setSettings(initialRows(saved as DocumentNumberSetting[]));
+      message('Document numbering settings saved successfully.');
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to save document numbering settings.');
+    } finally {
       setNumberBusy(false);
-      return;
     }
-    const payload = normalized.map((setting) => ({
-      owner_id: auth.user.id,
-      ...setting,
-    }));
-    const result = await supabase
-      .from('document_number_settings')
-      .upsert(payload, { onConflict: 'owner_id,series' })
-      .select('series,prefix,next_number,number_padding,sequence_year');
-    setNumberBusy(false);
-    if (result.error) {
-      setError(result.error.message);
-      return;
-    }
-    setSettings(initialRows((result.data ?? []) as DocumentNumberSetting[]));
-    message('Document numbering settings saved successfully.');
-    router.refresh();
   }
 
   function updateSetting(
@@ -246,17 +186,17 @@ export function SettingsPanel({
         backHref="/dashboard"
       />
 
-      {error ? (
+      {displayedError ? (
         <Alert variant="destructive">
           <AlertTitle>Settings could not be updated</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{displayedError}</AlertDescription>
         </Alert>
       ) : null}
-      {notice ? (
+      {displayedNotice && !displayedError ? (
         <Alert className="border-emerald-200 bg-emerald-50 text-emerald-800">
           <CheckCircle2 />
           <AlertTitle>Saved</AlertTitle>
-          <AlertDescription className="text-emerald-700">{notice}</AlertDescription>
+          <AlertDescription className="text-emerald-700">{displayedNotice}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -274,7 +214,7 @@ export function SettingsPanel({
             </div>
           </CardHeader>
           <CardContent>
-            <form className="space-y-4" onSubmit={changeLoginEmail}>
+            <form className="space-y-4" action={emailAction}>
               <label className="block text-sm font-medium" htmlFor="login-email">
                 New login email
               </label>
@@ -287,7 +227,7 @@ export function SettingsPanel({
                 className="h-11"
                 required
               />
-              <Button type="submit" disabled={accountBusy}>
+              <Button type="submit" disabled={emailPending}>
                 Save login email
               </Button>
             </form>
@@ -307,7 +247,7 @@ export function SettingsPanel({
             </div>
           </CardHeader>
           <CardContent>
-            <form className="grid gap-4 sm:grid-cols-2" onSubmit={changePassword}>
+            <form className="grid gap-4 sm:grid-cols-2" action={passwordAction}>
               <label className="space-y-1.5 text-sm font-medium" htmlFor="new-password">
                 <span>New password</span>
                 <Input
@@ -332,7 +272,7 @@ export function SettingsPanel({
                   required
                 />
               </label>
-              <Button type="submit" className="sm:col-span-2 sm:w-fit" disabled={accountBusy}>
+              <Button type="submit" className="sm:col-span-2 sm:w-fit" disabled={passwordPending}>
                 Change password
               </Button>
             </form>

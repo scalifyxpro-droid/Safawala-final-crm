@@ -16,10 +16,47 @@ import {
   statusLabel,
   statusTone,
 } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 import { getStaffSession } from '@/lib/staff-portal/session';
 
 export const dynamic = 'force-dynamic';
+
+const BOOKING_DETAIL_QUERY = `
+  select
+    b.*,
+    case when c.id is null then null else to_jsonb(c.*) end as customers,
+    case when s.id is null then null else json_build_object('name', s.name) end as staff_members,
+    coalesce(items.rows, '[]'::json) as booking_items,
+    coalesce(payments.rows, '[]'::json) as booking_payments,
+    coalesce(activity.rows, '[]'::json) as booking_activity
+  from public.bookings b
+  left join public.customers c on c.id = b.customer_id
+  left join public.staff_members s on s.id = b.assigned_staff_id
+  left join lateral (
+    select json_agg(
+      to_jsonb(bi.*) || jsonb_build_object(
+        'products',
+        case when p.id is null then null else json_build_object('image_urls', p.image_urls, 'barcode', p.barcode) end
+      )
+    ) as rows
+    from public.booking_items bi
+    left join public.products p on p.id = bi.product_id
+    where bi.booking_id = b.id
+  ) items on true
+  left join lateral (
+    select json_agg(to_jsonb(bp.*)) as rows
+    from public.booking_payments bp
+    where bp.booking_id = b.id
+  ) payments on true
+  left join lateral (
+    select json_agg(to_jsonb(ba.*)) as rows
+    from public.booking_activity ba
+    where ba.booking_id = b.id
+  ) activity on true
+  where b.id = $1
+  limit 1
+`;
 
 export default async function BookingDetailsPage({
   params,
@@ -30,19 +67,64 @@ export default async function BookingDetailsPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const staffSession = await getStaffSession();
   const quoteOnly = staffSession?.accessType === 'staff';
-  const { data: booking, error } = await supabase
-    .from('bookings')
-    .select(
-      '*,customers(*),staff_members:staff_members!bookings_assigned_staff_id_fkey(name),booking_items(*,products(image_urls,barcode)),booking_payments(*),booking_activity(*)',
-    )
-    .eq('id', id)
-    .single();
-  if (error || !booking) notFound();
+
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) notFound();
+
+  const booking = await withUserContext(user.id, async (tx) => {
+    const rows = (await tx.unsafe(BOOKING_DETAIL_QUERY, [numericId])) as unknown as Array<
+      Record<string, unknown> & {
+        id: number;
+        booking_number: string;
+        booking_type: string;
+        status: string;
+        payment_status: string;
+        is_quote: boolean;
+        created_at: string;
+        subtotal: number;
+        discount: number;
+        tax: number;
+        total: number;
+        paid_amount: number;
+        balance_amount: number;
+        security_deposit: number;
+        event_name: string;
+        event_date: string;
+        event_time: string | null;
+        event_location: string | null;
+        pickup_date: string | null;
+        due_date: string | null;
+        contact_name: string | null;
+        alternate_mobile: string | null;
+        customers: { name: string; phone: string } | null;
+        staff_members: { name: string } | null;
+        booking_items: {
+          id: number;
+          item_name: string;
+          quantity: number;
+          unit_price: number;
+          line_total: number;
+          product_id: number | null;
+          products?: { image_urls: string[] | null; barcode: string | null } | null;
+        }[];
+        booking_payments: {
+          id: number;
+          payment_method: string;
+          paid_at: string;
+          reference_number: string | null;
+          amount: number;
+        }[];
+        booking_activity: { id: number; action: string; created_at: string }[];
+      }
+    >;
+    return rows[0] ?? null;
+  });
+  if (!booking) notFound();
+
   const activities = [...(booking.booking_activity ?? [])].sort((a, b) =>
     b.created_at.localeCompare(a.created_at),
   );
@@ -51,14 +133,14 @@ export default async function BookingDetailsPage({
     ? requestedReturnTo
     : booking.is_quote ? '/quotes' : `/bookings?type=${booking.booking_type}`;
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1200px] space-y-6">
         <DashboardHeader
           title={
             booking.is_quote
               ? displayQuoteNumber(
                   booking.booking_number,
-                  booking.booking_type,
+                  booking.booking_type as 'sale' | 'rental',
                 )
               : booking.booking_number
           }
@@ -78,7 +160,7 @@ export default async function BookingDetailsPage({
               >
                 {statusLabel(booking.payment_status)}
               </Badge>
-              {!quoteOnly ? <BookingPdfButton booking={booking as PdfBooking} label="Print booking" /> : null}
+              {!quoteOnly ? <BookingPdfButton booking={booking as unknown as PdfBooking} label="Print booking" /> : null}
             </>
           }
         />
@@ -301,7 +383,7 @@ function Info({
   icon,
 }: {
   label: string;
-  value: string;
+  value?: string | null;
   icon?: React.ReactNode;
 }) {
   return (

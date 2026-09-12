@@ -15,7 +15,7 @@ import {
   WithdrawInterestButton,
 } from '@/components/staff-portal/stylist-interest-button';
 import { StylistJobModal } from '@/components/staff-portal/stylist-job-modal';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,23 +44,29 @@ async function StylistMainDashboard({
   page?: number;
   pageSize?: number;
 }) {
-  const admin = createAdminClient();
-  const { data: account } = await admin
-    .from('staff_members')
-    .select('owner_id')
-    .eq('user_id', session.id)
-    .maybeSingle();
-  const { data: stylistRows } = account?.owner_id
-    ? await admin
-        .from('staff_members')
-        .select('id,name,login_id,user_id,staff_type,is_active,portal_active')
-        .eq('owner_id', account.owner_id)
-        .eq('staff_type', 'stylist')
-        .eq('is_active', true)
-        .eq('portal_active', true)
-        .order('name')
-    : { data: [] };
-  const stylists = stylistRows ?? [];
+  const stylists = await withServiceRole(async (tx) => {
+    const accountRows = await tx<{ owner_id: string }[]>`
+      select owner_id from public.staff_members where user_id = ${session.id} limit 1
+    `;
+    const ownerId = accountRows[0]?.owner_id;
+    if (!ownerId) return [];
+    return tx<
+      {
+        id: number;
+        name: string;
+        login_id: string | null;
+        user_id: string | null;
+        staff_type: string;
+        is_active: boolean;
+        portal_active: boolean;
+      }[]
+    >`
+      select id, name, login_id, user_id, staff_type, is_active, portal_active
+      from public.staff_members
+      where owner_id = ${ownerId} and staff_type = 'stylist' and is_active = true and portal_active = true
+      order by name
+    `;
+  });
   const approvedAssignments = jobs.flatMap((job) =>
     job.stylistInterests.filter((interest) => interest.status === 'approved'),
   );

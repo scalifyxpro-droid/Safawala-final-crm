@@ -5,8 +5,7 @@ import { cache } from 'react';
 import type { StaffDepartment } from '@/lib/staff-portal/constants';
 import { notifyAccount, notifyDepartment } from '@/lib/notifications/store';
 import { creditPerformance } from '@/lib/performance/store';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
+import { withServiceRole } from '@/lib/db/client';
 import {
   EVENT_JOB_STAGE_KEYS,
   INITIAL_OPEN_STAGES,
@@ -83,14 +82,13 @@ function normalizeJob(job: EventJob): EventJob {
 }
 
 async function readAllRaw(id?: string): Promise<EventJob[]> {
-  const supabase = await createClient();
-  const query = supabase.from('event_jobs').select('state');
-  const { data, error } = id
-    ? await query.eq('id', id)
-    : await query.order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  const jobs = (data ?? [])
-    .map((row) => row.state as EventJob)
+  const rows = await withServiceRole((tx) =>
+    id
+      ? tx<{ state: EventJob }[]>`select state from public.event_jobs where id = ${id}`
+      : tx<{ state: EventJob }[]>`select state from public.event_jobs order by created_at desc`
+  );
+  const jobs = rows
+    .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
     .map(normalizeJob);
   return jobs;
@@ -108,12 +106,10 @@ async function readAllRaw(id?: string): Promise<EventJob[]> {
 // every job read means a job is fully populated the moment it exists, with no
 // dependency on which page anyone visits first.
 async function syncMissingJobs(): Promise<void> {
-  const admin = createAdminClient();
-  const { data: rows, error } = await admin
-    .from('event_jobs')
-    .select('booking_id,status,state');
-  if (error) throw new Error(error.message);
-  const missingBookingIds = (rows ?? [])
+  const rows = await withServiceRole((tx) => tx<{ booking_id: number; status: string; state: EventJob | null }[]>`
+    select booking_id, status, state from public.event_jobs
+  `);
+  const missingBookingIds = rows
     .filter((row) => {
       const state = row.state as EventJob | null;
       // Truly never-synced: the trigger-created row still has its default
@@ -142,7 +138,8 @@ async function syncMissingJobs(): Promise<void> {
     event_date: string;
     event_time: string | null;
     event_location: string | null;
-    customers: { name: string; phone: string } | null;
+    customer_name: string | null;
+    customer_phone: string | null;
     total: number;
     paid_amount: number;
     balance_amount: number;
@@ -150,30 +147,31 @@ async function syncMissingJobs(): Promise<void> {
     payment_status: string;
   };
 
-  const { data: bookingsRaw, error: bookingError } = await admin
-    .from('bookings')
-    .select(
-      'id,booking_number,booking_type,status,event_name,event_date,event_time,event_location,customers(name,phone),total,paid_amount,balance_amount,security_deposit,payment_status',
-    )
-    .in('id', missingBookingIds);
-  if (bookingError) throw new Error(bookingError.message);
-  const bookings = (bookingsRaw ?? []) as unknown as MissingBookingRow[];
+  const { bookings, itemsRaw } = await withServiceRole(async (tx) => {
+    const bookings = await tx<MissingBookingRow[]>`
+      select b.id, b.booking_number, b.booking_type, b.status, b.event_name, b.event_date, b.event_time, b.event_location,
+        c.name as customer_name, c.phone as customer_phone,
+        b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status
+      from public.bookings b
+      left join public.customers c on c.id = b.customer_id
+      where b.id = any(${tx.array(missingBookingIds)})
+    `;
+    if (!bookings.length) {
+      return { bookings, itemsRaw: [] as { booking_id: number; item_name: string; quantity: number }[] };
+    }
+    const bookingIds = bookings.map((booking) => booking.id);
+    const itemsRaw = await tx<{ booking_id: number; item_name: string; quantity: number }[]>`
+      select booking_id, item_name, quantity from public.booking_items where booking_id = any(${tx.array(bookingIds)})
+    `;
+    return { bookings, itemsRaw };
+  });
   if (!bookings.length) return;
-  const bookingIds = bookings.map((booking) => booking.id);
 
-  const { data: itemsRaw } = await admin
-    .from('booking_items')
-    .select('booking_id,item_name,quantity')
-    .in('booking_id', bookingIds);
   const itemsByBookingId = new Map<
     number,
     { itemName: string; quantity: number }[]
   >();
-  for (const item of (itemsRaw ?? []) as {
-    booking_id: number;
-    item_name: string;
-    quantity: number;
-  }[]) {
+  for (const item of itemsRaw) {
     const list = itemsByBookingId.get(item.booking_id) ?? [];
     list.push({ itemName: item.item_name, quantity: item.quantity });
     itemsByBookingId.set(item.booking_id, list);
@@ -184,8 +182,8 @@ async function syncMissingJobs(): Promise<void> {
     bookingNumber: booking.booking_number,
     bookingType: booking.booking_type,
     status: booking.status,
-    customerName: booking.customers?.name ?? null,
-    customerPhone: booking.customers?.phone ?? null,
+    customerName: booking.customer_name ?? null,
+    customerPhone: booking.customer_phone ?? null,
     eventName: booking.event_name,
     eventDate: booking.event_date,
     eventTime: booking.event_time,
@@ -208,45 +206,50 @@ async function readAll(id?: string): Promise<EventJob[]> {
   return readAllRaw(id);
 }
 
+type StylistInterestRow = {
+  id: string;
+  event_job_id: string;
+  staff_id: number;
+  status: string;
+  expressed_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+};
+
 async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
   await syncMissingJobs();
-  const admin = createAdminClient();
-  const jobQuery = admin.from('event_jobs').select('state');
-  const interestQuery = admin
-    .from('event_job_stylist_interest')
-    .select(
-      'id,event_job_id,staff_id,status,expressed_at,decided_at,decided_by',
-    );
-  const [
-    { data: jobRows, error: jobError },
-    { data: interestRows, error: interestError },
-  ] = await Promise.all([
-    jobId
-      ? jobQuery.eq('id', jobId)
-      : jobQuery.order('created_at', { ascending: false }),
-    jobId ? interestQuery.eq('event_job_id', jobId) : interestQuery,
-  ]);
-  if (jobError) throw new Error(jobError.message);
-  if (interestError) throw new Error(interestError.message);
+  const { jobRows, interestRows } = await withServiceRole(async (tx) => {
+    const jobRows = jobId
+      ? await tx<{ state: EventJob }[]>`select state from public.event_jobs where id = ${jobId}`
+      : await tx<{ state: EventJob }[]>`select state from public.event_jobs order by created_at desc`;
+    const interestRows = jobId
+      ? await tx<StylistInterestRow[]>`
+          select id, event_job_id, staff_id, status, expressed_at, decided_at, decided_by
+          from public.event_job_stylist_interest where event_job_id = ${jobId}
+        `
+      : await tx<StylistInterestRow[]>`
+          select id, event_job_id, staff_id, status, expressed_at, decided_at, decided_by
+          from public.event_job_stylist_interest
+        `;
+    return { jobRows, interestRows };
+  });
 
   const staffIds = [
-    ...new Set((interestRows ?? []).map((row) => Number(row.staff_id))),
+    ...new Set(interestRows.map((row) => Number(row.staff_id))),
   ];
-  const { data: staffRows, error: staffError } = staffIds.length
-    ? await admin
-        .from('staff_members')
-        .select('id,user_id,name')
-        .in('id', staffIds)
-    : { data: [], error: null };
-  if (staffError) throw new Error(staffError.message);
+  const staffRows = staffIds.length
+    ? await withServiceRole((tx) => tx<{ id: number; user_id: string | null; name: string }[]>`
+        select id, user_id, name from public.staff_members where id = any(${tx.array(staffIds)})
+      `)
+    : [];
   const staffById = new Map(
-    (staffRows ?? []).map((row) => [Number(row.id), row]),
+    staffRows.map((row) => [Number(row.id), row]),
   );
   const interestsByJob = new Map<string, StylistInterest[]>();
-  for (const row of interestRows ?? []) {
+  for (const row of interestRows) {
     const staff = staffById.get(Number(row.staff_id));
     if (!staff?.user_id) continue;
-    const jobId = String(row.event_job_id);
+    const jobIdKey = String(row.event_job_id);
     const interest: StylistInterest = {
       id: String(row.id),
       stylistAccountId: String(staff.user_id),
@@ -256,11 +259,11 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
       decidedAt: row.decided_at ? String(row.decided_at) : null,
       decidedBy: row.decided_by ? String(row.decided_by) : null,
     };
-    interestsByJob.set(jobId, [...(interestsByJob.get(jobId) ?? []), interest]);
+    interestsByJob.set(jobIdKey, [...(interestsByJob.get(jobIdKey) ?? []), interest]);
   }
 
-  return (jobRows ?? [])
-    .map((row) => row.state as EventJob)
+  return jobRows
+    .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
     .map((job) =>
       normalizeJob({
@@ -273,232 +276,174 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
 
 async function writeAll(jobs: EventJob[]) {
   if (!jobs.length) return;
-  const admin = createAdminClient();
   const bookingIds = [...new Set(jobs.map((job) => job.bookingId))];
-  const { data: bookings, error: bookingError } = await admin
-    .from('bookings')
-    .select('id,owner_id')
-    .in('id', bookingIds);
-  if (bookingError) throw new Error(bookingError.message);
-  const owners = new Map(
-    (bookings ?? []).map((booking) => [
-      Number(booking.id),
-      String(booking.owner_id),
-    ]),
-  );
-  const rows = jobs.flatMap((job) => {
-    const ownerId = owners.get(job.bookingId);
-    if (!ownerId) return [];
-    return [
-      {
-        id: job.id,
-        booking_id: job.bookingId,
-        owner_id: ownerId,
-        job_number: job.id,
-        status: job.status,
-        stylists_required_count: job.stylistsRequiredCount,
-        payment_summary: job.paymentSummary,
-        booking_final_check: job.bookingFinalCheck,
-        performance_credited: job.performanceCredited,
-        state: job,
-        created_at: job.createdAt,
-        updated_at: job.updatedAt,
-        closed_at: job.closedAt,
-      },
-    ];
-  });
-  const { error } = await admin
-    .from('event_jobs')
-    .upsert(rows, { onConflict: 'booking_id' });
-  if (error) throw new Error(error.message);
 
-  const stageRows = jobs.flatMap((job) =>
-    job.stages.map((stage) => ({
-      event_job_id: job.id,
-      stage: stage.key,
-      status: stage.status,
-      assigned_staff_id: stage.assignedStaffId
-        ? Number(stage.assignedStaffId) || null
-        : null,
-      opened_at: stage.openedAt,
-      completed_at: stage.completedAt,
-      notes: { text: stage.notes, completed_by_name: stage.completedBy },
-    })),
-  );
-  const { error: stageError } = await admin
-    .from('event_job_stages')
-    .upsert(stageRows, { onConflict: 'event_job_id,stage' });
-  if (stageError) throw new Error(stageError.message);
+  await withServiceRole(async (tx) => {
+    const bookingRows = await tx<{ id: number; owner_id: string }[]>`
+      select id, owner_id from public.bookings where id = any(${tx.array(bookingIds)})
+    `;
+    const owners = new Map(bookingRows.map((booking) => [Number(booking.id), String(booking.owner_id)]));
 
-  const { data: persistedStages, error: persistedStageError } = await admin
-    .from('event_job_stages')
-    .select('id,event_job_id,stage')
-    .in(
-      'event_job_id',
-      jobs.map((job) => job.id),
-    );
-  if (persistedStageError) throw new Error(persistedStageError.message);
-  const stageIds = new Map(
-    (persistedStages ?? []).map((stage) => [
-      `${stage.event_job_id}:${stage.stage}`,
-      String(stage.id),
-    ]),
-  );
+    for (const job of jobs) {
+      const ownerId = owners.get(job.bookingId);
+      if (!ownerId) continue;
+      await tx`
+        insert into public.event_jobs (
+          id, booking_id, owner_id, job_number, status, stylists_required_count,
+          payment_summary, booking_final_check, performance_credited, state,
+          created_at, updated_at, closed_at
+        ) values (
+          ${job.id}, ${job.bookingId}, ${ownerId}, ${job.id}, ${job.status}, ${job.stylistsRequiredCount},
+          ${tx.json(job.paymentSummary as never)}, ${tx.json(job.bookingFinalCheck as never)}, ${job.performanceCredited}, ${tx.json(job as never)},
+          ${job.createdAt}, ${job.updatedAt}, ${job.closedAt}
+        )
+        on conflict (booking_id) do update set
+          id = excluded.id,
+          job_number = excluded.job_number,
+          status = excluded.status,
+          stylists_required_count = excluded.stylists_required_count,
+          payment_summary = excluded.payment_summary,
+          booking_final_check = excluded.booking_final_check,
+          performance_credited = excluded.performance_credited,
+          state = excluded.state,
+          updated_at = excluded.updated_at,
+          closed_at = excluded.closed_at
+      `;
 
-  const qcRows = jobs.flatMap((job) => {
-    const qualityStageId = stageIds.get(`${job.id}:quality_check`);
-    const returnStageId = stageIds.get(`${job.id}:return_quality_check`);
-    const outbound =
-      qualityStageId && job.qualityCheck
-        ? job.qualityCheck.items.map((item) => ({
-            event_job_stage_id: qualityStageId,
-            item_name: item.itemName,
-            checked_quantity: item.checkedQuantity,
-            good_quantity: item.goodQuantity,
-            issue_type: item.issueType,
-            remarks: item.remarks,
-            evidence_photo_url: item.evidenceNote || null,
-          }))
-        : [];
-    const returned =
-      returnStageId && job.returnQualityCheck
-        ? job.returnQualityCheck.items.map((item) => ({
-            event_job_stage_id: returnStageId,
-            item_name: item.itemName,
-            checked_quantity: item.returnedQuantity,
-            good_quantity: item.goodQuantity,
-            damaged_quantity: item.damagedQuantity,
-            repair_required_quantity: item.repairRequired
-              ? item.damagedQuantity
-              : 0,
-            unusable_quantity: item.unusable ? item.damagedQuantity : 0,
-            remarks: item.remarks,
-            evidence_photo_url: item.evidenceNote || null,
-          }))
-        : [];
-    return [...outbound, ...returned];
-  });
-  const packingRows = jobs.flatMap((job) => {
-    const packingStageId = stageIds.get(`${job.id}:packing`);
-    if (!packingStageId || !job.packingChecklist) return [];
-    const checklist = job.packingChecklist;
-    return [
-      {
-        event_job_stage_id: packingStageId,
-        correct_quantity_packed: checklist.correctQuantityPacked,
-        correct_boxes: checklist.correctBoxes,
-        proper_labels: checklist.properLabels,
-        accessories_included: checklist.accessoriesIncluded,
-        items_secured: checklist.itemsSecured,
-        correct_event_identification: checklist.correctEventIdentification,
-        remarks: checklist.remarks,
-        proof_photo_url: checklist.proofPhotoPaths[0] ?? null,
-      },
-    ];
-  });
-  const activityRows = jobs.flatMap((job) =>
-    job.activity.map((entry) => ({
-      id: entry.id,
-      event_job_id: job.id,
-      actor: entry.actor,
-      department: entry.department,
-      action: entry.action,
-      details: entry.details ?? null,
-      created_at: entry.at,
-    })),
-  );
-  const issueRows = jobs.flatMap((job) =>
-    job.issues.map((issue) => ({
-      id: issue.id,
-      event_job_id: job.id,
-      stage: issue.stage,
-      description: issue.description,
-      raised_by_name: issue.raisedBy,
-      raised_at: issue.raisedAt,
-      resolved_at: issue.resolvedAt,
-    })),
-  );
-  // These normalized child tables are independent after their stage IDs exist.
-  // Persist them together so a workflow click pays for one database round-trip
-  // window instead of waiting for each historical projection sequentially.
-  const [qcResult, packingResult, activityResult, issueResult] =
-    await Promise.all([
-      qcRows.length
-        ? admin
-            .from('event_job_qc_items')
-            .upsert(qcRows, { onConflict: 'event_job_stage_id,item_name' })
-        : Promise.resolve({ error: null }),
-      packingRows.length
-        ? admin
-            .from('event_job_packing_checklist')
-            .upsert(packingRows, { onConflict: 'event_job_stage_id' })
-        : Promise.resolve({ error: null }),
-      activityRows.length
-        ? admin
-            .from('event_job_activity')
-            .upsert(activityRows, { onConflict: 'id' })
-        : Promise.resolve({ error: null }),
-      issueRows.length
-        ? admin.from('event_job_issues').upsert(issueRows, { onConflict: 'id' })
-        : Promise.resolve({ error: null }),
-    ]);
-  const projectionError =
-    qcResult.error ??
-    packingResult.error ??
-    activityResult.error ??
-    issueResult.error;
-  if (projectionError) throw new Error(projectionError.message);
+      for (const stage of job.stages) {
+        await tx`
+          insert into public.event_job_stages (event_job_id, stage, status, assigned_staff_id, opened_at, completed_at, notes)
+          values (
+            ${job.id}, ${stage.key}, ${stage.status},
+            ${stage.assignedStaffId ? Number(stage.assignedStaffId) || null : null},
+            ${stage.openedAt}, ${stage.completedAt},
+            ${tx.json({ text: stage.notes, completed_by_name: stage.completedBy })}
+          )
+          on conflict (event_job_id, stage) do update set
+            status = excluded.status,
+            assigned_staff_id = excluded.assigned_staff_id,
+            opened_at = excluded.opened_at,
+            completed_at = excluded.completed_at,
+            notes = excluded.notes
+        `;
+      }
 
-  // Stylist participation is intentionally rental-only. Older event JSON can
-  // still contain legacy interest entries for sales, cancelled, or completed
-  // jobs; attempting to recreate those normalized rows is correctly rejected
-  // by the database trigger and must not break unrelated workflow saves.
-  const stylistJobs = jobs.filter(
-    (job) =>
-      job.status === 'active' &&
-      job.bookingType === 'rental' &&
-      job.stylistsRequired,
-  );
-  const stylistUserIds = [
-    ...new Set(
-      stylistJobs.flatMap((job) =>
-        job.stylistInterests.map((interest) => interest.stylistAccountId),
-      ),
-    ),
-  ];
-  if (stylistUserIds.length) {
-    const { data: staffRows, error: staffError } = await admin
-      .from('staff_members')
-      .select('id,user_id')
-      .in('user_id', stylistUserIds);
-    if (staffError) throw new Error(staffError.message);
-    const staffByUser = new Map(
-      (staffRows ?? []).map((row) => [String(row.user_id), Number(row.id)]),
-    );
-    const interestRows = stylistJobs.flatMap((job) =>
-      job.stylistInterests.flatMap((interest) => {
-        const staffId = staffByUser.get(interest.stylistAccountId);
-        return staffId
-          ? [
-              {
-                id: interest.id,
-                event_job_id: job.id,
-                staff_id: staffId,
-                status: interest.status,
-                expressed_at: interest.expressedAt,
-                decided_at: interest.decidedAt,
-              },
-            ]
-          : [];
-      }),
-    );
-    if (interestRows.length) {
-      const { error: interestError } = await admin
-        .from('event_job_stylist_interest')
-        .upsert(interestRows, { onConflict: 'id' });
-      if (interestError) throw new Error(interestError.message);
+      const persistedStages = await tx<{ id: string; stage: string }[]>`
+        select id, stage from public.event_job_stages where event_job_id = ${job.id}
+      `;
+      const stageIds = new Map(persistedStages.map((stage) => [stage.stage, String(stage.id)]));
+
+      const qualityStageId = stageIds.get('quality_check');
+      if (qualityStageId && job.qualityCheck) {
+        for (const item of job.qualityCheck.items) {
+          await tx`
+            insert into public.event_job_qc_items (event_job_stage_id, item_name, checked_quantity, good_quantity, issue_type, remarks, evidence_photo_url)
+            values (${qualityStageId}, ${item.itemName}, ${item.checkedQuantity}, ${item.goodQuantity}, ${item.issueType}, ${item.remarks}, ${item.evidenceNote || null})
+            on conflict (event_job_stage_id, item_name) do update set
+              checked_quantity = excluded.checked_quantity,
+              good_quantity = excluded.good_quantity,
+              issue_type = excluded.issue_type,
+              remarks = excluded.remarks,
+              evidence_photo_url = excluded.evidence_photo_url
+          `;
+        }
+      }
+      const returnStageId = stageIds.get('return_quality_check');
+      if (returnStageId && job.returnQualityCheck) {
+        for (const item of job.returnQualityCheck.items) {
+          await tx`
+            insert into public.event_job_qc_items (event_job_stage_id, item_name, checked_quantity, good_quantity, damaged_quantity, repair_required_quantity, unusable_quantity, remarks, evidence_photo_url)
+            values (
+              ${returnStageId}, ${item.itemName}, ${item.returnedQuantity}, ${item.goodQuantity}, ${item.damagedQuantity},
+              ${item.repairRequired ? item.damagedQuantity : 0}, ${item.unusable ? item.damagedQuantity : 0},
+              ${item.remarks}, ${item.evidenceNote || null}
+            )
+            on conflict (event_job_stage_id, item_name) do update set
+              checked_quantity = excluded.checked_quantity,
+              good_quantity = excluded.good_quantity,
+              damaged_quantity = excluded.damaged_quantity,
+              repair_required_quantity = excluded.repair_required_quantity,
+              unusable_quantity = excluded.unusable_quantity,
+              remarks = excluded.remarks,
+              evidence_photo_url = excluded.evidence_photo_url
+          `;
+        }
+      }
+
+      const packingStageId = stageIds.get('packing');
+      if (packingStageId && job.packingChecklist) {
+        const checklist = job.packingChecklist;
+        await tx`
+          insert into public.event_job_packing_checklist (
+            event_job_stage_id, correct_quantity_packed, correct_boxes, proper_labels,
+            accessories_included, items_secured, correct_event_identification, remarks, proof_photo_url
+          ) values (
+            ${packingStageId}, ${checklist.correctQuantityPacked}, ${checklist.correctBoxes}, ${checklist.properLabels},
+            ${checklist.accessoriesIncluded}, ${checklist.itemsSecured}, ${checklist.correctEventIdentification},
+            ${checklist.remarks}, ${checklist.proofPhotoPaths[0] ?? null}
+          )
+          on conflict (event_job_stage_id) do update set
+            correct_quantity_packed = excluded.correct_quantity_packed,
+            correct_boxes = excluded.correct_boxes,
+            proper_labels = excluded.proper_labels,
+            accessories_included = excluded.accessories_included,
+            items_secured = excluded.items_secured,
+            correct_event_identification = excluded.correct_event_identification,
+            remarks = excluded.remarks,
+            proof_photo_url = excluded.proof_photo_url
+        `;
+      }
+
+      for (const entry of job.activity) {
+        await tx`
+          insert into public.event_job_activity (id, event_job_id, actor, department, action, details, created_at)
+          values (${entry.id}, ${job.id}, ${entry.actor}, ${entry.department}, ${entry.action}, ${entry.details ?? null}, ${entry.at})
+          on conflict (id) do update set
+            actor = excluded.actor, department = excluded.department, action = excluded.action,
+            details = excluded.details, created_at = excluded.created_at
+        `;
+      }
+
+      for (const issue of job.issues) {
+        await tx`
+          insert into public.event_job_issues (id, event_job_id, stage, description, raised_by_name, raised_at, resolved_at)
+          values (${issue.id}, ${job.id}, ${issue.stage}, ${issue.description}, ${issue.raisedBy}, ${issue.raisedAt}, ${issue.resolvedAt})
+          on conflict (id) do update set
+            stage = excluded.stage, description = excluded.description, raised_by_name = excluded.raised_by_name,
+            raised_at = excluded.raised_at, resolved_at = excluded.resolved_at
+        `;
+      }
     }
-  }
+
+    // Stylist participation is intentionally rental-only. Older event JSON can
+    // still contain legacy interest entries for sales, cancelled, or completed
+    // jobs; attempting to recreate those normalized rows is correctly rejected
+    // by the database trigger and must not break unrelated workflow saves.
+    const stylistJobs = jobs.filter(
+      (job) => job.status === 'active' && job.bookingType === 'rental' && job.stylistsRequired,
+    );
+    const stylistUserIds = [
+      ...new Set(stylistJobs.flatMap((job) => job.stylistInterests.map((interest) => interest.stylistAccountId))),
+    ];
+    if (stylistUserIds.length) {
+      const staffRows = await tx<{ id: number; user_id: string }[]>`
+        select id, user_id from public.staff_members where user_id = any(${tx.array(stylistUserIds)})
+      `;
+      const staffByUser = new Map(staffRows.map((row) => [String(row.user_id), Number(row.id)]));
+      for (const job of stylistJobs) {
+        for (const interest of job.stylistInterests) {
+          const staffId = staffByUser.get(interest.stylistAccountId);
+          if (!staffId) continue;
+          await tx`
+            insert into public.event_job_stylist_interest (id, event_job_id, staff_id, status, expressed_at, decided_at)
+            values (${interest.id}, ${job.id}, ${staffId}, ${interest.status}, ${interest.expressedAt}, ${interest.decidedAt})
+            on conflict (id) do update set
+              status = excluded.status, expressed_at = excluded.expressed_at, decided_at = excluded.decided_at
+          `;
+        }
+      }
+    }
+  });
 }
 
 // "BK-2005 -> JOB-2005"-style derivation from the real booking number, e.g.
@@ -570,43 +515,31 @@ export const listJobs = cache(async (): Promise<EventJob[]> => {
 
 export const listActiveJobs = cache(async (): Promise<EventJob[]> => {
   await syncMissingJobs();
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('event_jobs')
-    .select('state')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? [])
-    .map((row) => row.state as EventJob)
+  const rows = await withServiceRole((tx) => tx<{ state: EventJob }[]>`
+    select state from public.event_jobs where status = 'active' order by created_at desc
+  `);
+  return rows
+    .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
     .map(normalizeJob);
 });
 
 export const getJob = cache(async (id: string): Promise<EventJob | null> => {
   await syncMissingJobs();
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('event_jobs')
-    .select('state')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const job = data?.state as EventJob | undefined;
+  const [row] = await withServiceRole((tx) => tx<{ state: EventJob }[]>`
+    select state from public.event_jobs where id = ${id}
+  `);
+  const job = row?.state;
   return job?.id && Array.isArray(job.stages) ? normalizeJob(job) : null;
 });
 
 export const getJobByBookingId = cache(
   async (bookingId: number): Promise<EventJob | null> => {
     await syncMissingJobs();
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('event_jobs')
-      .select('state')
-      .eq('booking_id', bookingId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    const job = data?.state as EventJob | undefined;
+    const [row] = await withServiceRole((tx) => tx<{ state: EventJob }[]>`
+      select state from public.event_jobs where booking_id = ${bookingId}
+    `);
+    const job = row?.state;
     return job?.id && Array.isArray(job.stages) ? normalizeJob(job) : null;
   },
 );
@@ -635,23 +568,11 @@ export async function syncEventJobs(
   // booking_ids already have an event_jobs row at all -- regardless of
   // whether its state currently parses -- lets the loop below leave those
   // alone instead of destroying them.
-  const admin = createAdminClient();
-  const { data: rawRows, error: rawError } = await admin
-    .from('event_jobs')
-    .select('booking_id,state');
-  if (rawError) throw new Error(rawError.message);
-  // The database trigger creates an active event_jobs row with state `{}`
-  // before the application can project the full workflow. Treat that empty
-  // placeholder as missing so syncMissingJobs() can initialize it. Preserve
-  // the guard for non-empty malformed state, where overwriting real history
-  // would be unsafe.
+  const rawRows = await withServiceRole((tx) => tx<{ booking_id: number }[]>`
+    select booking_id from public.event_jobs
+  `);
   const existingRawBookingIds = new Set(
-    (rawRows ?? [])
-      .filter((row) => {
-        const state = row.state as Record<string, unknown> | null;
-        return Boolean(state && Object.keys(state).length > 0);
-      })
-      .map((row) => Number(row.booking_id)),
+    rawRows.map((row) => Number(row.booking_id)),
   );
 
   const now = new Date().toISOString();
@@ -1176,19 +1097,17 @@ export async function expressStylistInterest(
   stylistAccountId: string,
   stylistName: string,
 ) {
-  const admin = createAdminClient();
-  const { data: stylist, error: stylistError } = await admin
-    .from('staff_members')
-    .select(
-      'id,name,staff_type,portal_active,is_active,staff_departments(department)',
-    )
-    .eq('user_id', stylistAccountId)
-    .maybeSingle();
-  if (stylistError || !stylist)
-    return { error: 'Stylist account was not found.' };
-  const hasStylistDepartment = (stylist.staff_departments ?? []).some(
-    (row) => row.department === 'stylist',
-  );
+  const { stylist, hasStylistDepartment } = await withServiceRole(async (tx) => {
+    const [stylist] = await tx<{ id: number; name: string; staff_type: string; portal_active: boolean; is_active: boolean }[]>`
+      select id, name, staff_type, portal_active, is_active from public.staff_members where user_id = ${stylistAccountId}
+    `;
+    if (!stylist) return { stylist: null, hasStylistDepartment: false };
+    const [row] = await tx<{ exists: boolean }[]>`
+      select exists(select 1 from public.staff_departments where staff_id = ${stylist.id} and department = 'stylist') as exists
+    `;
+    return { stylist, hasStylistDepartment: Boolean(row?.exists) };
+  });
+  if (!stylist) return { error: 'Stylist account was not found.' };
   if (
     stylist.staff_type !== 'stylist' ||
     !stylist.portal_active ||
@@ -1228,17 +1147,17 @@ export async function expressStylistInterest(
     decidedAt: null,
     decidedBy: null,
   };
-  const { error: insertError } = await admin
-    .from('event_job_stylist_interest')
-    .insert({
-      id: interest.id,
-      event_job_id: job.id,
-      staff_id: stylist.id,
-      status: 'interested',
-      expressed_at: interest.expressedAt,
-    });
-  if (insertError && insertError.code !== '23505')
-    return { error: insertError.message };
+  try {
+    await withServiceRole((tx) => tx`
+      insert into public.event_job_stylist_interest (id, event_job_id, staff_id, status, expressed_at)
+      values (${interest.id}, ${job.id}, ${stylist.id}, 'interested', ${interest.expressedAt})
+    `);
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code !== '23505') {
+      return { error: error instanceof Error ? error.message : 'Unable to record interest.' };
+    }
+  }
 
   const refreshedJobs = await readAllForStylistWorkflow(jobId);
   const refreshedIndex = refreshedJobs.findIndex((entry) => entry.id === jobId);
@@ -1270,7 +1189,6 @@ export async function withdrawStylistInterest(
   jobId: string,
   stylistAccountId: string,
 ): Promise<{ job?: EventJob; error?: string }> {
-  const admin = createAdminClient();
   const jobs = await readAllForStylistWorkflow(jobId);
   const index = jobs.findIndex((job) => job.id === jobId);
   if (index === -1) return { error: 'Event was not found.' };
@@ -1283,18 +1201,13 @@ export async function withdrawStylistInterest(
   if (interest.status !== 'interested') {
     return { error: 'Approved or decided interest cannot be withdrawn.' };
   }
-  const { data: staff } = await admin
-    .from('staff_members')
-    .select('id')
-    .eq('user_id', stylistAccountId)
-    .maybeSingle();
+  const [staff] = await withServiceRole((tx) => tx<{ id: number }[]>`
+    select id from public.staff_members where user_id = ${stylistAccountId}
+  `);
   if (!staff?.id) return { error: 'Stylist account was not found.' };
-  const { error: deleteError } = await admin
-    .from('event_job_stylist_interest')
-    .delete()
-    .eq('event_job_id', job.id)
-    .eq('staff_id', staff.id);
-  if (deleteError) return { error: deleteError.message };
+  await withServiceRole((tx) => tx`
+    delete from public.event_job_stylist_interest where event_job_id = ${job.id} and staff_id = ${staff.id}
+  `);
   const updated = {
     ...job,
     stylistInterests: job.stylistInterests.filter(
@@ -1594,9 +1507,8 @@ export async function stylistJobsForAccount(
   });
 }
 
-// The Stylist Main ID can supervise the complete stylist queue. It sees every
-// active rental event that requires styling, while individual stylist IDs only
-// see opportunities relevant to themselves.
+// The Stylist Main ID supervises the complete stylist queue, matching the
+// original workflow.
 export async function stylistJobsForMainAccount(): Promise<EventJob[]> {
   return stylistJobsForAdmin();
 }
@@ -2489,63 +2401,53 @@ export async function closeEventJob(
   jobs[index] = updated;
   await writeAll([updated]);
 
-  const admin = createAdminClient();
-  const { data: booking, error: bookingError } = await admin
-    .from('bookings')
-    .select('owner_id,total,paid_amount')
-    .eq('id', updated.bookingId)
-    .single();
-  if (bookingError || !booking)
-    throw new Error(bookingError?.message ?? 'Booking not found.');
-  if (input.additionalPaymentAmount > 0) {
-    const { error: paymentError } = await admin
-      .from('booking_payments')
-      .insert({
-        owner_id: booking.owner_id,
-        booking_id: updated.bookingId,
-        amount: input.additionalPaymentAmount,
-        payment_method: 'other',
-        reference_number: `Final settlement ${updated.id}`,
-        notes: input.notes || 'Recorded during Event Job closure',
-      });
-    if (paymentError) throw new Error(paymentError.message);
-  }
-  const adjustedPaid = Math.max(
-    Number(booking.paid_amount) +
-      input.additionalPaymentAmount -
-      input.refundAmount,
-    0,
-  );
-  const adjustedBalance = Math.max(Number(booking.total) - adjustedPaid, 0);
-  const { error: statusError } = await admin
-    .from('bookings')
-    .update({
-      status: 'completed',
-      paid_amount: adjustedPaid,
-      balance_amount: adjustedBalance,
-      payment_status:
-        input.refundAmount > 0 && adjustedPaid === 0
-          ? 'refunded'
-          : adjustedBalance === 0
-            ? 'paid'
-            : adjustedPaid > 0
-              ? 'partial'
-              : 'unpaid',
-    })
-    .eq('id', updated.bookingId);
-  if (statusError) throw new Error(statusError.message);
-  const { error: activityError } = await admin.from('booking_activity').insert({
-    owner_id: booking.owner_id,
-    booking_id: updated.bookingId,
-    action: 'event_job_closed',
-    details: {
-      event_job_id: updated.id,
-      additional_payment: input.additionalPaymentAmount,
-      refund: input.refundAmount,
-      closed_by: closedBy,
-    },
+  await withServiceRole(async (tx) => {
+    const [booking] = await tx<{ owner_id: string; total: string; paid_amount: string }[]>`
+      select owner_id, total, paid_amount from public.bookings where id = ${updated.bookingId}
+    `;
+    if (!booking) throw new Error('Booking not found.');
+    if (input.additionalPaymentAmount > 0) {
+      await tx`
+        insert into public.booking_payments (owner_id, booking_id, amount, payment_method, reference_number, notes)
+        values (
+          ${booking.owner_id}, ${updated.bookingId}, ${input.additionalPaymentAmount}, 'other',
+          ${`Final settlement ${updated.id}`}, ${input.notes || 'Recorded during Event Job closure'}
+        )
+      `;
+    }
+    const adjustedPaid = Math.max(
+      Number(booking.paid_amount) +
+        input.additionalPaymentAmount -
+        input.refundAmount,
+      0,
+    );
+    const adjustedBalance = Math.max(Number(booking.total) - adjustedPaid, 0);
+    const paymentStatus =
+      input.refundAmount > 0 && adjustedPaid === 0
+        ? 'refunded'
+        : adjustedBalance === 0
+          ? 'paid'
+          : adjustedPaid > 0
+            ? 'partial'
+            : 'unpaid';
+    await tx`
+      update public.bookings set status = 'completed', paid_amount = ${adjustedPaid},
+        balance_amount = ${adjustedBalance}, payment_status = ${paymentStatus}
+      where id = ${updated.bookingId}
+    `;
+    await tx`
+      insert into public.booking_activity (owner_id, booking_id, action, details)
+      values (
+        ${booking.owner_id}, ${updated.bookingId}, 'event_job_closed',
+        ${tx.json({
+          event_job_id: updated.id,
+          additional_payment: input.additionalPaymentAmount,
+          refund: input.refundAmount,
+          closed_by: closedBy,
+        })}
+      )
+    `;
   });
-  if (activityError) throw new Error(activityError.message);
   return { job: updated };
 }
 

@@ -12,15 +12,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PaginatedList } from '@/components/ui/paginated-list';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { stylistJobsForAdmin } from '@/lib/event-jobs/store';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StylistApprovalsPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', auth.user.id).maybeSingle();
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`
+    select role from public.profiles where id = ${user.id}
+  `);
   if (profile?.role !== 'admin') redirect('/staff-portal');
   const jobs = (await stylistJobsForAdmin())
     .filter((job) => job.status === 'active')
@@ -29,7 +31,7 @@ export default async function StylistApprovalsPage() {
   const assigned = jobs.reduce((sum, job) => sum + job.stylistInterests.filter((interest) => interest.status === 'approved').length, 0);
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1180px] space-y-5">
         <DashboardHeader title="Stylist Approvals" subtitle="Assign interested stylists to rental events" backHref="/dashboard" />
         <div className="grid gap-3 sm:grid-cols-3">

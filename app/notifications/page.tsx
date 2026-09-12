@@ -5,7 +5,7 @@ import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { friendlyDate } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
 import { getStaffSession } from '@/lib/staff-portal/session';
 import { notificationsForOwner, unreadCountForOwner } from '@/lib/notifications/admin-store';
 import { markAllAdminNotificationsReadAction } from '@/app/notifications/actions';
@@ -13,9 +13,8 @@ import { markAllAdminNotificationsReadAction } from '@/app/notifications/actions
 export const dynamic = 'force-dynamic';
 
 export default async function NotificationsPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
   const staffSession = await getStaffSession();
   if (staffSession) redirect('/staff-portal/notifications');
@@ -25,15 +24,15 @@ export default async function NotificationsPage() {
   let loadError = '';
   try {
     [notifications, unreadCount] = await Promise.all([
-      notificationsForOwner(auth.user.id),
-      unreadCountForOwner(auth.user.id),
+      notificationsForOwner(user.id),
+      unreadCountForOwner(user.id),
     ]);
   } catch (error) {
     loadError = error instanceof Error ? error.message : 'Unable to load notifications.';
   }
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[900px] space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DashboardHeader title="Notifications" subtitle="Updates about leads, locked dates and your account" backHref="/dashboard" />

@@ -1,6 +1,18 @@
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { FinanceManager, type FinanceRecord } from '@/components/finance/finance-manager';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 export const dynamic = 'force-dynamic';
-export default async function ChallansPage() { const supabase = await createClient(); const { data: auth } = await supabase.auth.getUser(); if (!auth.user) redirect('/login'); const { data, error } = await supabase.from('challans').select('*').order('challan_date', { ascending: false }); return <DashboardShell email={auth.user.email ?? 'Safawala user'}><FinanceManager mode="challans" initialRecords={(data ?? []) as FinanceRecord[]} loadError={error?.message} email={auth.user.email ?? ''} /></DashboardShell>; }
+export default async function ChallansPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  let data: FinanceRecord[] = [];
+  let error = '';
+  try {
+    data = await withUserContext(user.id, (tx) => tx<FinanceRecord[]>`select * from public.challans order by challan_date desc`);
+  } catch (err) {
+    error = err instanceof Error ? err.message : 'Unable to load challans.';
+  }
+  return <DashboardShell email={user.email ?? 'Safawala user'}><FinanceManager mode="challans" initialRecords={data} loadError={error} email={user.email ?? ''} /></DashboardShell>;
+}

@@ -8,65 +8,63 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/server';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
-const LIVE_BOOKINGS =
-  'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))';
+const LIVE_BOOKING_FILTER = `(is_quote = false or (is_quote = true and status not in ('draft','cancelled')))`;
+const LIVE_BOOKING_FILTER_B = `(b.is_quote = false or (b.is_quote = true and b.status not in ('draft','cancelled')))`;
 
 export default async function StaffBookingPage() {
   const session = await requireDepartment('booking');
   if (!session.isMainId) redirect('/staff-portal');
-  const supabase = await createClient();
-  const [
-    bookingCount,
-    modificationCount,
-    activeCustomerCount,
-    closeCount,
-    recentResult,
-  ] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .or(LIVE_BOOKINGS),
-    supabase
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .eq('booking_type', 'sale')
-      .or(LIVE_BOOKINGS)
-      .ilike('notes', '%SALE MODIFICATION REQUIRED%'),
-    supabase.from('customers').select('id', { count: 'exact', head: true }),
-    supabase
-      .from('event_job_stages')
-      .select('id', { count: 'exact', head: true })
-      .eq('stage', 'booking_final_check')
-      .in('status', ['open', 'in_progress']),
-    supabase
-      .from('bookings')
-      .select(
-        'id,booking_number,booking_type,status,payment_status,event_name,event_date,total,customers(name)',
-      )
-      .or(LIVE_BOOKINGS)
-      .order('created_at', { ascending: false })
-      .limit(6),
-  ]);
 
-  const recent = (recentResult.data ?? []) as unknown as Array<{
-    id: number;
-    booking_number: string;
-    booking_type: string;
-    status: string;
-    payment_status: string;
-    event_name: string;
-    event_date: string;
-    total: number;
-    customers: { name: string } | null;
-  }>;
+  const { bookingCount, modificationCount, activeCustomerCount, closeCount, recent } =
+    await withUserContext(session.id, async (tx) => {
+      const [bookingRows, modificationRows, customerRows, closeRows, recentRows] = await Promise.all([
+        tx.unsafe(`select count(*)::int as count from public.bookings where ${LIVE_BOOKING_FILTER}`),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings where booking_type = 'sale' and ${LIVE_BOOKING_FILTER} and notes ilike $1`,
+          ['%SALE MODIFICATION REQUIRED%'],
+        ),
+        tx.unsafe(`select count(*)::int as count from public.customers`),
+        tx.unsafe(
+          `select count(*)::int as count from public.event_job_stages where stage = 'booking_final_check' and status in ('open','in_progress')`,
+        ),
+        tx.unsafe(`
+          select
+            b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date, b.total,
+            case when c.id is null then null else json_build_object('name', c.name) end as customers
+          from public.bookings b
+          left join public.customers c on c.id = b.customer_id
+          where ${LIVE_BOOKING_FILTER_B}
+          order by b.created_at desc
+          limit 6
+        `),
+      ]);
+      return {
+        bookingCount: (bookingRows as unknown as { count: number }[])[0]?.count ?? 0,
+        modificationCount: (modificationRows as unknown as { count: number }[])[0]?.count ?? 0,
+        activeCustomerCount: (customerRows as unknown as { count: number }[])[0]?.count ?? 0,
+        closeCount: (closeRows as unknown as { count: number }[])[0]?.count ?? 0,
+        recent: recentRows as unknown as Array<{
+          id: number;
+          booking_number: string;
+          booking_type: string;
+          status: string;
+          payment_status: string;
+          event_name: string;
+          event_date: string;
+          total: number;
+          customers: { name: string } | null;
+        }>,
+      };
+    });
+
   const kpis = [
     [
       'All bookings',
-      bookingCount.count ?? 0,
+      bookingCount,
       'Sales and rental records',
       '/bookings',
       ReceiptText,
@@ -74,7 +72,7 @@ export default async function StaffBookingPage() {
     ],
     [
       'Jobs to close',
-      closeCount.count ?? 0,
+      closeCount,
       'Final payment check',
       '/staff-portal/booking/close-jobs',
       PackageCheck,
@@ -82,7 +80,7 @@ export default async function StaffBookingPage() {
     ],
     [
       'Modifications pending',
-      modificationCount.count ?? 0,
+      modificationCount,
       'Sale changes waiting',
       '/modifications',
       Wrench,
@@ -90,7 +88,7 @@ export default async function StaffBookingPage() {
     ],
     [
       'Customers',
-      activeCustomerCount.count ?? 0,
+      activeCustomerCount,
       'Customer directory',
       '/customers',
       Users,
@@ -182,7 +180,7 @@ export default async function StaffBookingPage() {
             <div>
               <CardTitle>Recent bookings</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Latest records from Supabase.
+                Latest records from the database.
               </p>
             </div>
             <Button variant="outline" render={<Link href="/bookings" />}>

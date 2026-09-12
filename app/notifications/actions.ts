@@ -1,15 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/session';
 import { markAllReadForOwner } from '@/lib/notifications/admin-store';
 
 export async function markAllAdminNotificationsReadAction() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
-  await markAllReadForOwner(auth.user.id);
+  const user = await requireUser();
+  await markAllReadForOwner(user.id);
   revalidatePath('/notifications');
   revalidatePath('/dashboard');
 }

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 import type { StaffDepartment } from '@/lib/staff-portal/constants';
 
 export type EventJobNotification = {
@@ -13,19 +13,35 @@ export type EventJobNotification = {
   readAt: string | null;
 };
 
-async function notify(
-  jobId: string,
-  message: string,
-  target: { department: StaffDepartment } | { accountId: string },
-) {
-  const admin = createAdminClient();
-  const { error } = await admin.from('event_job_notifications').insert({
-    event_job_id: jobId,
-    recipient_department: 'department' in target ? target.department : null,
-    recipient_account_id: 'accountId' in target ? target.accountId : null,
-    message,
-  });
-  if (error) throw new Error(error.message);
+type Row = {
+  id: string;
+  event_job_id: string;
+  recipient_department: StaffDepartment | null;
+  recipient_account_id: string | null;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+};
+
+function toNotification(item: Row): EventJobNotification {
+  return {
+    id: item.id,
+    jobId: item.event_job_id,
+    recipientDepartment: item.recipient_department,
+    recipientAccountId: item.recipient_account_id,
+    message: item.message,
+    createdAt: item.created_at,
+    readAt: item.read_at,
+  };
+}
+
+async function notify(jobId: string, message: string, target: { department: StaffDepartment } | { accountId: string }) {
+  const department = 'department' in target ? target.department : null;
+  const accountId = 'accountId' in target ? target.accountId : null;
+  await withServiceRole((tx) => tx`
+    insert into public.event_job_notifications (event_job_id, recipient_department, recipient_account_id, message)
+    values (${jobId}, ${department}, ${accountId}, ${message})
+  `);
 }
 
 export async function notifyDepartment(jobId: string, department: StaffDepartment, message: string) {
@@ -39,17 +55,20 @@ export async function notifyAccount(jobId: string, accountId: string, message: s
 // Everything addressed to one of the caller's active departments, OR to their account
 // directly — never notifications for a department they don't (or no longer) hold.
 export async function notificationsForSession(accountId: string, activeDepartments: StaffDepartment[]): Promise<EventJobNotification[]> {
-  const admin = createAdminClient();
-  const filters = [`recipient_account_id.eq.${accountId}`];
-  if (activeDepartments.length) filters.push(`recipient_department.in.(${activeDepartments.join(',')})`);
-  const { data, error } = await admin.from('event_job_notifications').select('*').or(filters.join(',')).order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((item) => ({
-    id: String(item.id), jobId: String(item.event_job_id),
-    recipientDepartment: item.recipient_department as StaffDepartment | null,
-    recipientAccountId: item.recipient_account_id as string | null,
-    message: String(item.message), createdAt: String(item.created_at), readAt: item.read_at as string | null,
-  }));
+  const rows = await withServiceRole((tx) =>
+    activeDepartments.length
+      ? tx<Row[]>`
+          select * from public.event_job_notifications
+          where recipient_account_id = ${accountId} or recipient_department = any(${tx.array(activeDepartments)})
+          order by created_at desc
+        `
+      : tx<Row[]>`
+          select * from public.event_job_notifications
+          where recipient_account_id = ${accountId}
+          order by created_at desc
+        `
+  );
+  return rows.map(toNotification);
 }
 
 export async function unreadCountForSession(accountId: string, activeDepartments: StaffDepartment[]): Promise<number> {
@@ -57,10 +76,8 @@ export async function unreadCountForSession(accountId: string, activeDepartments
 }
 
 export async function markAllReadForSession(accountId: string, activeDepartments: StaffDepartment[]) {
-  const admin = createAdminClient();
   const mine = await notificationsForSession(accountId, activeDepartments);
   const ids = mine.filter((item) => !item.readAt).map((item) => item.id);
   if (!ids.length) return;
-  const { error } = await admin.from('event_job_notifications').update({ read_at: new Date().toISOString() }).in('id', ids);
-  if (error) throw new Error(error.message);
+  await withServiceRole((tx) => tx`update public.event_job_notifications set read_at = now() where id = any(${tx.array(ids)})`);
 }

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { createClient } from '@/lib/supabase/client';
+import { saveLetterAction } from '@/app/hr/actions';
 import jsPDF from 'jspdf';
 
 type Staff = {
@@ -59,8 +59,6 @@ export function LettersManager({
   function save(form: HTMLFormElement) {
     const d = new FormData(form);
     start(async () => {
-      const supabase = createClient();
-      const { data: auth } = await supabase.auth.getUser();
       const letterType = String(d.get('letter_type') || 'Offer letter');
       const title = String(d.get('title') || letterType);
       const details: OfferDetails = {
@@ -81,8 +79,7 @@ export function LettersManager({
         ),
         notes: String(d.get('notes') || ''),
       };
-      const result = await supabase.from('hr_letters').insert({
-        owner_id: auth.user?.id,
+      const result = await saveLetterAction({
         staff_id: Number(d.get('staff_id')),
         letter_type: letterType,
         title,
@@ -553,7 +550,7 @@ function LetterOpening({ type, name }: { type: string; name: string }) {
   return (
     <>
       This letter has been issued by the Human Resources department based on the
-      employee record maintained in Supabase.
+      employee record maintained in the HR system.
     </>
   );
 }
@@ -646,7 +643,7 @@ function letterOpeningPlainText(type: string, name: string): string {
     return `This letter serves as a formal warning to ${name} regarding the matter documented by Human Resources.`;
   if (normalized.includes('termination'))
     return `This letter confirms the termination of ${name}'s employment with Safawala.com, effective as communicated by Human Resources.`;
-  return `This letter has been issued by the Human Resources department based on the employee record maintained in Supabase.`;
+  return `This letter has been issued by the Human Resources department based on the employee record maintained in the HR system.`;
 }
 
 function letterBodyPlainText(type: string, name: string): string {

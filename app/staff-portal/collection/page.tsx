@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { listJobs } from '@/lib/event-jobs/store';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 import { QueueFilterBar } from '@/components/staff-portal/queue-filter-bar';
 
 export const dynamic = 'force-dynamic';
@@ -55,19 +55,20 @@ export default async function StaffCollectionPage({
   ).sort(([, firstJobs], [, secondJobs]) => (secondJobs[0]?.createdAt ?? '').localeCompare(firstJobs[0]?.createdAt ?? ''));
 
   const bookingIds = rentalJobs.map((job) => job.bookingId);
-  const admin = createAdminClient();
-  const { data: bookings } = bookingIds.length
-    ? await admin
-        .from('bookings')
-        .select('id,customers(name)')
-        .in('id', bookingIds)
-    : { data: [] };
+  const bookings = bookingIds.length
+    ? await withServiceRole((tx) =>
+        tx.unsafe(
+          `select b.id, case when c.id is null then null else json_build_object('name', c.name) end as customers
+           from public.bookings b
+           left join public.customers c on c.id = b.customer_id
+           where b.id = any($1::bigint[])`,
+          [bookingIds],
+        ),
+      )
+    : [];
   const customerByBookingId = new Map(
-    (bookings ?? []).map((booking) => {
-      const customer = Array.isArray(booking.customers)
-        ? booking.customers[0]
-        : booking.customers;
-      return [Number(booking.id), customer?.name ?? 'Customer'] as const;
+    (bookings as unknown as { id: number; customers: { name: string } | null }[]).map((booking) => {
+      return [Number(booking.id), booking.customers?.name ?? 'Customer'] as const;
     }),
   );
 

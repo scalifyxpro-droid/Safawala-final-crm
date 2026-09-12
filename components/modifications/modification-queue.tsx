@@ -29,7 +29,7 @@ import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import {
   modificationDetails,
 } from '@/lib/modifications';
-import { createClient } from '@/lib/supabase/client';
+import { logModificationActivityAction } from '@/app/modifications/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { BookingPdfButton, type PdfBooking } from '@/components/bookings/booking-pdf-button';
 
@@ -224,24 +224,8 @@ export function ModificationQueue({
           : 'modification_reopened';
     setBusyId(booking.id);
     setMessage('');
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) {
-      setMessage('Your session has expired. Please sign in again.');
-      setBusyId(null);
-      return;
-    }
-    const { data, error } = await supabase
-      .from('booking_activity')
-      .insert({
-        owner_id: auth.user.id,
-        booking_id: booking.id,
-        action,
-        details: { source: 'modification_portal' },
-      })
-      .select('id,action,details,created_at')
-      .single();
-    if (error) setMessage(error.message);
+    const { data, error } = await logModificationActivityAction(booking.id, action);
+    if (error || !data) setMessage(error || 'Activity could not be recorded.');
     else {
       setBookings((current) =>
         current.map((item) =>

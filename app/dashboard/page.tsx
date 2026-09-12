@@ -23,90 +23,48 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
 import { currentStageSummary, listActiveJobs } from '@/lib/event-jobs/store';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
+// A booking counts as "live" when it's an actual booking, or a quote that has
+// moved past draft/cancelled (mirrors the original `.or('is_quote.eq.false,
+// and(is_quote.eq.true,status.not.in.(draft,cancelled))')` PostgREST filter).
+const LIVE_BOOKING_FILTER = `(b.is_quote = false or (b.is_quote = true and b.status not in ('draft','cancelled')))`;
+
+type UpcomingBookingRow = {
+  id: number;
+  booking_number: string;
+  booking_type: string;
+  status: string;
+  event_name: string;
+  event_date: string;
+  event_time: string | null;
+  event_location: string | null;
+  customers: { name: string } | null;
+};
+
+type RecentBookingRow = {
+  id: number;
+  booking_number: string;
+  booking_type: string;
+  status: string;
+  payment_status: string;
+  event_name: string;
+  event_date: string;
+  total: number;
+  customers: { name: string } | null;
+};
+
+type EventJobStateRow = { state: unknown };
+type PaymentRow = { paid_amount: number | null; created_at: string | null };
+
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const today = new Date().toISOString().slice(0, 10);
-  const [
-    { count: total },
-    { count: quoteTotal },
-    { count: confirmed },
-    { count: completed },
-    { data: upcomingRows },
-    { count: modificationCount },
-    { data: eventJobs },
-    { data: paymentRows },
-    { data: recent, error },
-    jobTrackerJobs,
-  ] = await Promise.all([
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      ),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_quote', true)
-      .eq('status', 'draft'),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      )
-      .eq('status', 'confirmed'),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      )
-      .eq('status', 'completed'),
-    supabase
-      .from('bookings')
-      .select(
-        'id,booking_number,booking_type,status,payment_status,event_name,event_date,event_time,event_location,total,customers(name)',
-      )
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      )
-      .gte('event_date', today)
-      .order('event_date', { ascending: true })
-      .limit(8),
-    supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('booking_type', 'sale')
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      )
-      .ilike('notes', '%SALE MODIFICATION REQUIRED%'),
-    supabase.from('event_jobs').select('state'),
-    supabase
-      .from('bookings')
-      .select('customer_id,total,paid_amount,payment_status,created_at')
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      ),
-    supabase
-      .from('bookings')
-      .select(
-        'id,booking_number,booking_type,status,payment_status,event_name,event_date,total,customers(name)',
-      )
-      .or(
-        'is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))',
-      )
-      .order('created_at', { ascending: false })
-      .limit(6),
-    listActiveJobs().catch(() => []),
-  ]);
+
   const calendarBase = new Date();
   const calendarYear = calendarBase.getFullYear();
   const calendarMonth = calendarBase.getMonth();
@@ -115,26 +73,137 @@ export default async function DashboardPage() {
   const calendarPad = (value: number) => String(value).padStart(2, '0');
   const calendarStart = `${calendarYear}-${calendarPad(calendarMonth + 1)}-01`;
   const calendarEnd = `${calendarYear}-${calendarPad(calendarMonth + 1)}-${calendarPad(calendarLast.getDate())}`;
-  const { data: calendarRows } = await supabase
-    .from('bookings')
-    .select('id,booking_number,booking_type,status,payment_status,is_quote,event_name,event_date,event_time,event_location,pickup_date,due_date,subtotal,discount,tax,security_deposit,total,paid_amount,balance_amount,notes,customers(name,phone),booking_items(item_name,quantity,unit_price,line_total,product_id,products(image_urls,barcode))')
-    .or('is_quote.eq.false,and(is_quote.eq.true,status.not.in.(draft,cancelled))')
-    .gte('event_date', calendarStart)
-    .lte('event_date', calendarEnd)
-    .order('event_date');
+
+  let total = 0;
+  let quoteTotal = 0;
+  let confirmed = 0;
+  let completed = 0;
+  let upcomingRows: UpcomingBookingRow[] = [];
+  let modificationCount = 0;
+  let eventJobs: EventJobStateRow[] = [];
+  let paymentRows: PaymentRow[] = [];
+  let recent: RecentBookingRow[] = [];
+  let error: Error | null = null;
+  let jobTrackerJobs: Awaited<ReturnType<typeof listActiveJobs>> = [];
+  let calendarRows: unknown[] = [];
+  let calendarLockedRaw: LockedDate[] = [];
+
+  try {
+    const result = await withUserContext(user.id, async (tx) => {
+      const [
+        totalRows,
+        quoteTotalRows,
+        confirmedRows,
+        completedRows,
+        upcoming,
+        modificationRows,
+        eventJobRows,
+        payments,
+        recentRows,
+        activeJobs,
+        calendar,
+        calendarLocked,
+      ] = await Promise.all([
+        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER}`),
+        tx.unsafe(`select count(*)::int as count from public.bookings b where b.is_quote = true and b.status = 'draft'`),
+        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'confirmed'`),
+        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'completed'`),
+        tx.unsafe(
+          `select b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date,
+             b.event_time, b.event_location, b.total,
+             case when c.id is null then null else json_build_object('name', c.name) end as customers
+           from public.bookings b
+           left join public.customers c on c.id = b.customer_id
+           where ${LIVE_BOOKING_FILTER} and b.event_date >= $1
+           order by b.event_date asc
+           limit 8`,
+          [today],
+        ),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings b
+           where b.booking_type = 'sale' and ${LIVE_BOOKING_FILTER} and b.notes ilike '%SALE MODIFICATION REQUIRED%'`,
+        ),
+        tx.unsafe(`select state from public.event_jobs`),
+        tx.unsafe(
+          `select customer_id, total, paid_amount, payment_status, created_at from public.bookings b where ${LIVE_BOOKING_FILTER}`,
+        ),
+        tx.unsafe(
+          `select b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date, b.total,
+             case when c.id is null then null else json_build_object('name', c.name) end as customers
+           from public.bookings b
+           left join public.customers c on c.id = b.customer_id
+           where ${LIVE_BOOKING_FILTER}
+           order by b.created_at desc
+           limit 6`,
+        ),
+        listActiveJobs().catch(() => []),
+        tx.unsafe(
+          `select
+             b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote, b.event_name,
+             b.event_date, b.event_time, b.event_location, b.pickup_date, b.due_date, b.subtotal, b.discount,
+             b.tax, b.security_deposit, b.total, b.paid_amount, b.balance_amount, b.notes,
+             case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+             coalesce(items.rows, '[]'::json) as booking_items
+           from public.bookings b
+           left join public.customers c on c.id = b.customer_id
+           left join lateral (
+             select json_agg(json_build_object(
+               'item_name', bi.item_name, 'quantity', bi.quantity, 'unit_price', bi.unit_price,
+               'line_total', bi.line_total, 'product_id', bi.product_id,
+               'products', case when p.id is null then null else json_build_object('image_urls', p.image_urls, 'barcode', p.barcode) end
+             )) as rows
+             from public.booking_items bi
+             left join public.products p on p.id = bi.product_id
+             where bi.booking_id = b.id
+           ) items on true
+           where ${LIVE_BOOKING_FILTER} and b.event_date >= $1 and b.event_date <= $2
+           order by b.event_date`,
+          [calendarStart, calendarEnd],
+        ),
+        // Locked dates from the Leads Center should show as blocked here too — if the
+        // leads_center migration isn't applied yet this just comes back empty.
+        tx.unsafe(
+          `select id, locked_date, label, notes from public.lead_locked_dates
+           where owner_id = $1 and locked_date >= $2 and locked_date <= $3`,
+          [user.id, calendarStart, calendarEnd],
+        ).catch(() => []),
+      ]);
+      return {
+        total: (totalRows as unknown as { count: number }[])[0]?.count ?? 0,
+        quoteTotal: (quoteTotalRows as unknown as { count: number }[])[0]?.count ?? 0,
+        confirmed: (confirmedRows as unknown as { count: number }[])[0]?.count ?? 0,
+        completed: (completedRows as unknown as { count: number }[])[0]?.count ?? 0,
+        upcoming: upcoming as unknown as UpcomingBookingRow[],
+        modificationCount: (modificationRows as unknown as { count: number }[])[0]?.count ?? 0,
+        eventJobRows: eventJobRows as unknown as EventJobStateRow[],
+        payments: payments as unknown as PaymentRow[],
+        recentRows: recentRows as unknown as RecentBookingRow[],
+        activeJobs,
+        calendar,
+        calendarLocked: calendarLocked as unknown as LockedDate[],
+      };
+    });
+    total = result.total;
+    quoteTotal = result.quoteTotal;
+    confirmed = result.confirmed;
+    completed = result.completed;
+    upcomingRows = result.upcoming;
+    modificationCount = result.modificationCount;
+    eventJobs = result.eventJobRows;
+    paymentRows = result.payments;
+    recent = result.recentRows;
+    jobTrackerJobs = result.activeJobs;
+    calendarRows = result.calendar;
+    calendarLockedRaw = result.calendarLocked;
+  } catch (err) {
+    error = err instanceof Error ? err : new Error('Unable to load the dashboard.');
+  }
+
   const calendarCells = Array.from(
     { length: calendarFirst.getDay() + calendarLast.getDate() },
     (_, index) => (index < calendarFirst.getDay() ? null : index - calendarFirst.getDay() + 1),
   );
-  // Locked dates from the Leads Center should show as blocked here too — if the
-  // leads_center migration isn't applied yet this just comes back empty.
-  const { data: calendarLockedRaw } = await supabase
-    .from('lead_locked_dates')
-    .select('id,locked_date,label,notes')
-    .eq('owner_id', auth.user.id)
-    .gte('locked_date', calendarStart)
-    .lte('locked_date', calendarEnd);
-  const calendarLockedDates = (calendarLockedRaw ?? []) as unknown as LockedDate[];
+  const calendarLockedDates = calendarLockedRaw;
   const jobsToClose = (eventJobs ?? []).filter((row) => {
     const state = row.state as {
       bookingType?: string;
@@ -284,7 +353,7 @@ export default async function DashboardPage() {
     },
   ];
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1440px] space-y-6">
         <DashboardHeader
           title="Booking Dashboard"
@@ -718,7 +787,7 @@ export default async function DashboardPage() {
             <div>
               <CardTitle>Recent bookings</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Most recently created records from Supabase
+                Most recently created records
               </p>
             </div>
             <Button variant="outline" render={<Link href="/bookings" />}>

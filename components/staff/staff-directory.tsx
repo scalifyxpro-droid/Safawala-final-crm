@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { friendlyDate } from '@/lib/bookings';
-import { createClient } from '@/lib/supabase/client';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { ACCESS_MODULES, ACCESS_MODULE_META, type AccessModule } from '@/lib/staff-portal/access-modules';
 import { DEPARTMENT_META, STAFF_DEPARTMENTS, type StaffDepartment } from '@/lib/staff-portal/constants';
@@ -31,10 +30,12 @@ import type { StaffAccessType, StaffType } from '@/lib/staff-portal/types';
 import {
   createStaffLoginAction,
   resetStaffLoginPasswordAction,
+  saveStaffMemberAction,
   setStaffDepartmentAction,
   setStaffLoginActiveAction,
   setStaffModuleAction,
   setStaffTypeAction,
+  toggleStaffStatusAction,
 } from '@/app/staff/actions';
 
 function formText(form: FormData, name: string) {
@@ -124,17 +125,12 @@ export function StaffDirectory({
   async function toggleStatus(member: StaffMember) {
     setBusyId(member.id);
     setMessage('');
-    const { data, error } = await createClient()
-      .from('staff_members')
-      .update({ is_active: !member.is_active })
-      .eq('id', member.id)
-      .select('id,name,phone,is_active,created_at,updated_at')
-      .single();
-    if (error) setMessage(error.message);
+    const { data, error } = await toggleStaffStatusAction(member.id, !member.is_active);
+    if (error || !data) setMessage(error || 'Status could not be updated.');
     else
       setStaff((current) =>
         current.map((row) =>
-          row.id === member.id ? { ...row, ...(data as Partial<StaffMember>) } : row,
+          row.id === member.id ? { ...row, ...data } : row,
         ),
       );
     setBusyId(null);
@@ -562,34 +558,11 @@ function StaffDialog({
       address: readText('address') || null,
       is_active: readText('status') === 'active',
     };
-    const supabase = createClient();
-    let result;
-    if (member) {
-      result = await supabase
-        .from('staff_members')
-        .update(payload)
-        .eq('id', member.id)
-        .select('id,name,phone,email,address,is_active,created_at,updated_at')
-        .single();
-    } else {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      if (authError || !auth.user) {
-        setError('Your session has expired. Please sign in again.');
-        setBusy(false);
-        return;
-      }
-      result = await supabase
-        .from('staff_members')
-        .insert({ ...payload, owner_id: auth.user.id })
-        .select('id,name,phone,email,address,is_active,created_at,updated_at')
-        .single();
-    }
-    if (result.error) {
-      setError(
-        result.error.code === '23505'
-          ? 'A staff member with this name already exists.'
-          : result.error.message,
-      );
+    const result = await saveStaffMemberAction(
+      member ? { id: member.id, ...payload } : payload,
+    );
+    if (result.error || !result.data) {
+      setError(result.error || 'Staff member could not be saved.');
       setBusy(false);
       return;
     }

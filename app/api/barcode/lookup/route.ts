@@ -1,30 +1,60 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
-const productFields = 'id,sku,barcode,name,category,subcategory,sale_price,rental_price,security_deposit,stock_quantity,image_urls';
+type ProductRow = {
+  id: number;
+  sku: string | null;
+  barcode: string | null;
+  name: string;
+  category: string | null;
+  subcategory: string | null;
+  sale_price: number;
+  rental_price: number;
+  security_deposit: number;
+  stock_quantity: number;
+  image_urls: string[];
+};
+
+const PRODUCT_FIELDS =
+  'id, sku, barcode, name, category, subcategory, sale_price, rental_price, security_deposit, stock_quantity, image_urls';
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return NextResponse.json({ error: 'Your session has expired.' }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Your session has expired.' }, { status: 401 });
     const body = await request.json().catch(() => ({}));
     const barcode = String(body?.barcode ?? '').trim();
     if (!barcode) return NextResponse.json({ error: 'Barcode is required.' }, { status: 422 });
 
-    const exact = (query: ReturnType<typeof supabase.from>) => query.select(productFields).eq('barcode', barcode).eq('is_active', true).maybeSingle();
-    let { data: product } = await exact(supabase.from('products'));
-    if (!product) {
-      const bySku = await supabase.from('products').select(productFields).eq('sku', barcode).eq('is_active', true).maybeSingle();
-      product = bySku.data;
-    }
-    if (!product) {
-      const variant = await supabase.from('product_variants').select('product_id').eq('barcode', barcode).maybeSingle();
-      if (variant.data?.product_id) {
-        const byVariant = await supabase.from('products').select(productFields).eq('id', variant.data.product_id).eq('is_active', true).maybeSingle();
-        product = byVariant.data;
+    const product = await withUserContext(user.id, async (tx) => {
+      const [byBarcode] = await tx.unsafe(
+        `select ${PRODUCT_FIELDS} from public.products where barcode = $1 and is_active = true limit 1`,
+        [barcode],
+      );
+      if (byBarcode) return byBarcode as unknown as ProductRow;
+
+      const [bySku] = await tx.unsafe(
+        `select ${PRODUCT_FIELDS} from public.products where sku = $1 and is_active = true limit 1`,
+        [barcode],
+      );
+      if (bySku) return bySku as unknown as ProductRow;
+
+      const [variant] = await tx.unsafe(
+        `select product_id from public.product_variants where barcode = $1 limit 1`,
+        [barcode],
+      );
+      const variantProductId = (variant as unknown as { product_id: number } | undefined)?.product_id;
+      if (variantProductId) {
+        const [byVariant] = await tx.unsafe(
+          `select ${PRODUCT_FIELDS} from public.products where id = $1 and is_active = true limit 1`,
+          [variantProductId],
+        );
+        if (byVariant) return byVariant as unknown as ProductRow;
       }
-    }
+      return null;
+    });
+
     if (!product) return NextResponse.json({ error: `No product found with barcode: ${barcode}` }, { status: 404 });
     return NextResponse.json({ product });
   } catch (error) {

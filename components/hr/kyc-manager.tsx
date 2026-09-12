@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { createClient } from '@/lib/supabase/client';
+import { getKycDownloadUrlAction, saveKycDocumentAction } from '@/app/hr/actions';
 
 type Staff = { id: number; name: string };
 type Row = {
@@ -36,67 +36,20 @@ export function KycManager({
 
   function save(form: HTMLFormElement) {
     setFormError(null);
-    const d = new FormData(form);
+    const formData = new FormData(form);
     start(async () => {
-      try {
-        const supabase = createClient();
-        const { data: auth } = await supabase.auth.getUser();
-        if (!auth.user) {
-          setFormError('Your session has expired. Please sign in again.');
-          return;
-        }
-
-        const file = d.get('document') as File | null;
-        let path: string | null = null;
-        if (file && file.size) {
-          path = `${auth.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-          const upload = await supabase.storage
-            .from('staff-kyc')
-            .upload(path, file, { upsert: false });
-          if (upload.error) {
-            setFormError(`Could not upload the file: ${upload.error.message}`);
-            return;
-          }
-        }
-
-        const status = String(d.get('status') || 'pending');
-        const payload = {
-          owner_id: auth.user.id,
-          staff_id: Number(d.get('staff_id')),
-          document_type: String(d.get('document_type') || ''),
-          document_number: String(d.get('document_number') || ''),
-          address_proof: String(d.get('address_proof') || ''),
-          bank_details_status: String(
-            d.get('bank_details_status') || 'pending',
-          ),
-          status,
-          document_url: path,
-          admin_notes: String(d.get('admin_notes') || ''),
-          verified_by: status === 'verified' ? auth.user.id : null,
-          verified_at: status === 'verified' ? new Date().toISOString() : null,
-        };
-
-        const result = await supabase.from('hr_kyc_documents').insert(payload);
-        if (result.error) {
-          setFormError(`Could not save the document: ${result.error.message}`);
-          return;
-        }
-        window.location.reload();
-      } catch (err) {
-        setFormError(
-          err instanceof Error
-            ? err.message
-            : 'Something went wrong while saving. Please try again.',
-        );
+      const result = await saveKycDocumentAction(formData);
+      if (result.error) {
+        setFormError(result.error);
+        return;
       }
+      window.location.reload();
     });
   }
 
   async function download(path: string) {
-    const { data } = await createClient()
-      .storage.from('staff-kyc')
-      .createSignedUrl(path, 300);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    const { url } = await getKycDownloadUrlAction(path);
+    if (url) window.open(url, '_blank');
   }
 
   return (
@@ -106,7 +59,7 @@ export function KycManager({
           <div>
             <p className="font-semibold">Staff KYC & documents</p>
             <p className="text-sm text-muted-foreground">
-              Private files are protected by Supabase Storage policies.
+              Private files are protected and only accessible via a secure link.
             </p>
           </div>
           <Button

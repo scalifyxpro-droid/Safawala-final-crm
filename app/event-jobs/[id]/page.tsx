@@ -18,8 +18,9 @@ import {
   getJob,
 } from '@/lib/event-jobs/store';
 import { addIssueAction, resolveIssueAction } from '@/app/event-jobs/actions';
-import { createClient } from '@/lib/supabase/server';
 import { getStaffSession } from '@/lib/staff-portal/session';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,9 +52,8 @@ export default async function EventJobDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const staffSession = await getStaffSession();
 
   const job = await getJob(id);
@@ -64,17 +64,28 @@ export default async function EventJobDetailPage({
   if (isCollectionAccount && job.bookingType !== 'rental')
     redirect('/event-jobs');
 
-  const { data: bookingRaw } = await supabase
-    .from('bookings')
-    .select(
-      'id,booking_number,booking_type,status,event_name,event_date,event_time,event_location,customers(name,phone),booking_items(item_name,quantity)',
-    )
-    .eq('id', job.bookingId)
-    .maybeSingle();
-  const booking = bookingRaw as unknown as JobBookingRow | null;
+  const booking = await withUserContext(user.id, async (tx) => {
+    const rows = await tx<JobBookingRow[]>`
+      select
+        b.id, b.booking_number, b.booking_type, b.status, b.event_name,
+        b.event_date, b.event_time, b.event_location,
+        case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
+        coalesce(items.booking_items, '[]'::json) as booking_items
+      from public.bookings b
+      left join public.customers c on c.id = b.customer_id
+      left join lateral (
+        select json_agg(json_build_object('item_name', bi.item_name, 'quantity', bi.quantity) order by bi.id) as booking_items
+        from public.booking_items bi
+        where bi.booking_id = b.id
+      ) items on true
+      where b.id = ${job.bookingId}
+      limit 1
+    `;
+    return rows[0] ?? null;
+  });
 
   return (
-    <BookingPortalShell email={auth.user.email ?? 'Safawala user'}>
+    <BookingPortalShell email={user.email || 'Safawala user'}>
       <div className="mx-auto max-w-[1080px] space-y-6">
         <DashboardHeader
           title={job.id}

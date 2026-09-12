@@ -1,14 +1,22 @@
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { CouponsManager, type CouponOffer } from '@/components/coupons/coupons-manager';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CouponsPage() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
-  const { data, error } = await supabase.from('coupon_offers').select('id,code,name,discount_type,value,is_active,created_at').order('created_at', { ascending: false });
-  return <DashboardShell email={auth.user.email ?? 'Safawala user'}><CouponsManager offers={(data ?? []) as CouponOffer[]} loadError={error?.message ?? ''} /></DashboardShell>;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  let data: CouponOffer[] = [];
+  let error = '';
+  try {
+    data = await withUserContext(user.id, (tx) => tx<CouponOffer[]>`
+      select id, code, name, discount_type, value, is_active, created_at from public.coupon_offers order by created_at desc
+    `);
+  } catch (err) {
+    error = err instanceof Error ? err.message : 'Unable to load coupon offers.';
+  }
+  return <DashboardShell email={user.email ?? 'Safawala user'}><CouponsManager offers={data} loadError={error} /></DashboardShell>;
 }

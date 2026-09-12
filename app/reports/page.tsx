@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { ReportsDashboard, type ReportBooking, type ReportProduct } from '@/components/reports/reports-dashboard';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,32 +19,45 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const end = typeof params.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.end) ? params.end : defaultEnd;
   const safeStart = start <= end ? start : end;
   const safeEnd = start <= end ? end : start;
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  const [bookingResult, productsResult, customerResult, staffResult, expenseResult] = await Promise.all([
-    supabase.from('bookings').select('id,booking_number,booking_type,status,event_date,total,paid_amount,balance_amount,customers(name)').eq('is_quote', false).gte('event_date', safeStart).lte('event_date', safeEnd).order('event_date', { ascending: false }),
-    supabase.from('products').select('id,name,category,stock_quantity,sale_price,rental_price,reorder_level,is_active').order('name', { ascending: true }),
-    supabase.from('customers').select('id', { count: 'exact', head: true }),
-    supabase.from('staff_members').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('expenses').select('amount').gte('expense_date', safeStart).lte('expense_date', safeEnd),
-  ]);
+  const { bookingRows, productRows, customerCount, staffCount, expenseRows } = await withUserContext(user.id, async (tx) => {
+    const bookingRows = await tx<(ReportBooking & { customer_name: string | null })[]>`
+      select b.id, b.booking_number, b.booking_type, b.status, b.event_date, b.total, b.paid_amount, b.balance_amount,
+        c.name as customer_name
+      from public.bookings b
+      left join public.customers c on c.id = b.customer_id
+      where b.is_quote = false and b.event_date >= ${safeStart} and b.event_date <= ${safeEnd}
+      order by b.event_date desc
+    `;
+    const productRows = await tx<ReportProduct[]>`
+      select id, name, category, stock_quantity, sale_price, rental_price, reorder_level, is_active
+      from public.products order by name asc
+    `;
+    const [{ count: customerCount }] = await tx<{ count: string }[]>`select count(*) as count from public.customers`;
+    const [{ count: staffCount }] = await tx<{ count: string }[]>`select count(*) as count from public.staff_members where is_active = true`;
+    const expenseRows = await tx<{ amount: string }[]>`
+      select amount from public.expenses where expense_date >= ${safeStart} and expense_date <= ${safeEnd}
+    `;
+    return { bookingRows, productRows, customerCount: Number(customerCount), staffCount: Number(staffCount), expenseRows };
+  });
 
-  const bookings = ((bookingResult.data ?? []) as unknown as ReportBooking[]).map((booking) => ({
+  const bookings = bookingRows.map(({ customer_name, ...booking }) => ({
     ...booking,
     total: Number(booking.total) || 0,
     paid_amount: Number(booking.paid_amount) || 0,
     balance_amount: Number(booking.balance_amount) || 0,
-  }));
-  const products = ((productsResult.data ?? []) as unknown as ReportProduct[]).map((product) => ({
+    customers: customer_name ? { name: customer_name } : null,
+  })) as unknown as ReportBooking[];
+  const products = productRows.map((product) => ({
     ...product,
     stock_quantity: Number(product.stock_quantity) || 0,
     sale_price: Number(product.sale_price) || 0,
     rental_price: Number(product.rental_price) || 0,
     reorder_level: Number(product.reorder_level) || 0,
   }));
-  const expenseTotal = (expenseResult.data ?? []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const expenseTotal = expenseRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
-  return <DashboardShell email={auth.user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount: customerResult.count ?? 0, expenseTotal, staffCount: staffResult.count ?? 0, start: safeStart, end: safeEnd }} /></DashboardShell>;
+  return <DashboardShell email={user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount, expenseTotal, staffCount, start: safeStart, end: safeEnd }} /></DashboardShell>;
 }

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createAdminClient } from '@/lib/supabase/admin';
+import { withServiceRole } from '@/lib/db/client';
 
 export type PerformanceCreditRecord = {
   identifier: string;
@@ -10,19 +10,19 @@ export type PerformanceCreditRecord = {
 };
 
 export async function creditPerformance(identifier: string, name: string, department: string, jobId: string) {
-  const admin = createAdminClient();
-  const { error } = await admin.from('staff_performance_credits').upsert({
-    identifier, name, department, event_job_id: jobId,
-  }, { onConflict: 'identifier,event_job_id,department', ignoreDuplicates: true });
-  if (error) throw new Error(error.message);
+  await withServiceRole((tx) => tx`
+    insert into public.staff_performance_credits (identifier, name, department, event_job_id)
+    values (${identifier}, ${name}, ${department}, ${jobId})
+    on conflict (identifier, event_job_id, department) do nothing
+  `);
 }
 
 export async function listPerformanceCredits(): Promise<PerformanceCreditRecord[]> {
-  const admin = createAdminClient();
-  const { data, error } = await admin.from('staff_performance_credits').select('identifier,name,department,event_job_id');
-  if (error) throw new Error(error.message);
+  const rows = await withServiceRole((tx) => tx<{ identifier: string; name: string; department: string; event_job_id: string }[]>`
+    select identifier, name, department, event_job_id from public.staff_performance_credits
+  `);
   const map = new Map<string, PerformanceCreditRecord>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     const identifier = String(row.identifier);
     const current = map.get(identifier) ?? { identifier, name: String(row.name), department: String(row.department), completedJobIds: [] };
     current.completedJobIds.push(String(row.event_job_id));
