@@ -1,0 +1,44 @@
+{
+  "startedAt": "2026-09-13T12:46:14.644Z",
+  "command": "import",
+  "owner": {
+    "id": "7b306e12-c19c-4f21-8df3-66be253638fd",
+    "email": "vadodara@safawala.com"
+  },
+  "source": {
+    "preparedProducts": 2316,
+    "legacyProducts": 2227,
+    "retailProducts": 89,
+    "variants": 27,
+    "units": 949,
+    "categories": 25,
+    "archives": 52,
+    "imageEntries": 1992,
+    "validImages": 1991,
+    "validImageBytes": 2059241696
+  },
+  "database": {
+    "insertedProducts": 2316,
+    "updatedProducts": 0,
+    "insertedVariants": 27,
+    "updatedVariants": 0,
+    "insertedUnits": 949,
+    "updatedUnits": 0,
+    "archivesSkipped": 52,
+    "migrationProducts": 2316,
+    "migrationVariants": 27,
+    "migrationUnits": 949,
+    "archiveEvents": 0,
+    "orphans": 0,
+    "invalidRows": 0
+  },
+  "verification": {
+    "migrationProducts": 2316,
+    "migrationVariants": 27,
+    "migrationUnits": 949,
+    "archiveEvents": 0,
+    "orphans": 0,
+    "invalidRows": 0
+  },
+  "completedAt": "2026-09-13T12:46:41.623Z"
+}

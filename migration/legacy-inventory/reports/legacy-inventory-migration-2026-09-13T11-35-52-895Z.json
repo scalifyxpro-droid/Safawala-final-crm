@@ -1,0 +1,29 @@
+{
+  "startedAt": "2026-09-13T11:15:17.636Z",
+  "command": "upload",
+  "source": {
+    "preparedProducts": 2316,
+    "legacyProducts": 2227,
+    "retailProducts": 89,
+    "variants": 27,
+    "units": 949,
+    "categories": 25,
+    "archives": 52,
+    "imageEntries": 1992,
+    "validImages": 1991,
+    "validImageBytes": 2059241696
+  },
+  "bucketPreflight": {
+    "bucket": "safawala-files-txctzmoi7e",
+    "existingObjects": 626,
+    "existingBytes": 663135526,
+    "requiredBytes": 2059241696,
+    "configuredCapacityBytes": null
+  },
+  "images": {
+    "uploaded": 1365,
+    "skipped": 626,
+    "total": 1991
+  },
+  "completedAt": "2026-09-13T11:35:52.893Z"
+}

@@ -43,4 +43,6 @@ next-env.d.ts
 /Claude outputs/
 /supabase/.temp/
 /migration/legacy-inventory/images/
+/migration/legacy-inventory/backups/
+/migration/legacy-inventory/temp-ssh/
 *.tsbuildinfo
