@@ -16,7 +16,11 @@ import {
   Route,
 } from 'lucide-react';
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
-import { CalendarDayGrid, type CalendarBooking, type LockedDate } from '@/components/bookings/calendar-day-grid';
+import {
+  CalendarDayGrid,
+  type CalendarBooking,
+  type LockedDate,
+} from '@/components/bookings/calendar-day-grid';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -104,10 +108,18 @@ export default async function DashboardPage() {
         calendar,
         calendarLocked,
       ] = await Promise.all([
-        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER}`),
-        tx.unsafe(`select count(*)::int as count from public.bookings b where b.is_quote = true and b.status = 'draft'`),
-        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'confirmed'`),
-        tx.unsafe(`select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'completed'`),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER}`,
+        ),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings b where b.is_quote = true and b.status = 'draft'`,
+        ),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'confirmed'`,
+        ),
+        tx.unsafe(
+          `select count(*)::int as count from public.bookings b where ${LIVE_BOOKING_FILTER} and b.status = 'completed'`,
+        ),
         tx.unsafe(
           `select b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date,
              b.event_time, b.event_location, b.total,
@@ -162,19 +174,25 @@ export default async function DashboardPage() {
         ),
         // Locked dates from the Leads Center should show as blocked here too — if the
         // leads_center migration isn't applied yet this just comes back empty.
-        tx.unsafe(
-          `select id, locked_date, label, notes from public.lead_locked_dates
+        tx
+          .unsafe(
+            `select id, locked_date, label, notes from public.lead_locked_dates
            where owner_id = $1 and locked_date >= $2 and locked_date <= $3`,
-          [user.id, calendarStart, calendarEnd],
-        ).catch(() => []),
+            [user.id, calendarStart, calendarEnd],
+          )
+          .catch(() => []),
       ]);
       return {
         total: (totalRows as unknown as { count: number }[])[0]?.count ?? 0,
-        quoteTotal: (quoteTotalRows as unknown as { count: number }[])[0]?.count ?? 0,
-        confirmed: (confirmedRows as unknown as { count: number }[])[0]?.count ?? 0,
-        completed: (completedRows as unknown as { count: number }[])[0]?.count ?? 0,
+        quoteTotal:
+          (quoteTotalRows as unknown as { count: number }[])[0]?.count ?? 0,
+        confirmed:
+          (confirmedRows as unknown as { count: number }[])[0]?.count ?? 0,
+        completed:
+          (completedRows as unknown as { count: number }[])[0]?.count ?? 0,
         upcoming: upcoming as unknown as UpcomingBookingRow[],
-        modificationCount: (modificationRows as unknown as { count: number }[])[0]?.count ?? 0,
+        modificationCount:
+          (modificationRows as unknown as { count: number }[])[0]?.count ?? 0,
         eventJobRows: eventJobRows as unknown as EventJobStateRow[],
         payments: payments as unknown as PaymentRow[],
         recentRows: recentRows as unknown as RecentBookingRow[],
@@ -196,12 +214,16 @@ export default async function DashboardPage() {
     calendarRows = result.calendar;
     calendarLockedRaw = result.calendarLocked;
   } catch (err) {
-    error = err instanceof Error ? err : new Error('Unable to load the dashboard.');
+    error =
+      err instanceof Error ? err : new Error('Unable to load the dashboard.');
   }
 
   const calendarCells = Array.from(
     { length: calendarFirst.getDay() + calendarLast.getDate() },
-    (_, index) => (index < calendarFirst.getDay() ? null : index - calendarFirst.getDay() + 1),
+    (_, index) =>
+      index < calendarFirst.getDay()
+        ? null
+        : index - calendarFirst.getDay() + 1,
   );
   const calendarLockedDates = calendarLockedRaw;
   const jobsToClose = (eventJobs ?? []).filter((row) => {
@@ -360,7 +382,11 @@ export default async function DashboardPage() {
           subtitle="Bookings, quotations and jobs waiting for closure"
           actions={
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" render={<Link href="/bookings/calendar" />}>
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href="/bookings/calendar" />}
+              >
                 <CalendarDays />
                 <span className="hidden sm:inline">Open calendar</span>
               </Button>
@@ -375,8 +401,12 @@ export default async function DashboardPage() {
           <Card className="h-full border-border shadow-level-1 ring-0">
             <CardHeader className="flex-row items-start justify-between pb-3">
               <div>
-                <p className="text-xs font-medium text-muted-foreground">Total Revenue</p>
-                <p className="mt-2 text-sm font-semibold text-primary">Live collections</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Total Revenue
+                </p>
+                <p className="mt-2 text-sm font-semibold text-primary">
+                  Live collections
+                </p>
               </div>
               <CircleDollarSign className="size-5 text-emerald-600" />
             </CardHeader>
@@ -391,9 +421,14 @@ export default async function DashboardPage() {
               </div>
               <div className="flex items-center justify-between pt-1">
                 <span className="font-semibold">Till Now</span>
-                <span className="font-semibold text-emerald-600">{money(revenueTillNow)}</span>
+                <span className="font-semibold text-emerald-600">
+                  {money(revenueTillNow)}
+                </span>
               </div>
-              <Link href="/ledger" className="inline-flex pt-1 text-xs font-medium text-primary hover:underline">
+              <Link
+                href="/ledger"
+                className="inline-flex pt-1 text-xs font-medium text-primary hover:underline"
+              >
                 View revenue <ArrowRight className="ml-1 size-3.5" />
               </Link>
             </CardContent>
@@ -428,510 +463,542 @@ export default async function DashboardPage() {
             <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
               <CalendarDays className="size-5 text-primary" /> Booking calendar
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">Live sales and rental bookings for this month.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Live sales and rental bookings for this month.
+            </p>
           </div>
           <Card className="border-border shadow-level-1 ring-0">
             <CardContent className="p-4">
-            <CalendarDayGrid
-              year={calendarYear}
-              month={calendarMonth}
-              cells={calendarCells}
-              bookings={(calendarRows ?? []) as unknown as CalendarBooking[]}
-              modificationBookings={[]}
-              lockedDates={calendarLockedDates}
-            />
+              <CalendarDayGrid
+                year={calendarYear}
+                month={calendarMonth}
+                cells={calendarCells}
+                bookings={(calendarRows ?? []) as unknown as CalendarBooking[]}
+                modificationBookings={[]}
+                lockedDates={calendarLockedDates}
+              />
             </CardContent>
           </Card>
         </div>
-        {false && <>
-        <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr]">
-          <Card className="border-border shadow-level-1 ring-0">
-            <CardHeader className="flex-row items-center justify-between border-b py-4">
-              <div>
-                <CardTitle className="text-base">
-                  Today&apos;s priorities
-                </CardTitle>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Work that may need attention first.
-                </p>
-              </div>
-              <AlertTriangle className="size-5 text-primary" />
-            </CardHeader>
-            <CardContent className="p-3">
-              {priorityItems.length ? (
-                <div className="space-y-2">
-                  {priorityItems.map((item) => (
-                    <Link
-                      key={item.label}
-                      href={item.href}
-                      className="flex items-center gap-3 rounded-lg border border-border/80 p-3 transition hover:border-primary/35 hover:bg-accent/35"
-                    >
-                      <span
-                        className={`grid size-9 shrink-0 place-items-center rounded-full ${item.tone}`}
-                      >
-                        <AlertTriangle className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">
-                          {item.label}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {item.detail}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                          {item.note}
-                        </span>
-                      </span>
-                      <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid min-h-40 place-items-center p-5 text-center">
+        {false && (
+          <>
+            <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr]">
+              <Card className="border-border shadow-level-1 ring-0">
+                <CardHeader className="flex-row items-center justify-between border-b py-4">
                   <div>
-                    <CheckCircle2 className="mx-auto size-8 text-emerald-600" />
-                    <p className="mt-2 text-sm font-medium">
-                      Nothing urgent today
-                    </p>
+                    <CardTitle className="text-base">
+                      Today&apos;s priorities
+                    </CardTitle>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Your booking work is up to date.
+                      Work that may need attention first.
                     </p>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="border-border shadow-level-1 ring-0">
-            <CardHeader className="flex-row items-center justify-between border-b py-4">
-              <div>
-                <CardTitle className="text-base">Upcoming events</CardTitle>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Next events from the booking calendar.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                render={<Link href="/bookings/calendar" />}
-              >
-                View calendar
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              {upcomingBookings.length ? (
-                <div className="divide-y divide-border">
-                  {upcomingBookings.slice(0, 6).map((booking) => (
-                    <Link
-                      key={booking.id}
-                      href={`/bookings/${booking.id}`}
-                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
-                    >
-                      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
-                        <CalendarDays className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">
-                          {booking.event_name}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {booking.customers?.name ?? 'Customer'} ·{' '}
-                          {booking.event_location ?? 'Location not added'}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="block text-xs font-medium text-primary">
-                          {friendlyDate(booking.event_date)}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                          {statusLabel(booking.status)}
-                        </span>
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid min-h-40 place-items-center p-5 text-center text-sm text-muted-foreground">
-                  No upcoming events.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </section>
-        <section className="grid gap-4 lg:grid-cols-2">
-          <Card className="border-border shadow-level-1 ring-0">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="text-base">Booking pipeline</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Live totals by the current workflow stage.
-              </p>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
-              {pipeline.map((stage) => (
-                <div
-                  key={stage.label}
-                  className="rounded-lg bg-[#fcfaf7] dark:bg-[#241e17] p-3 text-center"
-                >
-                  <p className="text-xl font-semibold tracking-[-0.03em]">
-                    {stage.value}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {stage.label}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-          <Card className="border-border shadow-level-1 ring-0">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="text-base">Pending work</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Open items from the connected modules.
-              </p>
-            </CardHeader>
-            <CardContent className="divide-y divide-border p-0">
-              {[
-                [
-                  'Client jobs in progress',
-                  activeEventJobs,
-                  '/staff-portal/event-tracking',
-                ],
-                [
-                  'Modifications pending',
-                  modificationCount ?? 0,
-                  '/modifications',
-                ],
-                [
-                  'Jobs to close',
-                  jobsToClose,
-                  '/staff-portal/booking/close-jobs',
-                ],
-              ].map(([label, value, href]) => (
-                <Link
-                  key={String(label)}
-                  href={String(href)}
-                  className="flex items-center gap-3 px-4 py-3 transition hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
-                >
-                  <span className="flex-1 text-sm">{label}</span>
-                  <Badge variant="outline">{String(value)}</Badge>
-                  <ArrowRight className="size-4 text-muted-foreground" />
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        </section>
-        </>}
-        {false && <>
-        <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b py-5">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Route className="size-4 text-primary" /> Event tracker
-              </CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Live stage progress for every active event job.
-              </p>
-            </div>
-            <Button variant="outline" render={<Link href="/event-jobs" />}>
-              View all
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            {trackedJobs.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[780px] text-left text-sm">
-                  <thead className="border-b bg-[#fcfaf7] dark:bg-[#241e17] text-xs text-muted-foreground">
-                    <tr>
-                      {['Job', 'Booking', 'Event', 'Current stage', 'Status'].map(
-                        (h) => (
-                          <th key={h} className="px-5 py-3 font-medium">
-                            {h}
-                          </th>
-                        ),
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trackedJobs.map((job) => (
-                      <tr
-                        key={job.id}
-                        className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
-                      >
-                        <td className="px-5 py-4">
-                          <Link
-                            href={`/event-jobs/${job.id}`}
-                            className="font-semibold text-primary hover:underline"
+                  <AlertTriangle className="size-5 text-primary" />
+                </CardHeader>
+                <CardContent className="p-3">
+                  {priorityItems.length ? (
+                    <div className="space-y-2">
+                      {priorityItems.map((item) => (
+                        <Link
+                          key={item.label}
+                          href={item.href}
+                          className="flex items-center gap-3 rounded-lg border border-border/80 p-3 transition hover:border-primary/35 hover:bg-accent/35"
+                        >
+                          <span
+                            className={`grid size-9 shrink-0 place-items-center rounded-full ${item.tone}`}
                           >
-                            {job.id}
-                          </Link>
-                        </td>
-                        <td className="px-5 py-4 text-muted-foreground">
-                          {job.bookingNumber}
-                        </td>
-                        <td className="px-5 py-4">
-                          {job.eventSummary.eventName}
-                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <CalendarClock className="size-3.5" />
-                            {friendlyDate(job.eventSummary.eventDate)}
-                            {job.eventSummary.venue
-                              ? ` · ${job.eventSummary.venue}`
-                              : ''}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">{currentStageSummary(job)}</td>
-                        <td className="px-5 py-4">
-                          <Badge
-                            variant="outline"
-                            className={
-                              job.status === 'closed'
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                : 'border-amber-200 bg-amber-50 text-amber-800'
-                            }
-                          >
-                            {job.status === 'closed' ? 'Closed' : 'Active'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="grid min-h-56 place-items-center p-8 text-center">
-                <div>
-                  <span className="mx-auto grid size-12 place-items-center rounded-full bg-accent text-primary">
-                    <Route />
-                  </span>
-                  <h3 className="mt-4 font-semibold">No active event jobs</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Confirm a booking to see its job tracker appear here
-                    automatically.
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        </>}
-        {false && <>
-        {false && <>
-        <Card className="border-border shadow-level-1 ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b py-4">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarDays className="size-4 text-primary" /> Calendar
-              </CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Plan events and check availability from one view.
-              </p>
-            </div>
-            <Button variant="outline" size="sm" render={<Link href="/bookings/calendar" />}>
-              Open calendar
-            </Button>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div>
-              <p className="text-sm font-semibold">Booking calendar</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Review upcoming sales and rental events by day or month.
-              </p>
-            </div>
-            <Link href="/bookings/calendar" className="text-xs font-medium text-primary hover:underline">
-              View schedule <ArrowRight className="ml-1 inline size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
-        </>}
-        <Card className="border-border shadow-level-1 ring-0">
-          <CardHeader className="border-b py-4">
-            <CardTitle className="text-base">Quick access</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Open the next part of the booking workflow.
-            </p>
-          </CardHeader>
-          <CardContent className="grid gap-2 p-3 sm:grid-cols-3">
-            {[
-              {
-                title: 'All bookings',
-                href: '/bookings',
-                icon: ClipboardList,
-              },
-              {
-                title: 'Quotes',
-                href: '/quotes',
-                icon: FileText,
-              },
-              {
-                title: 'Event tracking',
-                href: '/staff-portal/event-tracking',
-                icon: ListChecks,
-              },
-            ].map(({ title, href, icon: Icon }) => (
-              <Link
-                key={title}
-                href={href}
-                className="group flex items-center gap-3 rounded-lg border border-border/80 px-3 py-3 transition hover:border-primary/35 hover:bg-accent/45"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-primary">
-                  <Icon className="size-4" />
-                </span>
-                <p className="flex-1 text-sm font-medium">{title}</p>
-                <ArrowRight className="size-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-        </>}
-        {false && <>
-        <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b py-5">
-            <div>
-              <CardTitle>Recent bookings</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Most recently created records
-              </p>
-            </div>
-            <Button variant="outline" render={<Link href="/bookings" />}>
-              View all
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            {error ? (
-              <p className="p-6 text-sm text-destructive">{error?.message}</p>
-            ) : recentBookings.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[780px] text-left text-sm">
-                  <thead className="border-b bg-[#fcfaf7] dark:bg-[#241e17] text-xs text-muted-foreground">
-                    <tr>
-                      {[
-                        'Booking',
-                        'Customer',
-                        'Event',
-                        'Status',
-                        'Payment',
-                        'Total',
-                      ].map((h) => (
-                        <th key={h} className="px-5 py-3 font-medium">
-                          {h}
-                        </th>
+                            <AlertTriangle className="size-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">
+                              {item.label}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {item.detail}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              {item.note}
+                            </span>
+                          </span>
+                          <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                        </Link>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentBookings.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
-                      >
-                        <td className="px-5 py-4">
-                          <Link
-                            href={`/bookings/${row.id}`}
-                            className="font-semibold text-primary hover:underline"
-                          >
-                            {row.booking_number}
-                          </Link>
-                          <p className="text-xs capitalize text-muted-foreground">
-                            {row.booking_type}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4 font-medium">
-                          {row.customers?.name ?? '—'}
-                        </td>
-                        <td className="px-5 py-4">
-                          {row.event_name}
-                          <p className="text-xs text-muted-foreground">
-                            {friendlyDate(row.event_date)}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <Badge
-                            variant="outline"
-                            className={statusTone(row.status)}
-                          >
-                            {statusLabel(row.status)}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-4">
-                          <Badge
-                            variant="outline"
-                            className={statusTone(row.payment_status)}
-                          >
-                            {statusLabel(row.payment_status)}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-4 font-semibold">
-                          {money(row.total)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="grid min-h-64 place-items-center p-8 text-center">
-                <div>
-                  <h3 className="font-semibold">
-                    Your booking workspace is ready
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Create the first live booking to begin tracking operations.
-                  </p>
+                    </div>
+                  ) : (
+                    <div className="grid min-h-40 place-items-center p-5 text-center">
+                      <div>
+                        <CheckCircle2 className="mx-auto size-8 text-emerald-600" />
+                        <p className="mt-2 text-sm font-medium">
+                          Nothing urgent today
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Your booking work is up to date.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="border-border shadow-level-1 ring-0">
+                <CardHeader className="flex-row items-center justify-between border-b py-4">
+                  <div>
+                    <CardTitle className="text-base">Upcoming events</CardTitle>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Next events from the booking calendar.
+                    </p>
+                  </div>
                   <Button
-                    render={<Link href="/bookings/new" />}
-                    className="mt-5"
+                    variant="outline"
+                    size="sm"
+                    render={<Link href="/bookings/calendar" />}
                   >
-                    <Plus />
-                    Create booking
+                    View calendar
                   </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="border-border shadow-level-1 ring-0">
-          <CardHeader className="border-b py-4">
-            <CardTitle className="text-base">Recent activity</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Latest updates recorded by the event workflow.
-            </p>
-          </CardHeader>
-          <CardContent className="p-0">
-            {recentActivity.length ? (
-              <div className="divide-y divide-border">
-                {recentActivity.map((activity, index) => (
-                  <div
-                    key={activity.id ?? `${activity.at}-${index}`}
-                    className="flex items-start gap-3 px-4 py-3"
-                  >
-                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-accent text-primary">
-                      <Clock3 className="size-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
-                        {statusLabel(activity.action ?? 'updated')}
+                </CardHeader>
+                <CardContent className="p-0">
+                  {upcomingBookings.length ? (
+                    <div className="divide-y divide-border">
+                      {upcomingBookings.slice(0, 6).map((booking) => (
+                        <Link
+                          key={booking.id}
+                          href={`/bookings/${booking.id}`}
+                          className="flex items-center gap-3 px-4 py-3 transition hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
+                        >
+                          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
+                            <CalendarDays className="size-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {booking.event_name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {booking.customers?.name ?? 'Customer'} ·{' '}
+                              {booking.event_location ?? 'Location not added'}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-xs font-medium text-primary">
+                              {friendlyDate(booking.event_date)}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              {statusLabel(booking.status)}
+                            </span>
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid min-h-40 place-items-center p-5 text-center text-sm text-muted-foreground">
+                      No upcoming events.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card className="border-border shadow-level-1 ring-0">
+                <CardHeader className="border-b py-4">
+                  <CardTitle className="text-base">Booking pipeline</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Live totals by the current workflow stage.
+                  </p>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+                  {pipeline.map((stage) => (
+                    <div
+                      key={stage.label}
+                      className="rounded-lg bg-[#fcfaf7] dark:bg-[#241e17] p-3 text-center"
+                    >
+                      <p className="text-xl font-semibold tracking-[-0.03em]">
+                        {stage.value}
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {activity.details ??
-                          activity.actor ??
-                          'Workflow update'}
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {stage.label}
                       </p>
                     </div>
-                    <time className="shrink-0 text-[11px] text-muted-foreground">
-                      {new Date(String(activity.at)).toLocaleDateString(
-                        'en-IN',
-                        { day: '2-digit', month: 'short' },
-                      )}
-                    </time>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card className="border-border shadow-level-1 ring-0">
+                <CardHeader className="border-b py-4">
+                  <CardTitle className="text-base">Pending work</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Open items from the connected modules.
+                  </p>
+                </CardHeader>
+                <CardContent className="divide-y divide-border p-0">
+                  {[
+                    [
+                      'Client jobs in progress',
+                      activeEventJobs,
+                      '/staff-portal/event-tracking',
+                    ],
+                    [
+                      'Modifications pending',
+                      modificationCount ?? 0,
+                      '/modifications',
+                    ],
+                    [
+                      'Jobs to close',
+                      jobsToClose,
+                      '/staff-portal/booking/close-jobs',
+                    ],
+                  ].map(([label, value, href]) => (
+                    <Link
+                      key={String(label)}
+                      href={String(href)}
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
+                    >
+                      <span className="flex-1 text-sm">{label}</span>
+                      <Badge variant="outline">{String(value)}</Badge>
+                      <ArrowRight className="size-4 text-muted-foreground" />
+                    </Link>
+                  ))}
+                </CardContent>
+              </Card>
+            </section>
+          </>
+        )}
+        {false && (
+          <>
+            <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
+              <CardHeader className="flex-row items-center justify-between border-b py-5">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Route className="size-4 text-primary" /> Event tracker
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Live stage progress for every active event job.
+                  </p>
+                </div>
+                <Button variant="outline" render={<Link href="/event-jobs" />}>
+                  View all
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {trackedJobs.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[780px] text-left text-sm">
+                      <thead className="border-b bg-[#fcfaf7] dark:bg-[#241e17] text-xs text-muted-foreground">
+                        <tr>
+                          {[
+                            'Job',
+                            'Booking',
+                            'Event',
+                            'Current stage',
+                            'Status',
+                          ].map((h) => (
+                            <th key={h} className="px-5 py-3 font-medium">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trackedJobs.map((job) => (
+                          <tr
+                            key={job.id}
+                            className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
+                          >
+                            <td className="px-5 py-4">
+                              <Link
+                                href={`/event-jobs/${job.id}`}
+                                className="font-semibold text-primary hover:underline"
+                              >
+                                {job.id}
+                              </Link>
+                            </td>
+                            <td className="px-5 py-4 text-muted-foreground">
+                              {job.bookingNumber}
+                            </td>
+                            <td className="px-5 py-4">
+                              {job.eventSummary.eventName}
+                              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <CalendarClock className="size-3.5" />
+                                {friendlyDate(job.eventSummary.eventDate)}
+                                {job.eventSummary.venue
+                                  ? ` · ${job.eventSummary.venue}`
+                                  : ''}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4">
+                              {currentStageSummary(job)}
+                            </td>
+                            <td className="px-5 py-4">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  job.status === 'closed'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                                }
+                              >
+                                {job.status === 'closed' ? 'Closed' : 'Active'}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-5 text-sm text-muted-foreground">
-                No workflow activity recorded yet.
-              </div>
+                ) : (
+                  <div className="grid min-h-56 place-items-center p-8 text-center">
+                    <div>
+                      <span className="mx-auto grid size-12 place-items-center rounded-full bg-accent text-primary">
+                        <Route />
+                      </span>
+                      <h3 className="mt-4 font-semibold">
+                        No active event jobs
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Confirm a booking to see its job tracker appear here
+                        automatically.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+        {false && (
+          <>
+            {false && (
+              <>
+                <Card className="border-border shadow-level-1 ring-0">
+                  <CardHeader className="flex-row items-center justify-between border-b py-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <CalendarDays className="size-4 text-primary" />{' '}
+                        Calendar
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Plan events and check availability from one view.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      render={<Link href="/bookings/calendar" />}
+                    >
+                      Open calendar
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                    <div>
+                      <p className="text-sm font-semibold">Booking calendar</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Review upcoming sales and rental events by day or month.
+                      </p>
+                    </div>
+                    <Link
+                      href="/bookings/calendar"
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      View schedule{' '}
+                      <ArrowRight className="ml-1 inline size-3.5" />
+                    </Link>
+                  </CardContent>
+                </Card>
+              </>
             )}
-          </CardContent>
-        </Card>
-        </>}
+            <Card className="border-border shadow-level-1 ring-0">
+              <CardHeader className="border-b py-4">
+                <CardTitle className="text-base">Quick access</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Open the next part of the booking workflow.
+                </p>
+              </CardHeader>
+              <CardContent className="grid gap-2 p-3 sm:grid-cols-3">
+                {[
+                  {
+                    title: 'All bookings',
+                    href: '/bookings',
+                    icon: ClipboardList,
+                  },
+                  {
+                    title: 'Quotes',
+                    href: '/quotes',
+                    icon: FileText,
+                  },
+                  {
+                    title: 'Event tracking',
+                    href: '/staff-portal/event-tracking',
+                    icon: ListChecks,
+                  },
+                ].map(({ title, href, icon: Icon }) => (
+                  <Link
+                    key={title}
+                    href={href}
+                    className="group flex items-center gap-3 rounded-lg border border-border/80 px-3 py-3 transition hover:border-primary/35 hover:bg-accent/45"
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-primary">
+                      <Icon className="size-4" />
+                    </span>
+                    <p className="flex-1 text-sm font-medium">{title}</p>
+                    <ArrowRight className="size-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          </>
+        )}
+        {false && (
+          <>
+            <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
+              <CardHeader className="flex-row items-center justify-between border-b py-5">
+                <div>
+                  <CardTitle>Recent bookings</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Most recently created records
+                  </p>
+                </div>
+                <Button variant="outline" render={<Link href="/bookings" />}>
+                  View all
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {error ? (
+                  <p className="p-6 text-sm text-destructive">
+                    {error?.message}
+                  </p>
+                ) : recentBookings.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[780px] text-left text-sm">
+                      <thead className="border-b bg-[#fcfaf7] dark:bg-[#241e17] text-xs text-muted-foreground">
+                        <tr>
+                          {[
+                            'Booking',
+                            'Customer',
+                            'Event',
+                            'Status',
+                            'Payment',
+                            'Total',
+                          ].map((h) => (
+                            <th key={h} className="px-5 py-3 font-medium">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentBookings.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
+                          >
+                            <td className="px-5 py-4">
+                              <Link
+                                href={`/bookings/${row.id}`}
+                                className="font-semibold text-primary hover:underline"
+                              >
+                                {row.booking_number}
+                              </Link>
+                              <p className="text-xs capitalize text-muted-foreground">
+                                {row.booking_type}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4 font-medium">
+                              {row.customers?.name ?? '—'}
+                            </td>
+                            <td className="px-5 py-4">
+                              {row.event_name}
+                              <p className="text-xs text-muted-foreground">
+                                {friendlyDate(row.event_date)}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4">
+                              <Badge
+                                variant="outline"
+                                className={statusTone(row.status)}
+                              >
+                                {statusLabel(row.status)}
+                              </Badge>
+                            </td>
+                            <td className="px-5 py-4">
+                              <Badge
+                                variant="outline"
+                                className={statusTone(row.payment_status)}
+                              >
+                                {statusLabel(row.payment_status)}
+                              </Badge>
+                            </td>
+                            <td className="px-5 py-4 font-semibold">
+                              {money(row.total)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid min-h-64 place-items-center p-8 text-center">
+                    <div>
+                      <h3 className="font-semibold">
+                        Your booking workspace is ready
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Create the first live booking to begin tracking
+                        operations.
+                      </p>
+                      <Button
+                        render={<Link href="/bookings/new" />}
+                        className="mt-5"
+                      >
+                        <Plus />
+                        Create booking
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="border-border shadow-level-1 ring-0">
+              <CardHeader className="border-b py-4">
+                <CardTitle className="text-base">Recent activity</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Latest updates recorded by the event workflow.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                {recentActivity.length ? (
+                  <div className="divide-y divide-border">
+                    {recentActivity.map((activity, index) => (
+                      <div
+                        key={activity.id ?? `${activity.at}-${index}`}
+                        className="flex items-start gap-3 px-4 py-3"
+                      >
+                        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-accent text-primary">
+                          <Clock3 className="size-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">
+                            {statusLabel(activity.action ?? 'updated')}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {activity.details ??
+                              activity.actor ??
+                              'Workflow update'}
+                          </p>
+                        </div>
+                        <time className="shrink-0 text-[11px] text-muted-foreground">
+                          {new Date(String(activity.at)).toLocaleDateString(
+                            'en-IN',
+                            { day: '2-digit', month: 'short' },
+                          )}
+                        </time>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-5 text-sm text-muted-foreground">
+                    No workflow activity recorded yet.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </BookingPortalShell>
   );

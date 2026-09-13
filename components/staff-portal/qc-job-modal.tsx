@@ -76,7 +76,8 @@ export async function QcJobModal({
       [job.bookingId],
     ),
   );
-  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ??
+    null) as BookingContext | null;
   const customer = first(booking?.customers);
   const barcode = new Map<string, string | null>(
     (booking?.booking_items ?? []).map((item) => [
@@ -212,7 +213,11 @@ export async function QcJobModal({
             <div
               className={`rounded-lg px-3 py-2.5 text-center text-sm font-medium ${qcSentBackToWarehouse ? 'bg-amber-100 text-amber-900' : job.qualityCheck ? 'bg-emerald-50 text-emerald-700' : qcOpen ? 'bg-[#a86f2c] text-white' : 'bg-muted text-muted-foreground'}`}
             >
-              {qcSentBackToWarehouse ? '↩ Sent to Warehouse' : job.qualityCheck ? '✓ QC passed' : 'Quality check'}
+              {qcSentBackToWarehouse
+                ? '↩ Sent to Warehouse'
+                : job.qualityCheck
+                  ? '✓ QC passed'
+                  : 'Quality check'}
             </div>
             <div
               className={`rounded-lg px-3 py-2.5 text-center text-sm font-medium ${job.packingChecklist ? 'bg-emerald-50 text-emerald-700' : packingOpen ? 'bg-[#a86f2c] text-white' : 'bg-muted text-muted-foreground'}`}
@@ -227,13 +232,17 @@ export async function QcJobModal({
                   <h3 className="font-semibold text-amber-900">
                     Sent back to Warehouse
                   </h3>
-                  <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-900">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-300 bg-amber-100 text-amber-900"
+                  >
                     {qcRejectedItemsCount} flagged
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-amber-800">
                   Checked by {job.qualityCheck.completedBy} on{' '}
-                  {friendlyDate(job.qualityCheck.completedAt ?? '')} — flagged for correction, now with Warehouse.
+                  {friendlyDate(job.qualityCheck.completedAt ?? '')} — flagged
+                  for correction, now with Warehouse.
                 </p>
               </section>
             ) : (

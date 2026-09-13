@@ -1,5 +1,11 @@
 import Link from 'next/link';
-import { X, AlertTriangle, CalendarDays, MapPin, UserRound } from 'lucide-react';
+import {
+  X,
+  AlertTriangle,
+  CalendarDays,
+  MapPin,
+  UserRound,
+} from 'lucide-react';
 import { requireDepartment } from '@/lib/staff-portal/guard';
 import { Badge } from '@/components/ui/badge';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
@@ -85,7 +91,8 @@ export async function WarehouseJobModal({
       [job.bookingId],
     ),
   );
-  const booking = ((bookingRows as unknown as BookingContext[])[0] ?? null) as BookingContext | null;
+  const booking = ((bookingRows as unknown as BookingContext[])[0] ??
+    null) as BookingContext | null;
   const customer = firstRelation(booking?.customers);
   const items = booking?.booking_items?.length
     ? booking.booking_items.map((item) => ({
@@ -265,19 +272,27 @@ export async function WarehouseJobModal({
                   </div>
                   <p className="mt-1 text-sm text-amber-800">
                     Quality Check flagged {qcRejectedItems.length} item
-                    {qcRejectedItems.length === 1 ? '' : 's'}. Correct these before sending back to QC.
+                    {qcRejectedItems.length === 1 ? '' : 's'}. Correct these
+                    before sending back to QC.
                   </p>
                   <ul className="mt-3 divide-y divide-amber-200 overflow-hidden rounded-lg border border-amber-200 bg-white/70">
                     {qcRejectedItems.map((item) => (
                       <li key={item.itemName} className="px-3 py-2.5 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <strong className="font-medium text-amber-900">{item.itemName}</strong>
-                          <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-900">
+                          <strong className="font-medium text-amber-900">
+                            {item.itemName}
+                          </strong>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-100 text-amber-900"
+                          >
                             {QC_ISSUE_LABEL[item.issueType] ?? 'Issue'}
                           </Badge>
                         </div>
                         {item.remarks ? (
-                          <p className="mt-1 text-xs text-amber-700">{item.remarks}</p>
+                          <p className="mt-1 text-xs text-amber-700">
+                            {item.remarks}
+                          </p>
                         ) : null}
                       </li>
                     ))}

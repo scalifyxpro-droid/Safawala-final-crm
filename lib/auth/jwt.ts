@@ -1,14 +1,14 @@
 import { SignJWT, jwtVerify } from 'jose';
 
-const SESSION_SECRET = process.env.SESSION_SECRET;
-
-if (!SESSION_SECRET || SESSION_SECRET.length < 32) {
-  throw new Error(
-    'SESSION_SECRET is not set (or too short). Generate one with `openssl rand -base64 48` and set it on Railway.'
-  );
+function getSecretKey() {
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret || sessionSecret.length < 32) {
+    throw new Error(
+      'SESSION_SECRET is not set (or too short). Generate one with `openssl rand -base64 48` and set it on Railway.',
+    );
+  }
+  return new TextEncoder().encode(sessionSecret);
 }
-
-const secretKey = new TextEncoder().encode(SESSION_SECRET);
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7; // 7 days, matches previous Supabase session length
 
 export type SessionClaims = {
@@ -23,12 +23,12 @@ export async function signSessionToken(claims: SessionClaims): Promise<string> {
     .setSubject(claims.sub)
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS)
-    .sign(secretKey);
+    .sign(getSecretKey());
 }
 
 export async function verifySessionToken(token: string): Promise<SessionClaims | null> {
   try {
-    const { payload } = await jwtVerify(token, secretKey);
+    const { payload } = await jwtVerify(token, getSecretKey());
     if (!payload.sub || (payload.role !== 'admin' && payload.role !== 'staff') || typeof payload.email !== 'string') {
       return null;
     }

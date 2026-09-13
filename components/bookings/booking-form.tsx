@@ -8,7 +8,6 @@ import {
   type SyntheticEvent,
 } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -21,9 +20,7 @@ import {
   FileText,
   MapPin,
   Package,
-  Phone,
   Plus,
-  Printer,
   Search,
   ShoppingBag,
   Trash2,
@@ -44,7 +41,10 @@ import {
 } from '@/lib/inventory-catalog';
 import { initializeBookingEventJobAction } from '@/app/bookings/event-job-actions';
 import { validateCouponAction } from '@/app/coupons/actions';
-import { createBookingAction, createBookingCustomerAction } from '@/app/bookings/actions';
+import {
+  createBookingAction,
+  createBookingCustomerAction,
+} from '@/app/bookings/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { BarcodeScannerModal } from '@/components/bookings/barcode-scanner-modal';
 import { useHardwareScannerListener } from '@/lib/hooks/use-hardware-scanner';
@@ -120,7 +120,7 @@ export function BookingForm({
   ownerId,
   customers,
   products,
-  packages,
+  packages: _packages,
   rentalPackages,
   staff,
   quoteOnly = false,
@@ -139,7 +139,9 @@ export function BookingForm({
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [type, setType] = useState<'sale' | 'rental' | null>(initialType ?? null);
+  const [type, setType] = useState<'sale' | 'rental' | null>(
+    initialType ?? null,
+  );
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [customerList, setCustomerList] = useState(customers);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -173,7 +175,8 @@ export function BookingForm({
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [paid, setPaid] = useState(0);
   const [modificationsRequired, setModificationsRequired] = useState(false);
-  const [customerOwnedModification, setCustomerOwnedModification] = useState(false);
+  const [customerOwnedModification, setCustomerOwnedModification] =
+    useState(false);
   const [modificationCharge, setModificationCharge] = useState('0');
   const [modificationType, setModificationType] = useState<string>('');
   const [eventType, setEventType] = useState('Wedding');
@@ -181,8 +184,8 @@ export function BookingForm({
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [venue, setVenue] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [alternateMobile, setAlternateMobile] = useState('');
+  const [contactName] = useState('');
+  const [alternateMobile] = useState('');
   const [contactAddress, setContactAddress] = useState('');
   const [brideName, setBrideName] = useState('');
   const [brideMobile, setBrideMobile] = useState('');
@@ -227,7 +230,7 @@ export function BookingForm({
       return;
     }
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const response = await fetch('/api/product-availability', {
           method: 'POST',
@@ -280,7 +283,9 @@ export function BookingForm({
       setCouponMessage(`${result.code} applied: ${money(result.discount)} off`);
     } catch (error) {
       setAppliedCoupon('');
-      setCouponMessage(error instanceof Error ? error.message : 'Unable to apply coupon.');
+      setCouponMessage(
+        error instanceof Error ? error.message : 'Unable to apply coupon.',
+      );
     } finally {
       setCouponBusy(false);
     }
@@ -385,7 +390,8 @@ export function BookingForm({
   function availabilityLabel(product: Product): string {
     if (type === 'rental' && pickupDate && dueDate) {
       const info = availabilityByProduct[product.id];
-      if (info) return `Available: ${info.available} / ${info.totalStock} in stock`;
+      if (info)
+        return `Available: ${info.available} / ${info.totalStock} in stock`;
     }
     return `Stock: ${product.stock_quantity}`;
   }
@@ -439,7 +445,7 @@ export function BookingForm({
     const existingItem = items.find((item) => item.product_id === product.id);
     const totalWanted = (existingItem?.quantity ?? 0) + requestedQuantity;
     if (totalWanted > maxQuantity) {
-      warnIfOverCapacity(product, totalWanted, maxQuantity);
+      void warnIfOverCapacity(product, totalWanted, maxQuantity);
     }
     setItems((current) => {
       const existing = current.find((item) => item.product_id === product.id);
@@ -448,7 +454,10 @@ export function BookingForm({
           item.key === existing.key
             ? {
                 ...item,
-                quantity: Math.min(maxQuantity, item.quantity + requestedQuantity),
+                quantity: Math.min(
+                  maxQuantity,
+                  item.quantity + requestedQuantity,
+                ),
               }
             : item,
         );
@@ -522,7 +531,7 @@ export function BookingForm({
     }
   }
 
-  function addPackage(pack: PackageRow) {
+  function _addPackage(pack: PackageRow) {
     setItems((current) => [
       ...current,
       {
@@ -571,7 +580,7 @@ export function BookingForm({
     ]);
   }
 
-  function adjustRentalPackageQuantity(pack: RentalPackage, delta: number) {
+  function _adjustRentalPackageQuantity(pack: RentalPackage, delta: number) {
     setSelectedRentalPackageId(pack.id);
     setItems((current) =>
       current
@@ -617,7 +626,7 @@ export function BookingForm({
     );
     const totalWanted = (existingItem?.quantity ?? 0) + quantity;
     if (totalWanted > maxQuantity) {
-      warnIfOverCapacity(product, totalWanted, maxQuantity);
+      void warnIfOverCapacity(product, totalWanted, maxQuantity);
     }
     setItems((current) => {
       const existing = current.find(
@@ -626,7 +635,10 @@ export function BookingForm({
       if (existing) {
         return current.map((item) =>
           item.key === existing.key
-            ? { ...item, quantity: Math.min(maxQuantity, item.quantity + quantity) }
+            ? {
+                ...item,
+                quantity: Math.min(maxQuantity, item.quantity + quantity),
+              }
             : item,
         );
       }
@@ -655,7 +667,7 @@ export function BookingForm({
         const stockLimit = getAvailableQuantity(product);
         const requested = Math.max(1, Math.floor(patch.quantity));
         if (requested > stockLimit) {
-          warnIfOverCapacity(product, requested, stockLimit);
+          void warnIfOverCapacity(product, requested, stockLimit);
         }
       }
     }
@@ -670,7 +682,10 @@ export function BookingForm({
         return {
           ...item,
           ...patch,
-          quantity: Math.min(stockLimit, Math.max(1, Math.floor(patch.quantity))),
+          quantity: Math.min(
+            stockLimit,
+            Math.max(1, Math.floor(patch.quantity)),
+          ),
         };
       }),
     );
@@ -697,7 +712,9 @@ export function BookingForm({
     if (!eventType || !eventFor || !eventDate || (!isSale && !venue.trim())) {
       setMessage({
         title: 'Complete the event details',
-        text: isSale ? 'Event type and event date are required.' : 'Event type, booking for, event date and venue are required.',
+        text: isSale
+          ? 'Event type and event date are required.'
+          : 'Event type, booking for, event date and venue are required.',
       });
       return;
     }
@@ -715,33 +732,36 @@ export function BookingForm({
       });
       return;
     }
-    if (!isSale && (
+    if (
+      !isSale &&
       eventFor === 'Bride Only' &&
       (!brideName.trim() || !/^\d{10}$/.test(brideMobile))
-    )) {
+    ) {
       setMessage({
         title: 'Complete bride contact details',
         text: 'Bride name and a valid 10-digit mobile number are required.',
       });
       return;
     }
-    if (!isSale && (
+    if (
+      !isSale &&
       eventFor === 'Groom Only' &&
       (!groomName.trim() || !/^\d{10}$/.test(groomMobile))
-    )) {
+    ) {
       setMessage({
         title: 'Complete groom contact details',
         text: 'Groom name and a valid 10-digit mobile number are required.',
       });
       return;
     }
-    if (!isSale && (
+    if (
+      !isSale &&
       eventFor === 'Bride & Groom' &&
       (!brideName.trim() ||
         !/^\d{10}$/.test(brideMobile) ||
         !groomName.trim() ||
         !/^\d{10}$/.test(groomMobile))
-    )) {
+    ) {
       setMessage({
         title: 'Complete contact details',
         text: 'Enter a name and valid 10-digit mobile number for both bride and groom.',
@@ -788,7 +808,9 @@ export function BookingForm({
     } else {
       setModificationsRequired(false);
       setItems((current) =>
-        current.filter((item) => !item.item_name.startsWith('Customer-owned product ·')),
+        current.filter(
+          (item) => !item.item_name.startsWith('Customer-owned product ·'),
+        ),
       );
     }
   }
@@ -850,10 +872,16 @@ export function BookingForm({
     const bookingDate = form.get('booking_date');
     const plainNotes = readText('notes');
     const contactDetails = [
-      brideName.trim() ? `Bride: ${brideName.trim()}${brideMobile ? ` (${brideMobile})` : ''}` : '',
-      groomName.trim() ? `Groom: ${groomName.trim()}${groomMobile ? ` (${groomMobile})` : ''}` : '',
+      brideName.trim()
+        ? `Bride: ${brideName.trim()}${brideMobile ? ` (${brideMobile})` : ''}`
+        : '',
+      groomName.trim()
+        ? `Groom: ${groomName.trim()}${groomMobile ? ` (${groomMobile})` : ''}`
+        : '',
       contactAddress.trim() ? `Contact address: ${contactAddress.trim()}` : '',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
     const modificationNotes =
       isSale && modificationsRequired
         ? [
@@ -872,20 +900,19 @@ export function BookingForm({
       event_location: isSale ? null : venue,
       contact_name: isSale
         ? null
-        : (
-        (eventFor === 'Bride Only'
-          ? brideName
-          : eventFor === 'Groom Only'
-            ? groomName
-            : brideName || groomName
-        ).trim() || null),
+        : (eventFor === 'Bride Only'
+            ? brideName
+            : eventFor === 'Groom Only'
+              ? groomName
+              : brideName || groomName
+          ).trim() || null,
       alternate_mobile: isSale
         ? null
-        : (eventFor === 'Bride Only'
+        : eventFor === 'Bride Only'
           ? brideMobile
           : eventFor === 'Groom Only'
             ? groomMobile
-            : brideMobile || groomMobile || null),
+            : brideMobile || groomMobile || null,
       bride_name: isSale ? null : brideName.trim() || null,
       bride_mobile: isSale ? null : brideMobile || null,
       groom_name: isSale ? null : groomName.trim() || null,
@@ -897,7 +924,9 @@ export function BookingForm({
         ? (quoteCreatorStaffId ?? null)
         : form.get('assigned_staff_id'),
       notes:
-        [plainNotes, modificationNotes, contactDetails].filter(Boolean).join('\n\n') || null,
+        [plainNotes, modificationNotes, contactDetails]
+          .filter(Boolean)
+          .join('\n\n') || null,
       items: items.map(
         ({ key: _key, additional_safa: _additionalSafa, ...item }) => item,
       ),
@@ -915,19 +944,31 @@ export function BookingForm({
         .filter((id): id is number => typeof id === 'number');
       if (productIds.length > 0) {
         try {
-          const availabilityResponse = await fetch('/api/product-availability', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ownerId, pickupDate, dueDate, productIds }),
-          });
+          const availabilityResponse = await fetch(
+            '/api/product-availability',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ownerId,
+                pickupDate,
+                dueDate,
+                productIds,
+              }),
+            },
+          );
           const availabilityData = await availabilityResponse.json();
           const unavailableItem = payload.items.find((item) => {
             if (typeof item.product_id !== 'number') return false;
-            const available = Number(availabilityData?.availability?.[item.product_id]?.available);
+            const available = Number(
+              availabilityData?.availability?.[item.product_id]?.available,
+            );
             return Number.isFinite(available) && item.quantity > available;
           });
           if (unavailableItem) {
-            const available = availabilityData.availability[unavailableItem.product_id!]?.available ?? 0;
+            const available =
+              availabilityData.availability[unavailableItem.product_id!]
+                ?.available ?? 0;
             setMessage({
               title: 'Product is no longer available',
               text: `Only ${available} unit(s) of "${unavailableItem.item_name}" are free from ${pickupDate} to ${dueDate}. Please reduce the quantity or choose different dates.`,
@@ -953,7 +994,9 @@ export function BookingForm({
         date: 'Booking saved, but the date was not updated',
       };
       setMessage({
-        title: titleByStage[result.stage] ?? (quote ? 'Quote was not saved' : 'Order was not created'),
+        title:
+          titleByStage[result.stage] ??
+          (quote ? 'Quote was not saved' : 'Order was not created'),
         text: result.error,
       });
       setBusy(false);
@@ -1008,7 +1051,10 @@ export function BookingForm({
           backHref="/bookings"
           actions={
             <>
-              <Badge variant="outline" className="h-9 bg-white dark:bg-card px-3">
+              <Badge
+                variant="outline"
+                className="h-9 bg-white dark:bg-card px-3"
+              >
                 {isSale ? 'Sale booking' : 'Rental booking'}
               </Badge>
             </>
@@ -1178,22 +1224,24 @@ export function BookingForm({
                         <option>Other</option>
                       </select>
                     </label>
-                    {!isSale && <label className="block text-sm">
-                      <span className="mb-1.5 block text-muted-foreground">
-                        For
-                      </span>
-                      <select
-                        name="event_for"
-                        value={eventFor}
-                        onChange={(event) => setEventFor(event.target.value)}
-                        className={inputClass}
-                        required
-                      >
-                        <option>Groom Only</option>
-                        <option>Bride Only</option>
-                        <option>Bride &amp; Groom</option>
-                      </select>
-                    </label>}
+                    {!isSale && (
+                      <label className="block text-sm">
+                        <span className="mb-1.5 block text-muted-foreground">
+                          For
+                        </span>
+                        <select
+                          name="event_for"
+                          value={eventFor}
+                          onChange={(event) => setEventFor(event.target.value)}
+                          className={inputClass}
+                          required
+                        >
+                          <option>Groom Only</option>
+                          <option>Bride Only</option>
+                          <option>Bride &amp; Groom</option>
+                        </select>
+                      </label>
+                    )}
                     <label className="block text-sm">
                       <span className="mb-1.5 block text-muted-foreground">
                         Event date <span className="text-red-600">*</span>
@@ -1217,14 +1265,17 @@ export function BookingForm({
                             name="pickup_date"
                             type="date"
                             value={pickupDate}
-                            onChange={(event) => setPickupDate(event.target.value)}
+                            onChange={(event) =>
+                              setPickupDate(event.target.value)
+                            }
                             className={inputClass}
                             required
                           />
                         </label>
                         <label className="block text-sm">
                           <span className="mb-1.5 block text-muted-foreground">
-                            Return due date <span className="text-red-600">*</span>
+                            Return due date{' '}
+                            <span className="text-red-600">*</span>
                           </span>
                           <input
                             name="due_date"
@@ -1239,20 +1290,22 @@ export function BookingForm({
                       </>
                     )}
                     <TimeField label="Event time" name="event_time" />
-                    {!isSale && <label className="block pt-1 text-sm sm:col-span-2">
-                      <span className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                        <MapPin className="size-3.5 text-primary" />
-                        Venue <span className="text-red-600">*</span>
-                      </span>
-                      <input
-                        name="event_location"
-                        value={venue}
-                        onChange={(event) => setVenue(event.target.value)}
-                        placeholder="Enter complete venue name and address…"
-                        className={inputClass}
-                        required
-                      />
-                    </label>}
+                    {!isSale && (
+                      <label className="block pt-1 text-sm sm:col-span-2">
+                        <span className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                          <MapPin className="size-3.5 text-primary" />
+                          Venue <span className="text-red-600">*</span>
+                        </span>
+                        <input
+                          name="event_location"
+                          value={venue}
+                          onChange={(event) => setVenue(event.target.value)}
+                          placeholder="Enter complete venue name and address…"
+                          className={inputClass}
+                          required
+                        />
+                      </label>
+                    )}
                     {!isSale && eventFor !== 'Groom Only' && (
                       <>
                         <label className="block text-sm">
@@ -1338,16 +1391,27 @@ export function BookingForm({
               {isSale ? (
                 <Card className="gap-0 border-[#dfc9a6] bg-[#fffaf2] py-0 shadow-none ring-0">
                   <CardContent className="p-4">
-                    <label className="flex cursor-pointer items-start gap-3 text-sm">
+                    <label
+                      aria-label="Customer-owned product modification only"
+                      className="flex cursor-pointer items-start gap-3 text-sm"
+                    >
                       <input
                         type="checkbox"
                         checked={customerOwnedModification}
-                        onChange={(event) => toggleCustomerOwnedModification(event.target.checked)}
+                        onChange={(event) =>
+                          toggleCustomerOwnedModification(event.target.checked)
+                        }
                         className="mt-0.5 size-4 accent-[#9a6728]"
                       />
                       <span>
-                        <span className="flex items-center gap-2 font-semibold"><Wrench className="size-4 text-primary" />Customer-owned product modification only</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">The customer brings the product. Skip inventory selection and generate a standalone modification bill.</span>
+                        <span className="flex items-center gap-2 font-semibold">
+                          <Wrench className="size-4 text-primary" />
+                          Customer-owned product modification only
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          The customer brings the product. Skip inventory
+                          selection and generate a standalone modification bill.
+                        </span>
                       </span>
                     </label>
                   </CardContent>
@@ -1356,7 +1420,9 @@ export function BookingForm({
 
               <div className="flex justify-end border-t pt-5">
                 <Button type="button" onClick={continueFromCustomer}>
-                  {customerOwnedModification ? 'Continue to modification bill' : 'Continue to products'}
+                  {customerOwnedModification
+                    ? 'Continue to modification bill'
+                    : 'Continue to products'}
                   <ChevronRight />
                 </Button>
               </div>
@@ -1426,7 +1492,9 @@ export function BookingForm({
                           <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
                           <input
                             value={productSearch}
-                            onChange={(e) => handleProductSearchInput(e.target.value)}
+                            onChange={(e) =>
+                              handleProductSearchInput(e.target.value)
+                            }
                             onKeyDown={(event) => {
                               if (event.key !== 'Enter') return;
                               event.preventDefault();
@@ -1441,7 +1509,7 @@ export function BookingForm({
                               type="button"
                               aria-label="Add product by barcode"
                               title="Add"
-                              onClick={() => handleProductScan(productSearch)}
+                              onClick={() => void handleProductScan(productSearch)}
                               className="grid size-7 place-items-center rounded-md text-primary hover:bg-muted"
                             >
                               <Plus className="size-4" />
@@ -1537,7 +1605,11 @@ export function BookingForm({
                                   {availabilityLabel(product)}
                                 </span>
                                 <strong className="col-span-2 text-lg leading-5 text-foreground">
-                                  {money(isSale ? product.sale_price : product.rental_price)}
+                                  {money(
+                                    isSale
+                                      ? product.sale_price
+                                      : product.rental_price,
+                                  )}
                                 </strong>
                               </div>
                               <span className="mt-2 flex items-center gap-2 px-1">
@@ -1561,7 +1633,9 @@ export function BookingForm({
                                 <input
                                   type="number"
                                   min="1"
-                                  max={getAvailableQuantity(product) || undefined}
+                                  max={
+                                    getAvailableQuantity(product) || undefined
+                                  }
                                   value={catalogQuantities[product.id] ?? 1}
                                   onChange={(event) =>
                                     setCatalogQuantities((q) => ({
@@ -1760,7 +1834,10 @@ export function BookingForm({
                               <h3 className="text-sm font-semibold">
                                 Select Products
                               </h3>
-                              <Badge variant="outline" className="bg-white dark:bg-card">
+                              <Badge
+                                variant="outline"
+                                className="bg-white dark:bg-card"
+                              >
                                 {selectedPackageProducts.length} products
                               </Badge>
                             </div>
@@ -1806,10 +1883,12 @@ export function BookingForm({
                                     </span>
                                     <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 px-1">
                                       <span className="truncate text-[11px] text-muted-foreground">
-                                        SKU: {product.sku || product.barcode || '—'}
+                                        SKU:{' '}
+                                        {product.sku || product.barcode || '—'}
                                       </span>
                                       <span className="truncate text-[11px] text-muted-foreground">
-                                        Barcode: {product.barcode || 'Not assigned'}
+                                        Barcode:{' '}
+                                        {product.barcode || 'Not assigned'}
                                       </span>
                                       <span className="text-xs text-muted-foreground">
                                         Rental price
@@ -1843,7 +1922,8 @@ export function BookingForm({
                                         type="number"
                                         min="1"
                                         max={
-                                          getAvailableQuantity(product) || undefined
+                                          getAvailableQuantity(product) ||
+                                          undefined
                                         }
                                         value={quantity}
                                         onChange={(event) =>
@@ -1915,7 +1995,10 @@ export function BookingForm({
                               <h3 className="text-sm font-semibold">
                                 Additional Safa
                               </h3>
-                              <Badge variant="outline" className="bg-white dark:bg-card">
+                              <Badge
+                                variant="outline"
+                                className="bg-white dark:bg-card"
+                              >
                                 {additionalSafaProducts.length} options
                               </Badge>
                             </div>
@@ -1990,11 +2073,19 @@ export function BookingForm({
                               return (
                                 <div
                                   key={product.id}
+                                  role="button"
+                                  tabIndex={0}
                                   onClick={() =>
                                     setAdditionalSafaProductId(
                                       String(product.id),
                                     )
                                   }
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      setAdditionalSafaProductId(String(product.id));
+                                    }
+                                  }}
                                   className={`group overflow-hidden rounded-xl border bg-white dark:bg-card p-2 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-level-1 ${selected ? 'border-primary ring-2 ring-primary/20' : ''}`}
                                 >
                                   <span className="relative grid aspect-square overflow-hidden rounded-lg bg-[radial-gradient(circle_at_top,#f4eadb,#ece5db)] text-primary">
@@ -2023,10 +2114,12 @@ export function BookingForm({
                                   </span>
                                   <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 px-1">
                                     <span className="truncate text-xs text-muted-foreground">
-                                      SKU: {product.sku || product.barcode || '—'}
+                                      SKU:{' '}
+                                      {product.sku || product.barcode || '—'}
                                     </span>
                                     <span className="truncate text-xs text-muted-foreground">
-                                      Barcode: {product.barcode || 'Not assigned'}
+                                      Barcode:{' '}
+                                      {product.barcode || 'Not assigned'}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
                                       Rental price
@@ -2060,7 +2153,10 @@ export function BookingForm({
                                     <input
                                       type="number"
                                       min="1"
-                                      max={getAvailableQuantity(product) || undefined}
+                                      max={
+                                        getAvailableQuantity(product) ||
+                                        undefined
+                                      }
                                       value={quantity}
                                       onChange={(event) => {
                                         event.stopPropagation();
@@ -2228,7 +2324,8 @@ export function BookingForm({
                                             (row) => row.id === item.product_id,
                                           );
                                           return product
-                                            ? getAvailableQuantity(product) || undefined
+                                            ? getAvailableQuantity(product) ||
+                                                undefined
                                             : undefined;
                                         })()
                                       : undefined
@@ -2331,7 +2428,11 @@ export function BookingForm({
                   <ArrowLeft />
                   Back to customer details
                 </Button>
-                <Button type="button" className="sm:ml-auto" onClick={continueFromProducts}>
+                <Button
+                  type="button"
+                  className="sm:ml-auto"
+                  onClick={continueFromProducts}
+                >
                   Review booking
                   <ChevronRight />
                 </Button>
@@ -2377,7 +2478,10 @@ export function BookingForm({
                   )}
                   {!isSale && (
                     <div className="sm:col-span-2 lg:col-span-4">
-                      <ReviewDetail label="Venue" value={venue || 'Not added'} />
+                      <ReviewDetail
+                        label="Venue"
+                        value={venue || 'Not added'}
+                      />
                     </div>
                   )}
                   {!isSale ? (
@@ -2405,7 +2509,6 @@ export function BookingForm({
                 </CardContent>
               </Card>
 
-
               {isSale && (
                 <Card className="gap-0 border-border py-0 shadow-none ring-0">
                   <CardContent className="p-4">
@@ -2426,7 +2529,8 @@ export function BookingForm({
                         <div className="grid gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(0,1.5fr)]">
                           <label className="block text-sm">
                             <span className="mb-1.5 block font-medium">
-                              Select modification <span className="text-red-600">*</span>
+                              Select modification{' '}
+                              <span className="text-red-600">*</span>
                             </span>
                             <select
                               name="modification_type"
@@ -2435,7 +2539,18 @@ export function BookingForm({
                                 const value = event.target.value;
                                 setModificationType(value);
                                 if (customerOwnedModification) {
-                                  setItems((current) => current.map((item) => item.item_name.startsWith('Customer-owned product ·') ? { ...item, item_name: `Customer-owned product · ${value || 'Modification'}` } : item));
+                                  setItems((current) =>
+                                    current.map((item) =>
+                                      item.item_name.startsWith(
+                                        'Customer-owned product ·',
+                                      )
+                                        ? {
+                                            ...item,
+                                            item_name: `Customer-owned product · ${value || 'Modification'}`,
+                                          }
+                                        : item,
+                                    ),
+                                  );
                                 }
                               }}
                               required
@@ -2443,27 +2558,30 @@ export function BookingForm({
                             >
                               <option value="">Choose an option</option>
                               {MODIFICATION_OPTIONS.map((option) => (
-                                <option key={option} value={option}>{option}</option>
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
                               ))}
                             </select>
                           </label>
                           <label className="block text-sm">
-                          <span className="mb-1.5 block font-medium">
-                            {modificationType || 'Modification'} details{' '}
-                            <span className="text-red-600">*</span>
-                          </span>
-                          <textarea
-                            name="modification_details"
-                            required
-                            rows={7}
-                            placeholder="Describe the colour change, size adjustment, embroidery or other work required…"
-                            className="w-full rounded-lg border border-input bg-white dark:bg-card p-3 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20"
-                          />
+                            <span className="mb-1.5 block font-medium">
+                              {modificationType || 'Modification'} details{' '}
+                              <span className="text-red-600">*</span>
+                            </span>
+                            <textarea
+                              name="modification_details"
+                              required
+                              rows={7}
+                              placeholder="Describe the colour change, size adjustment, embroidery or other work required…"
+                              className="w-full rounded-lg border border-input bg-white dark:bg-card p-3 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20"
+                            />
                           </label>
                           {customerOwnedModification ? (
                             <label className="block text-sm lg:col-span-2">
                               <span className="mb-1.5 block font-medium">
-                                Modification charge (₹) <span className="text-red-600">*</span>
+                                Modification charge (₹){' '}
+                                <span className="text-red-600">*</span>
                               </span>
                               <input
                                 name="modification_charge"
@@ -2475,11 +2593,29 @@ export function BookingForm({
                                 onChange={(event) => {
                                   const value = event.target.value;
                                   setModificationCharge(value);
-                                  setItems((current) => current.map((item) => item.item_name.startsWith('Customer-owned product ·') ? { ...item, item_name: `Customer-owned product · ${modificationType || 'Modification'}`, unit_price: Math.max(Number(value) || 0, 0), override_price: true } : item));
+                                  setItems((current) =>
+                                    current.map((item) =>
+                                      item.item_name.startsWith(
+                                        'Customer-owned product ·',
+                                      )
+                                        ? {
+                                            ...item,
+                                            item_name: `Customer-owned product · ${modificationType || 'Modification'}`,
+                                            unit_price: Math.max(
+                                              Number(value) || 0,
+                                              0,
+                                            ),
+                                            override_price: true,
+                                          }
+                                        : item,
+                                    ),
+                                  );
                                 }}
                                 className={inputClass}
                               />
-                              <span className="mt-1 block text-xs text-muted-foreground">No inventory product will be reserved.</span>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                No inventory product will be reserved.
+                              </span>
                             </label>
                           ) : null}
                         </div>
@@ -2569,13 +2705,39 @@ export function BookingForm({
                     />
                     <div className="border-t pt-3">
                       <label className="block text-sm">
-                        <span className="mb-1.5 block text-muted-foreground">Coupon code</span>
+                        <span className="mb-1.5 block text-muted-foreground">
+                          Coupon code
+                        </span>
                         <div className="flex gap-2">
-                          <input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="e.g. SAVE10" className={`${inputClass} min-w-0 flex-1`} disabled={quoteOnly || couponBusy} />
-                          <Button type="button" variant="outline" size="sm" onClick={applyCoupon} disabled={quoteOnly || couponBusy || !couponCode.trim()}>{couponBusy ? 'Checking…' : 'Apply'}</Button>
+                          <input
+                            value={couponCode}
+                            onChange={(event) =>
+                              setCouponCode(event.target.value.toUpperCase())
+                            }
+                            placeholder="e.g. SAVE10"
+                            className={`${inputClass} min-w-0 flex-1`}
+                            disabled={quoteOnly || couponBusy}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={applyCoupon}
+                            disabled={
+                              quoteOnly || couponBusy || !couponCode.trim()
+                            }
+                          >
+                            {couponBusy ? 'Checking…' : 'Apply'}
+                          </Button>
                         </div>
                       </label>
-                      {couponMessage ? <p className={`mt-1.5 text-xs ${appliedCoupon ? 'text-emerald-700' : 'text-destructive'}`}>{couponMessage}</p> : null}
+                      {couponMessage ? (
+                        <p
+                          className={`mt-1.5 text-xs ${appliedCoupon ? 'text-emerald-700' : 'text-destructive'}`}
+                        >
+                          {couponMessage}
+                        </p>
+                      ) : null}
                     </div>
                     <label className="flex items-center gap-2 border-t pt-3 text-sm text-muted-foreground">
                       <input
@@ -2693,14 +2855,22 @@ export function BookingForm({
                     </strong>
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <div title={!type || !eventDate || !selectedCustomer ? 'Select a booking type, customer, and event date first' : 'Generate invoice PDF preview'}>
+                    <div
+                      title={
+                        !type || !eventDate || !selectedCustomer
+                          ? 'Select a booking type, customer, and event date first'
+                          : 'Generate invoice PDF preview'
+                      }
+                    >
                       <BookingPdfButton
                         booking={{
                           booking_number: 'PREVIEW',
                           booking_type: type ?? 'sale',
                           is_quote: false,
                           status: 'confirmed',
-                          event_name: isSale ? eventType : `${eventType} - ${eventFor}`,
+                          event_name: isSale
+                            ? eventType
+                            : `${eventType} - ${eventFor}`,
                           event_date: eventDate,
                           event_time: eventTime || null,
                           event_location: venue || null,
@@ -2714,17 +2884,28 @@ export function BookingForm({
                           paid_amount: paid,
                           balance_amount: Math.max(total - paid, 0),
                           customers: selectedCustomer
-                            ? { name: selectedCustomer.name, phone: selectedCustomer.phone, address: selectedCustomer.address }
+                            ? {
+                                name: selectedCustomer.name,
+                                phone: selectedCustomer.phone,
+                                address: selectedCustomer.address,
+                              }
                             : null,
                           booking_items: items.map((item) => {
-                            const product = products.find((entry) => entry.id === item.product_id);
+                            const product = products.find(
+                              (entry) => entry.id === item.product_id,
+                            );
                             return {
                               item_name: item.item_name,
                               quantity: item.quantity,
                               unit_price: item.unit_price,
                               line_total: item.quantity * item.unit_price,
                               product_id: item.product_id ?? null,
-                              products: product ? { image_urls: product.image_urls, barcode: product.barcode } : null,
+                              products: product
+                                ? {
+                                    image_urls: product.image_urls,
+                                    barcode: product.barcode,
+                                  }
+                                : null,
                             };
                           }),
                         }}
@@ -2830,7 +3011,9 @@ export function BookingForm({
                     if (!response.ok || !result.product) {
                       setMessage({
                         title: 'Product was not saved',
-                        text: result.error ?? `Save failed (HTTP ${response.status}). Please try again.`,
+                        text:
+                          result.error ??
+                          `Save failed (HTTP ${response.status}). Please try again.`,
                       });
                       return;
                     }
@@ -2840,13 +3023,18 @@ export function BookingForm({
                     setCustomProductOpen(false);
                     setMessage(null);
                     addProduct(result.product as Product);
-                    setInventoryToast(`${result.product.name} added to inventory`);
+                    setInventoryToast(
+                      `${result.product.name} added to inventory`,
+                    );
                     window.setTimeout(() => setInventoryToast(''), 2600);
                     formEl.reset();
                   } catch (error) {
                     setMessage({
                       title: 'Product was not saved',
-                      text: error instanceof Error ? error.message : 'Please check your connection and try again.',
+                      text:
+                        error instanceof Error
+                          ? error.message
+                          : 'Please check your connection and try again.',
                     });
                   } finally {
                     setCustomProductBusy(false);
@@ -2948,7 +3136,7 @@ export function BookingForm({
         onClose={() => setCameraOpen(false)}
         onDetected={(value) => {
           setCameraOpen(false);
-          handleProductScan(value);
+          void handleProductScan(value);
         }}
       />
     </div>
@@ -2984,7 +3172,10 @@ function BookingSteps({ current }: { current: 1 | 2 | 3 }) {
           const complete = item.number < current;
           const active = item.number === current;
           return (
-            <li key={item.number} className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
+            <li
+              key={item.number}
+              className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3"
+            >
               <span
                 className={`grid size-9 shrink-0 place-items-center rounded-full border text-xs font-bold transition sm:size-10 ${complete || active ? 'border-primary bg-primary text-white shadow-[0_3px_10px_rgb(154_103_40_/.25)]' : 'border-[#d9cbbb] bg-[#faf7f2] dark:bg-[#241e17] text-muted-foreground'}`}
               >
@@ -3116,13 +3307,18 @@ function NewCustomerDialog({
       const value = form.get(key);
       return typeof value === 'string' ? value.trim() : '';
     };
-    const { data, error: insertError } = await createBookingCustomerAction(ownerId, {
-      name: formText('name'),
-      phone: formText('phone'),
-      address: formText('address'),
-    });
+    const { data, error: insertError } = await createBookingCustomerAction(
+      ownerId,
+      {
+        name: formText('name'),
+        phone: formText('phone'),
+        address: formText('address'),
+      },
+    );
     if (insertError || !data) {
-      setError(insertError || 'Your session has expired. Please sign in again.');
+      setError(
+        insertError || 'Your session has expired. Please sign in again.',
+      );
       setBusy(false);
       return;
     }

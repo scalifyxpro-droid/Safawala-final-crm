@@ -13,23 +13,25 @@ declare global {
   var __pgPool: postgres.Sql | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL;
+function getPool(): postgres.Sql {
+  if (globalThis.__pgPool) return globalThis.__pgPool;
 
-if (!connectionString) {
-  throw new Error('DATABASE_URL is not set. Link the Railway Postgres service to this app.');
-}
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      'DATABASE_URL is not set. Link the Railway Postgres service to this app.',
+    );
+  }
 
-export const pool: postgres.Sql =
-  globalThis.__pgPool ??
-  postgres(connectionString, {
+  const pool = postgres(connectionString, {
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
   });
 
-// Reuse the pool across hot reloads in dev / across serverless invocations.
-if (process.env.NODE_ENV !== 'production') {
+  // Reuse the pool across hot reloads in dev / across serverless invocations.
   globalThis.__pgPool = pool;
+  return pool;
 }
 
 export type Tx = postgres.TransactionSql;
@@ -56,7 +58,7 @@ export async function withUserContext<T>(
   userId: string | null,
   fn: (tx: Tx) => Promise<T>
 ): Promise<T> {
-  return (await pool.begin(async (tx) => {
+  return (await getPool().begin(async (tx) => {
     await tx.unsafe('set local role authenticated');
     await tx`select set_config('app.user_id', ${userId ?? ''}, true)`;
     return fn(tx);
@@ -70,5 +72,5 @@ export async function withUserContext<T>(
  * anything driven by a request's own user context.
  */
 export async function withServiceRole<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-  return (await pool.begin(async (tx) => fn(tx))) as T;
+  return (await getPool().begin(async (tx) => fn(tx))) as T;
 }

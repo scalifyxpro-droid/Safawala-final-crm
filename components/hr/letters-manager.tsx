@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { saveLetterAction } from '@/app/hr/actions';
@@ -111,7 +112,7 @@ export function LettersManager({
                 <th className="px-5 py-3">Letter type</th>
                 <th className="px-5 py-3">Title</th>
                 <th className="px-5 py-3">Issued</th>
-                <th className="px-5 py-3" />
+                <th aria-label="Actions" className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -338,9 +339,11 @@ function LetterPreview({
         <article className="print:shadow-none mx-auto min-h-[1056px] border-t-[6px] border-[#5b63f6] bg-white dark:bg-card px-8 py-9 text-[#12345b] shadow-2xl sm:px-12 sm:py-11">
           <header className="flex items-start justify-between gap-8 border-b-4 border-[#5b63f6] pb-5">
             <div>
-              <img
+              <Image
                 src="/safawala-wordmark-transparent.png"
                 alt="Safawala.com"
+                width={240}
+                height={48}
                 className="h-12 w-auto object-contain"
               />
               <p className="mt-2 text-[11px]">
@@ -542,7 +545,7 @@ function LetterOpening({ type, name }: { type: string; name: string }) {
   if (normalized.includes('termination'))
     return (
       <>
-        This letter confirms the termination of <strong>{name}</strong>'s
+        This letter confirms the termination of <strong>{name}</strong>&apos;s
         employment with <strong>Safawala.com</strong>, effective as communicated
         by Human Resources.
       </>
@@ -842,7 +845,13 @@ async function downloadLetterPdf(
       pdf.setFillColor(245, 248, 252);
       pdf.rect(margin, y, labelWidth, rowHeight, 'FD');
       pdf.setFillColor(255, 255, 255);
-      pdf.rect(margin + labelWidth, y, contentWidth - labelWidth, rowHeight, 'FD');
+      pdf.rect(
+        margin + labelWidth,
+        y,
+        contentWidth - labelWidth,
+        rowHeight,
+        'FD',
+      );
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(30, 41, 59);
       pdf.text(labelLines, margin + 8, y + 14);

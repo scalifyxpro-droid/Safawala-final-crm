@@ -28,9 +28,9 @@ const MAX_CANVAS_WIDTH = 640;
 type NativeBarcodeDetector = {
   detect: (video: HTMLVideoElement) => Promise<{ rawValue?: string }[]>;
 };
-type NativeBarcodeDetectorCtor = new (
-  options?: { formats?: string[] },
-) => NativeBarcodeDetector;
+type NativeBarcodeDetectorCtor = new (options?: {
+  formats?: string[];
+}) => NativeBarcodeDetector;
 
 type Status = 'starting' | 'scanning' | 'error';
 
@@ -39,7 +39,8 @@ function errorMessage(error: unknown) {
 }
 
 function getNativeDetector() {
-  return (window as Window & { BarcodeDetector?: NativeBarcodeDetectorCtor }).BarcodeDetector;
+  return (window as Window & { BarcodeDetector?: NativeBarcodeDetectorCtor })
+    .BarcodeDetector;
 }
 
 /**
@@ -89,7 +90,7 @@ export function BarcodeScannerModal({
     setErrorText('');
     setEngine(null);
 
-    (async () => {
+    void (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setStatus('error');
         setErrorText(
@@ -133,7 +134,10 @@ export function BarcodeScannerModal({
             // retry with the browser's own default set instead of failing.
             detector = new NativeDetector();
           } catch (error) {
-            console.error('Native barcode detector unavailable, falling back to built-in scanner', error);
+            console.error(
+              'Native barcode detector unavailable, falling back to built-in scanner',
+              error,
+            );
             detector = null;
           }
         }
@@ -213,7 +217,13 @@ export function BarcodeScannerModal({
       <Card className="w-full max-w-md">
         <CardHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
           <CardTitle className="text-lg">Scan product barcode</CardTitle>
-          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close scanner">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close scanner"
+          >
             <X />
           </Button>
         </CardHeader>
@@ -253,7 +263,12 @@ export function BarcodeScannerModal({
                 Try again
               </Button>
             ) : null}
-            <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={onClose}
+            >
               Close camera
             </Button>
           </div>

@@ -22,7 +22,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { displayQuoteNumber, money, statusLabel } from '@/lib/bookings';
 import { useHardwareScannerListener } from '@/lib/hooks/use-hardware-scanner';
-import { updateBookingDetailsAction, updateBookingFieldsAction } from '@/app/bookings/actions';
+import {
+  updateBookingDetailsAction,
+  updateBookingFieldsAction,
+} from '@/app/bookings/actions';
 import { validateCouponAction } from '@/app/coupons/actions';
 
 type BookingItem = {
@@ -126,12 +129,18 @@ export function BookingEditForm({
   // window, counting every OTHER rental booking's overlapping reservation
   // (this booking's own items are excluded so editing it doesn't self-block).
   useEffect(() => {
-    if (isSale || !editableItems || !pickupDate || !dueDate || products.length === 0) {
+    if (
+      isSale ||
+      !editableItems ||
+      !pickupDate ||
+      !dueDate ||
+      products.length === 0
+    ) {
       setAvailabilityByProduct({});
       return;
     }
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const response = await fetch('/api/product-availability', {
           method: 'POST',
@@ -167,7 +176,8 @@ export function BookingEditForm({
   function availabilityLabel(product: Product): string {
     if (!isSale && pickupDate && dueDate) {
       const info = availabilityByProduct[product.id];
-      if (info) return `Available: ${info.available} / ${info.totalStock} in stock`;
+      if (info)
+        return `Available: ${info.available} / ${info.totalStock} in stock`;
     }
     return `${product.stock_quantity} in stock`;
   }
@@ -253,7 +263,9 @@ export function BookingEditForm({
       setCouponMessage(`${result.code} applied: ${money(result.discount)} off`);
     } catch (error) {
       setAppliedCoupon('');
-      setCouponMessage(error instanceof Error ? error.message : 'Unable to apply coupon.');
+      setCouponMessage(
+        error instanceof Error ? error.message : 'Unable to apply coupon.',
+      );
     } finally {
       setCouponBusy(false);
     }
@@ -331,7 +343,7 @@ export function BookingEditForm({
         const stockLimit = getAvailableQuantity(product);
         const requested = Math.max(1, Math.floor(patch.quantity));
         if (requested > stockLimit) {
-          warnIfOverCapacity(product, requested, stockLimit);
+          void warnIfOverCapacity(product, requested, stockLimit);
         }
       }
     }
@@ -346,7 +358,10 @@ export function BookingEditForm({
         return {
           ...item,
           ...patch,
-          quantity: Math.min(stockLimit, Math.max(1, Math.floor(patch.quantity))),
+          quantity: Math.min(
+            stockLimit,
+            Math.max(1, Math.floor(patch.quantity)),
+          ),
         };
       }),
     );
@@ -356,7 +371,7 @@ export function BookingEditForm({
     const existingItem = items.find((item) => item.product_id === product.id);
     const totalWanted = (existingItem?.quantity ?? 0) + 1;
     if (totalWanted > maxQuantity) {
-      warnIfOverCapacity(product, totalWanted, maxQuantity);
+      void warnIfOverCapacity(product, totalWanted, maxQuantity);
     } else {
       setNotice('');
     }
@@ -447,31 +462,34 @@ export function BookingEditForm({
         return;
       }
     } else {
-      const { error: updateErrorMessage } = await updateBookingFieldsAction(booking.id, {
-        customer_id: Number(form.get('customer_id')),
-        assigned_staff_id: text('assigned_staff_id')
-          ? Number(form.get('assigned_staff_id'))
-          : null,
-        event_name: text('event_name'),
-        event_date: text('event_date'),
-        event_time: text('event_time') || null,
-        event_location: text('event_location') || null,
-        contact_name:
-          booking.booking_type === 'rental'
-            ? text('contact_name') || null
+      const { error: updateErrorMessage } = await updateBookingFieldsAction(
+        booking.id,
+        {
+          customer_id: Number(form.get('customer_id')),
+          assigned_staff_id: text('assigned_staff_id')
+            ? Number(form.get('assigned_staff_id'))
             : null,
-        alternate_mobile:
-          booking.booking_type === 'rental'
-            ? text('alternate_mobile') || null
-            : null,
-        pickup_date:
-          booking.booking_type === 'rental'
-            ? text('pickup_date') || null
-            : null,
-        due_date:
-          booking.booking_type === 'rental' ? text('due_date') || null : null,
-        notes: text('notes') || null,
-      });
+          event_name: text('event_name'),
+          event_date: text('event_date'),
+          event_time: text('event_time') || null,
+          event_location: text('event_location') || null,
+          contact_name:
+            booking.booking_type === 'rental'
+              ? text('contact_name') || null
+              : null,
+          alternate_mobile:
+            booking.booking_type === 'rental'
+              ? text('alternate_mobile') || null
+              : null,
+          pickup_date:
+            booking.booking_type === 'rental'
+              ? text('pickup_date') || null
+              : null,
+          due_date:
+            booking.booking_type === 'rental' ? text('due_date') || null : null,
+          notes: text('notes') || null,
+        },
+      );
       if (updateErrorMessage) {
         setError(updateErrorMessage);
         setBusy(false);
@@ -656,7 +674,7 @@ export function BookingEditForm({
                     onKeyDown={(event) => {
                       if (event.key !== 'Enter') return;
                       event.preventDefault();
-                      handleBarcodeSubmit(productSearch);
+                      void handleBarcodeSubmit(productSearch);
                     }}
                     placeholder="Search product, barcode or SKU…"
                     className={`${fieldClass} !mt-0 pl-9 pr-20`}
@@ -666,7 +684,7 @@ export function BookingEditForm({
                       type="button"
                       aria-label="Add product by barcode"
                       title="Add"
-                      onClick={() => handleBarcodeSubmit(productSearch)}
+                      onClick={() => void handleBarcodeSubmit(productSearch)}
                       className="grid size-7 place-items-center rounded-md text-primary hover:bg-muted"
                     >
                       <Plus className="size-4" />
@@ -789,7 +807,8 @@ export function BookingEditForm({
                                           (row) => row.id === item.product_id,
                                         );
                                         return product
-                                          ? getAvailableQuantity(product) || undefined
+                                          ? getAvailableQuantity(product) ||
+                                              undefined
                                           : undefined;
                                       })()
                                     : undefined
@@ -899,13 +918,37 @@ export function BookingEditForm({
                   </label>
                   <div className="border-t pt-3">
                     <label className="block text-sm">
-                      <span className="mb-1.5 block text-muted-foreground">Coupon code</span>
+                      <span className="mb-1.5 block text-muted-foreground">
+                        Coupon code
+                      </span>
                       <div className="flex gap-2">
-                        <input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="e.g. SAVE10" className={`${fieldClass} min-w-0 flex-1 !mt-0`} disabled={couponBusy} />
-                        <Button type="button" variant="outline" size="sm" onClick={applyCoupon} disabled={couponBusy || !couponCode.trim()}>{couponBusy ? 'Checking…' : 'Apply'}</Button>
+                        <input
+                          value={couponCode}
+                          onChange={(event) =>
+                            setCouponCode(event.target.value.toUpperCase())
+                          }
+                          placeholder="e.g. SAVE10"
+                          className={`${fieldClass} min-w-0 flex-1 !mt-0`}
+                          disabled={couponBusy}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={applyCoupon}
+                          disabled={couponBusy || !couponCode.trim()}
+                        >
+                          {couponBusy ? 'Checking…' : 'Apply'}
+                        </Button>
                       </div>
                     </label>
-                    {couponMessage ? <p className={`mt-1.5 text-xs ${appliedCoupon ? 'text-emerald-700' : 'text-destructive'}`}>{couponMessage}</p> : null}
+                    {couponMessage ? (
+                      <p
+                        className={`mt-1.5 text-xs ${appliedCoupon ? 'text-emerald-700' : 'text-destructive'}`}
+                      >
+                        {couponMessage}
+                      </p>
+                    ) : null}
                   </div>
                   <label className="flex items-center gap-2 border-t pt-3 text-sm text-muted-foreground">
                     <input
@@ -981,7 +1024,7 @@ export function BookingEditForm({
         onClose={() => setCameraOpen(false)}
         onDetected={(value) => {
           setCameraOpen(false);
-          handleBarcodeSubmit(value);
+          void handleBarcodeSubmit(value);
         }}
       />
     </div>

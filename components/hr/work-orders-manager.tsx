@@ -33,7 +33,7 @@ const names: Record<string, string> = {
 };
 export function WorkOrdersManager({
   initialRecords,
-  staff,
+  staff: _staff,
 }: {
   initialRecords: Row[];
   staff: Staff[];
@@ -58,7 +58,12 @@ export function WorkOrdersManager({
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card role="button" tabIndex={0} onClick={() => setStatus('all')} className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatus('all')}
+          className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
+        >
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               Total tasks
@@ -66,7 +71,12 @@ export function WorkOrdersManager({
             <p className="mt-2 text-2xl font-semibold">{rows.length}</p>
           </CardContent>
         </Card>
-        <Card role="button" tabIndex={0} onClick={() => setStatus('in_progress')} className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatus('in_progress')}
+          className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
+        >
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               Open / in progress
@@ -76,7 +86,12 @@ export function WorkOrdersManager({
             </p>
           </CardContent>
         </Card>
-        <Card role="button" tabIndex={0} onClick={() => setStatus('done')} className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setStatus('done')}
+          className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
+        >
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               Completed
@@ -129,7 +144,7 @@ export function WorkOrdersManager({
                 <th className="px-5 py-3">Assigned staff</th>
                 <th className="px-5 py-3">Due date</th>
                 <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3" />
+                <th aria-label="Actions" className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>

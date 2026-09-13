@@ -8,6 +8,11 @@ export const dynamic = 'force-dynamic';
 export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect('/dashboard');
+  const configured = Boolean(
+    process.env.DATABASE_URL &&
+      process.env.SESSION_SECRET &&
+      process.env.SESSION_SECRET.length >= 32,
+  );
 
   return (
     <main className="grid min-h-dvh place-items-center bg-surface px-4 py-6 sm:px-8 sm:py-10 lg:px-12">
@@ -33,7 +38,7 @@ export default async function LoginPage() {
               <p className="mt-2 text-sm leading-5 text-muted-foreground">Sign in to your Safawala CRM account</p>
             </div>
             <div className="my-7 h-px bg-border" />
-            <LoginForm configured />
+            <LoginForm configured={configured} />
             <p className="mt-8 text-center text-xs text-muted-foreground">Securely powered by Safawala CRM</p>
           </div>
         </div>

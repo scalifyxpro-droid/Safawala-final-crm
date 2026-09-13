@@ -103,7 +103,18 @@ export async function createAccount(ownerId: string, input: {
     }
     const userId = createdUser.id;
 
-    await tx`update public.profiles set full_name = ${input.name.trim()}, role = 'staff' where id = ${userId}`;
+    // This must be an upsert, not an UPDATE: this self-hosted Postgres has no
+    // Supabase-style trigger that auto-creates a `public.profiles` row when a
+    // new `auth.users` row is inserted (line ~98 above), so an UPDATE-only
+    // statement here silently affects 0 rows for every brand-new staff
+    // account — leaving it with no profiles row at all, which then fails
+    // every future login (getStaffSession()/proxy.ts both require a
+    // `public.profiles` row with role = 'staff').
+    await tx`
+      insert into public.profiles (id, full_name, role)
+      values (${userId}, ${input.name.trim()}, 'staff')
+      on conflict (id) do update set full_name = excluded.full_name, role = excluded.role
+    `;
 
     let staffId = input.staffMemberId;
     if (staffId) {

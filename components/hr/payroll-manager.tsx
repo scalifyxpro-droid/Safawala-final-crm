@@ -25,7 +25,7 @@ export function PayrollManager({
   initialRecords: Row[];
   staff: Staff[];
 }) {
-  const [rows, setRows] = useState(initialRecords);
+  const [rows] = useState(initialRecords);
   const [month, setMonth] = useState('all');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -61,7 +61,9 @@ export function PayrollManager({
     };
     start(async () => {
       setErrorMessage('');
-      const result = await savePayrollAction(editing?.id ? { id: editing.id, ...payload } : payload);
+      const result = await savePayrollAction(
+        editing?.id ? { id: editing.id, ...payload } : payload,
+      );
       if (result.error) setErrorMessage(result.error);
       else window.location.reload();
     });
@@ -258,7 +260,11 @@ export function PayrollManager({
               <h2 className="mb-4 text-lg font-semibold">
                 {editing.id ? 'Edit salary breakdown' : 'Add payroll'}
               </h2>
-              {errorMessage ? <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p> : null}
+              {errorMessage ? (
+                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {errorMessage}
+                </p>
+              ) : null}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();

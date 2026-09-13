@@ -123,13 +123,18 @@ export default async function HrModulePage({
            limit 200`,
         )) as unknown as Record<string, unknown>[];
       }
-      return { rows: rows as unknown as Record<string, unknown>[], staffRows, workflowRows };
+      return {
+        rows: rows as unknown as Record<string, unknown>[],
+        staffRows,
+        workflowRows,
+      };
     });
     data = result.rows;
     staff = result.staffRows;
     workflow = result.workflowRows;
   } catch (err) {
-    error = err instanceof Error ? err : new Error('Unable to load HR records.');
+    error =
+      err instanceof Error ? err : new Error('Unable to load HR records.');
     if (module === 'work-orders') workflowError = error;
   }
 
@@ -137,14 +142,20 @@ export default async function HrModulePage({
     return (
       <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
-          <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
+          <DashboardHeader
+            title={config.title}
+            subtitle={config.subtitle}
+            backHref="/hr"
+          />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
                   HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {error.message}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -159,14 +170,20 @@ export default async function HrModulePage({
     return (
       <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
-          <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
+          <DashboardHeader
+            title={config.title}
+            subtitle={config.subtitle}
+            backHref="/hr"
+          />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
                   HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {error.message}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -181,14 +198,20 @@ export default async function HrModulePage({
     return (
       <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
-          <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
+          <DashboardHeader
+            title={config.title}
+            subtitle={config.subtitle}
+            backHref="/hr"
+          />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
                   HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {error.message}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -203,14 +226,20 @@ export default async function HrModulePage({
     return (
       <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
-          <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
+          <DashboardHeader
+            title={config.title}
+            subtitle={config.subtitle}
+            backHref="/hr"
+          />
           {error && (
             <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
               <CardContent className="p-5">
                 <p className="font-semibold text-[#70481c]">
                   HR records could not be loaded
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {error.message}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -225,7 +254,8 @@ export default async function HrModulePage({
     return (
       <DashboardShell email={user.email ?? 'Safawala user'}>
         <div className="mx-auto max-w-[1280px] space-y-6">
-          <DashboardHeader backHref="/hr"
+          <DashboardHeader
+            backHref="/hr"
             title={config.title}
             subtitle="Live operational tasks from the existing event workflow"
           />
@@ -235,7 +265,9 @@ export default async function HrModulePage({
                 <p className="font-semibold text-[#70481c]">
                   Event workflow is not available
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{workflowError.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {workflowError.message}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -249,14 +281,20 @@ export default async function HrModulePage({
   return (
     <DashboardShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto max-w-[1280px] space-y-6">
-        <DashboardHeader title={config.title} subtitle={config.subtitle} backHref="/hr" />
+        <DashboardHeader
+          title={config.title}
+          subtitle={config.subtitle}
+          backHref="/hr"
+        />
         {error && (
           <Card className="border-[#e4d2b6] bg-[#fffaf2] dark:bg-[#241e17]">
             <CardContent className="p-5">
               <p className="font-semibold text-[#70481c]">
                 HR records could not be loaded
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error.message}
+              </p>
             </CardContent>
           </Card>
         )}

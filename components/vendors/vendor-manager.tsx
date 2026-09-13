@@ -24,7 +24,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { createVendorAction, deleteVendorAction, toggleVendorStatusAction, updateVendorAction } from '@/app/vendors/actions';
+import {
+  createVendorAction,
+  deleteVendorAction,
+  toggleVendorStatusAction,
+  updateVendorAction,
+} from '@/app/vendors/actions';
 
 export type Vendor = {
   id: number;
@@ -44,19 +49,29 @@ const areaClass =
   'mt-1.5 min-h-20 w-full rounded-lg border border-input bg-white dark:bg-card px-3 py-2 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20';
 
 function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase() || 'V';
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase() || 'V'
+  );
 }
 
-export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; loadError?: string }) {
+export function VendorManager({
+  vendors,
+  loadError = '',
+}: {
+  vendors: Vendor[];
+  loadError?: string;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'active' | 'inactive'
+  >('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [modal, setModal] = useState<'create' | 'edit' | 'view' | null>(null);
@@ -74,8 +89,8 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
     return vendors.filter((vendor) => {
       const matchesQuery =
         !query ||
-        [vendor.name, vendor.contact_person, vendor.phone, vendor.email].some((value) =>
-          value?.toLowerCase().includes(query),
+        [vendor.name, vendor.contact_person, vendor.phone, vendor.email].some(
+          (value) => value?.toLowerCase().includes(query),
         );
       const matchesStatus =
         statusFilter === 'all' ||
@@ -126,7 +141,9 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       setListError('');
       router.refresh();
     } catch (error) {
-      setModalError(error instanceof Error ? error.message : 'Unable to save vendor.');
+      setModalError(
+        error instanceof Error ? error.message : 'Unable to save vendor.',
+      );
     }
   }
 
@@ -139,7 +156,11 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       setListError('');
       router.refresh();
     } catch (error) {
-      setListError(error instanceof Error ? error.message : 'Unable to update vendor status.');
+      setListError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update vendor status.',
+      );
     }
   }
 
@@ -152,7 +173,9 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       setListError('');
       router.refresh();
     } catch (error) {
-      setListError(error instanceof Error ? error.message : 'Unable to delete vendor.');
+      setListError(
+        error instanceof Error ? error.message : 'Unable to delete vendor.',
+      );
     }
   }
 
@@ -164,8 +187,16 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
         backHref="/dashboard"
         actions={
           <>
-            <Button type="button" variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
-              <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={refresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                className={`size-4 ${refreshing ? 'animate-spin' : ''}`}
+              />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
             <Button type="button" size="sm" onClick={openCreate}>
@@ -177,9 +208,24 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Metric icon={<Truck />} label="Total Vendors" value={String(total)} note="Saved securely" />
-        <Metric icon={<UserCheck />} label="Active Vendors" value={String(activeCount)} note="Currently supplying" />
-        <Metric icon={<UserX />} label="Inactive Vendors" value={String(inactiveCount)} note="Not currently active" />
+        <Metric
+          icon={<Truck />}
+          label="Total Vendors"
+          value={String(total)}
+          note="Saved securely"
+        />
+        <Metric
+          icon={<UserCheck />}
+          label="Active Vendors"
+          value={String(activeCount)}
+          note="Currently supplying"
+        />
+        <Metric
+          icon={<UserX />}
+          label="Inactive Vendors"
+          value={String(inactiveCount)}
+          note="Not currently active"
+        />
       </div>
 
       {listError ? (
@@ -214,7 +260,9 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
               <select
                 value={statusFilter}
                 onChange={(event) => {
-                  setStatusFilter(event.target.value as 'all' | 'active' | 'inactive');
+                  setStatusFilter(
+                    event.target.value as 'all' | 'active' | 'inactive',
+                  );
                   setPage(1);
                 }}
                 className="h-10 rounded-lg border border-input bg-white px-3 text-sm dark:bg-card"
@@ -247,19 +295,26 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
                     <th className="px-5 py-3 font-medium">Contact</th>
                     <th className="px-5 py-3 font-medium">Address</th>
                     <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 text-right font-medium">Actions</th>
+                    <th className="px-5 py-3 text-right font-medium">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {paged.map((vendor) => (
-                    <tr key={vendor.id} className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]">
-                      <td className="px-5 py-4">
+                    <tr
+                      key={vendor.id}
+                      className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
+                    >
+                      <td aria-label={`Vendor ${vendor.name}`} className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#f5ead8] dark:bg-[#33291c] text-xs font-semibold text-[#70481c] ring-1 ring-[#e4d2b6]">
                             {initialsOf(vendor.name)}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate font-semibold">{vendor.name}</p>
+                            <p className="truncate font-semibold">
+                              {vendor.name}
+                            </p>
                             <p className="truncate text-xs text-muted-foreground">
                               {vendor.contact_person || 'No contact person'}
                             </p>
@@ -281,7 +336,9 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
                       <td className="max-w-56 px-5 py-4 text-muted-foreground">
                         <span className="flex items-start gap-1.5">
                           <MapPin className="mt-0.5 size-3.5 shrink-0" />
-                          <span className="line-clamp-2">{vendor.address || 'Not added'}</span>
+                          <span className="line-clamp-2">
+                            {vendor.address || 'Not added'}
+                          </span>
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -305,13 +362,28 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => openView(vendor)} aria-label={`View ${vendor.name}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => openView(vendor)}
+                            aria-label={`View ${vendor.name}`}
+                          >
                             <Eye className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => openEdit(vendor)} aria-label={`Edit ${vendor.name}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => openEdit(vendor)}
+                            aria-label={`Edit ${vendor.name}`}
+                          >
                             <Pencil className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => remove(vendor)} aria-label={`Delete ${vendor.name}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => remove(vendor)}
+                            aria-label={`Delete ${vendor.name}`}
+                          >
                             <Trash2 className="size-4 text-destructive" />
                           </Button>
                         </div>
@@ -342,14 +414,31 @@ export function VendorManager({ vendors, loadError = '' }: { vendors: Vendor[]; 
       </Card>
 
       {modal === 'create' || modal === 'edit' ? (
-        <VendorFormModal vendor={modal === 'edit' ? selected : null} error={modalError} close={closeModal} submit={submit} />
+        <VendorFormModal
+          vendor={modal === 'edit' ? selected : null}
+          error={modalError}
+          close={closeModal}
+          submit={submit}
+        />
       ) : null}
-      {modal === 'view' && selected ? <VendorViewModal vendor={selected} close={closeModal} /> : null}
+      {modal === 'view' && selected ? (
+        <VendorViewModal vendor={selected} close={closeModal} />
+      ) : null}
     </div>
   );
 }
 
-function Metric({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: string; note: string }) {
+function Metric({
+  icon,
+  label,
+  value,
+  note,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  note: string;
+}) {
   return (
     <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
       <CardContent className="flex items-center gap-4 p-5">
@@ -357,8 +446,12 @@ function Metric({ icon, label, value, note }: { icon: React.ReactNode; label: st
           {icon}
         </span>
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-1 truncate text-2xl font-semibold tracking-[-0.03em]">{value}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-1 truncate text-2xl font-semibold tracking-[-0.03em]">
+            {value}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">{note}</p>
         </div>
       </CardContent>
@@ -385,13 +478,21 @@ function VendorFormModal({
             <div>
               <div className="flex items-center gap-2">
                 <Truck className="size-5 text-primary" />
-                <h2 className="text-xl font-semibold">{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
+                <h2 className="text-xl font-semibold">
+                  {vendor ? 'Edit Vendor' : 'Add New Vendor'}
+                </h2>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Saved directly to your vendor directory.
               </p>
             </div>
-            <Button type="button" variant="ghost" size="icon" onClick={close} aria-label="Close">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={close}
+              aria-label="Close"
+            >
               <X className="size-4" />
             </Button>
           </div>
@@ -403,11 +504,22 @@ function VendorFormModal({
           <form action={submit} className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium">
               Vendor Name *
-              <input name="name" required defaultValue={vendor?.name} placeholder="e.g., Royal Silks Traders" className={inputClass} />
+              <input
+                name="name"
+                required
+                defaultValue={vendor?.name}
+                placeholder="e.g., Royal Silks Traders"
+                className={inputClass}
+              />
             </label>
             <label className="text-sm font-medium">
               Contact Person
-              <input name="contact_person" defaultValue={vendor?.contact_person ?? ''} placeholder="e.g., Rakesh Shah" className={inputClass} />
+              <input
+                name="contact_person"
+                defaultValue={vendor?.contact_person ?? ''}
+                placeholder="e.g., Rakesh Shah"
+                className={inputClass}
+              />
             </label>
             <label className="text-sm font-medium">
               Phone *
@@ -424,19 +536,39 @@ function VendorFormModal({
             </label>
             <label className="text-sm font-medium">
               Email
-              <input name="email" type="email" defaultValue={vendor?.email ?? ''} placeholder="vendor@example.com" className={inputClass} />
+              <input
+                name="email"
+                type="email"
+                defaultValue={vendor?.email ?? ''}
+                placeholder="vendor@example.com"
+                className={inputClass}
+              />
             </label>
             <label className="text-sm font-medium sm:col-span-2">
               Address
-              <textarea name="address" defaultValue={vendor?.address ?? ''} placeholder="Shop / warehouse address" className={areaClass} />
+              <textarea
+                name="address"
+                defaultValue={vendor?.address ?? ''}
+                placeholder="Shop / warehouse address"
+                className={areaClass}
+              />
             </label>
             <label className="text-sm font-medium sm:col-span-2">
               Notes
-              <textarea name="notes" defaultValue={vendor?.notes ?? ''} placeholder="Payment terms, specialty items, anything worth remembering" className={areaClass} />
+              <textarea
+                name="notes"
+                defaultValue={vendor?.notes ?? ''}
+                placeholder="Payment terms, specialty items, anything worth remembering"
+                className={areaClass}
+              />
             </label>
             <div className="flex justify-end gap-2 sm:col-span-2">
-              <Button type="button" variant="outline" onClick={close}>Cancel</Button>
-              <Button type="submit">{vendor ? 'Save Changes' : 'Create Vendor'}</Button>
+              <Button type="button" variant="outline" onClick={close}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {vendor ? 'Save Changes' : 'Create Vendor'}
+              </Button>
             </div>
           </form>
         </CardContent>
@@ -445,7 +577,13 @@ function VendorFormModal({
   );
 }
 
-function VendorViewModal({ vendor, close }: { vendor: Vendor; close: () => void }) {
+function VendorViewModal({
+  vendor,
+  close,
+}: {
+  vendor: Vendor;
+  close: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto border-border shadow-level-3">
@@ -459,25 +597,40 @@ function VendorViewModal({ vendor, close }: { vendor: Vendor; close: () => void 
                 <h2 className="text-lg font-semibold">{vendor.name}</h2>
                 <Badge
                   variant="outline"
-                  className={vendor.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}
+                  className={
+                    vendor.is_active
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  }
                 >
                   {vendor.is_active ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
             </div>
-            <Button type="button" variant="ghost" size="icon" onClick={close} aria-label="Close">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={close}
+              aria-label="Close"
+            >
               <X className="size-4" />
             </Button>
           </div>
           <dl className="space-y-3 text-sm">
-            <Detail label="Contact person" value={vendor.contact_person || '—'} />
+            <Detail
+              label="Contact person"
+              value={vendor.contact_person || '—'}
+            />
             <Detail label="Phone" value={vendor.phone} />
             <Detail label="Email" value={vendor.email || '—'} />
             <Detail label="Address" value={vendor.address || '—'} />
             <Detail label="Notes" value={vendor.notes || '—'} />
           </dl>
           <div className="mt-5 flex justify-end">
-            <Button type="button" variant="outline" onClick={close}>Close</Button>
+            <Button type="button" variant="outline" onClick={close}>
+              Close
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -488,7 +641,9 @@ function VendorViewModal({ vendor, close }: { vendor: Vendor; close: () => void 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
       <dd className="mt-0.5 whitespace-pre-wrap text-foreground">{value}</dd>
     </div>
   );

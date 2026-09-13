@@ -45,7 +45,9 @@ export async function StylistJobModal({ jobId }: { jobId: string }) {
             <h2 className="mt-1 text-xl font-semibold">
               {job.eventSummary.customerName || 'Customer not added'}
             </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{job.eventSummary.eventName}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {job.eventSummary.eventName}
+            </p>
           </div>
           <Link
             href="/staff-portal/stylist"
@@ -112,11 +114,21 @@ export async function StylistJobModal({ jobId }: { jobId: string }) {
           <div className="flex items-center justify-between rounded-xl border border-[#e4d2b6] bg-[#fffaf2] p-4">
             <div>
               <p className="font-semibold">
-                {session.isMainId ? 'Stylist assignment overview' : interest ? 'Your response' : 'Available for this event?'}
+                {session.isMainId
+                  ? 'Stylist assignment overview'
+                  : interest
+                    ? 'Your response'
+                    : 'Available for this event?'}
               </p>
               {session.isMainId ? (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {job.stylistInterests.filter((item) => item.status === 'approved').length} approved of {job.stylistsRequiredCount} required · {interested} interested
+                  {
+                    job.stylistInterests.filter(
+                      (item) => item.status === 'approved',
+                    ).length
+                  }{' '}
+                  approved of {job.stylistsRequiredCount} required ·{' '}
+                  {interested} interested
                 </p>
               ) : interest ? (
                 <Badge
