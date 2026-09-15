@@ -200,7 +200,7 @@ export default async function QuotesPage({ searchParams }: Props) {
   const sequenceById = new Map<number, number>();
   const yearlyCounts = new Map<string, number>();
   quoteSummary.forEach((quote) => {
-    const year = quote.created_at.slice(0, 4);
+    const year = String(new Date(quote.created_at).getFullYear());
     const next = (yearlyCounts.get(year) ?? 0) + 1;
     yearlyCounts.set(year, next);
     sequenceById.set(quote.id, next);
@@ -464,7 +464,7 @@ export default async function QuotesPage({ searchParams }: Props) {
                             </Badge>
                           </td>
                           <td className="px-5 py-4 text-muted-foreground">
-                            {friendlyDate(quote.created_at.slice(0, 10))}
+                            {friendlyDate(quote.created_at)}
                           </td>
                           <td className="px-5 py-4">
                             <div className="flex items-center justify-end gap-1">

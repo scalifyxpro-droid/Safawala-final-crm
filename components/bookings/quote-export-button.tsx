@@ -42,7 +42,7 @@ export function ExportQuotesButton({ quotes }: { quotes: ExportableQuote[] }) {
       friendlyDate(quote.event_date),
       money(quote.total),
       QUOTE_STATE_LABEL[quoteState(quote.status)],
-      friendlyDate(quote.created_at.slice(0, 10)),
+      friendlyDate(quote.created_at),
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map(csvCell).join(','))

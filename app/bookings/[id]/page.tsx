@@ -144,7 +144,7 @@ export default async function BookingDetailsPage({
                 )
               : booking.booking_number
           }
-          subtitle={`${statusLabel(booking.booking_type)} booking · created ${friendlyDate(booking.created_at.slice(0, 10))}`}
+          subtitle={`${statusLabel(booking.booking_type)} booking · created ${friendlyDate(booking.created_at)}`}
           backHref={returnTo}
           actions={
             <>

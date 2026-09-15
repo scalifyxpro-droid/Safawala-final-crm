@@ -1,19 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LedgerCustomer, LedgerTransaction } from '@/lib/ledger';
 import { paymentMethodLabel } from '@/lib/ledger';
-
-const dark: [number, number, number] = [38, 35, 31];
-const brand: [number, number, number] = [110, 71, 31];
-const muted: [number, number, number] = [74, 66, 58];
-const border: [number, number, number] = [132, 122, 112];
-const inr = (value: number | null) =>
-  value === null
-    ? '-'
-    : `Rs. ${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+import {
+  BORDER_SOFT,
+  BRAND_DARK,
+  LINE_FAINT,
+  MUTED,
+  ROW_TINT,
+  drawDocumentHeader,
+  loadBrandLogo,
+  randomOwnerPassword,
+  rupees,
+  sectionBox,
+  stampFooterOnAllPages,
+} from '@/lib/pdf/brand';
 
 const date = (value: string) =>
   new Intl.DateTimeFormat('en-IN', {
@@ -29,53 +33,6 @@ const time = (value: string) =>
     hour12: true,
     timeZone: 'Asia/Kolkata',
   }).format(new Date(value));
-
-async function trimmedLogo(src: string) {
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error('Logo could not be loaded.'));
-      element.src = src;
-    });
-    const source = document.createElement('canvas');
-    source.width = image.naturalWidth;
-    source.height = image.naturalHeight;
-    const sourceContext = source.getContext('2d', { willReadFrequently: true });
-    if (!sourceContext) return null;
-    sourceContext.drawImage(image, 0, 0);
-    const pixels = sourceContext.getImageData(0, 0, source.width, source.height);
-    let minX = source.width;
-    let minY = source.height;
-    let maxX = 0;
-    let maxY = 0;
-    for (let y = 0; y < source.height; y += 1) {
-      for (let x = 0; x < source.width; x += 1) {
-        if (pixels.data[(y * source.width + x) * 4 + 3] > 12) {
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-    }
-    if (minX > maxX || minY > maxY) return null;
-    const padding = 4;
-    const cropX = Math.max(0, minX - padding);
-    const cropY = Math.max(0, minY - padding);
-    const cropWidth = Math.min(source.width - cropX, maxX - minX + 1 + padding * 2);
-    const cropHeight = Math.min(source.height - cropY, maxY - minY + 1 + padding * 2);
-    const output = document.createElement('canvas');
-    output.width = cropWidth;
-    output.height = cropHeight;
-    const outputContext = output.getContext('2d');
-    if (!outputContext) return null;
-    outputContext.drawImage(source, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-    return { dataUrl: output.toDataURL('image/png'), ratio: cropWidth / cropHeight };
-  } catch {
-    return null;
-  }
-}
 
 export function LedgerPdfButton({
   customer,
@@ -93,17 +50,14 @@ export function LedgerPdfButton({
   async function download() {
     setBusy(true);
     try {
-      const [{ jsPDF }, logo] = await Promise.all([
-        import('jspdf'),
-        trimmedLogo('/safawala-wordmark-transparent.png'),
-      ]);
+      const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadBrandLogo()]);
       const doc = new jsPDF({
         unit: 'mm',
         format: 'a4',
         orientation: 'landscape',
         encryption: {
           userPassword: '',
-          ownerPassword: crypto.randomUUID().replaceAll('-', ''),
+          ownerPassword: randomOwnerPassword(),
           userPermissions: ['print', 'copy'],
         },
       });
@@ -126,31 +80,15 @@ export function LedgerPdfButton({
       ];
       let y = 0;
 
-      const footer = (pageNumber: number, totalPages: number) => {
-        doc.setDrawColor(...border);
-        doc.setLineWidth(0.25);
-        doc.line(left, height - 10, right, height - 10);
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(...muted);
-        const generated = new Intl.DateTimeFormat('en-IN', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-          timeZone: 'Asia/Kolkata',
-        }).format(new Date());
-        doc.text(`Generated ${generated} - Computer generated statement`, left, height - 5.5);
-        doc.text(`Safawala - Page ${pageNumber} of ${totalPages}`, right, height - 5.5, { align: 'right' });
-      };
-
       const tableHeader = () => {
-        doc.setFillColor(247, 244, 239);
-        doc.setDrawColor(...border);
-        doc.rect(left, y, right - left, 8, 'F');
-        doc.setLineWidth(0.25);
+        doc.setFillColor(...ROW_TINT);
+        doc.setDrawColor(...BORDER_SOFT);
+        doc.setLineWidth(0.3);
+        doc.rect(left, y, right - left, 8, 'FD');
         columns.forEach((column) => doc.rect(column.x, y, column.w, 8, 'S'));
-        doc.setFont('courier', 'bold');
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.4);
-        doc.setTextColor(...brand);
+        doc.setTextColor(...BRAND_DARK);
         columns.forEach((column) =>
           doc.text(
             column.label,
@@ -163,66 +101,65 @@ export function LedgerPdfButton({
       };
 
       const firstHeader = () => {
-        doc.setDrawColor(...border);
-        doc.setLineWidth(0.4);
-        doc.roundedRect(10, 8, width - 20, 25, 3, 3, 'S');
-        if (logo) {
-          const logoHeight = 11;
-          doc.addImage(logo.dataUrl, 'PNG', left + 2, 10.5, logoHeight * logo.ratio, logoHeight);
-        }
-        doc.setFont('courier', 'bold');
-        doc.setTextColor(...brand);
-        doc.setFontSize(14);
-        doc.text('CUSTOMER LEDGER', right - 2, 16.5, { align: 'right' });
-        doc.setFontSize(7.5);
-        doc.setFont('courier', 'bold');
-        doc.setTextColor(...muted);
-        doc.text('Premium Wedding Accessories', left + 2, 29.5);
-        doc.text(period, right - 2, 22.5, { align: 'right' });
-
-        y = 39;
-        doc.setFontSize(8.5);
-        doc.setTextColor(...dark);
-        doc.setFont('courier', 'bold');
-        doc.text(customer.name, left + 2, y);
-        doc.setFont('courier', 'bold');
-        doc.setTextColor(...muted);
-        doc.text(`Customer ID: ${customer.id}   Mobile: ${customer.phone}`, left + 2, y + 5);
-        doc.text(customer.email || 'Email not available', left + 2, y + 10);
-        const summaryX = 128;
-        const summary = [
-          ['Total Billing', totals.totalBilling],
-          ['Total Received', totals.totalPaid],
-          ['Outstanding', totals.outstanding],
-          ['Total Bills', totals.totalBills],
-        ] as const;
-        summary.forEach(([label, value], index) => {
-          const x = summaryX + index * 39;
-          doc.setFont('courier', 'bold');
-          doc.setTextColor(...brand);
-          doc.setFontSize(7);
-          doc.text(label.toUpperCase(), x, y);
-          doc.setFont('courier', 'bold');
-          doc.setTextColor(...brand);
-          doc.setFontSize(9.5);
-          doc.text(label === 'Total Bills' ? String(value) : inr(Number(value)), x, y + 6);
+        drawDocumentHeader(doc, {
+          left,
+          right,
+          logo,
+          docNumber: 'CUSTOMER LEDGER',
+          docLabel: 'Statement of Account',
+          dateLabel: period,
         });
-        y += 18;
+
+        y = 48;
+        const boxHeight = 26;
+        sectionBox(doc, left, y, right - left, boxHeight);
+        const infoY = y + 8;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(customer.name, left + 5, infoY);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...MUTED);
+        doc.text(`Customer ID: ${customer.id}   Mobile: ${customer.phone}`, left + 5, infoY + 5.5);
+        doc.text(customer.email || 'Email not available', left + 5, infoY + 10.5);
+
+        const summary = [
+          ['Total Billing', rupees(totals.totalBilling)],
+          ['Total Received', rupees(totals.totalPaid)],
+          ['Outstanding', rupees(totals.outstanding)],
+          ['Total Bills', String(totals.totalBills)],
+        ] as const;
+        const tilesX = left + (right - left) * 0.46;
+        const tileWidth = (right - 5 - tilesX) / summary.length;
+        summary.forEach(([label, value], index) => {
+          const x = tilesX + index * tileWidth;
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...MUTED);
+          doc.setFontSize(6.8);
+          doc.text(label.toUpperCase(), x, infoY);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...BRAND_DARK);
+          doc.setFontSize(10.5);
+          doc.text(value, x, infoY + 7);
+        });
+
+        y += boxHeight + 6;
         tableHeader();
       };
 
       firstHeader();
       for (const transaction of transactions) {
-        if (y + 10 > height - 13) {
+        if (y + 9 > height - 10) {
           doc.addPage('a4', 'landscape');
           y = 11;
-          doc.setFont('courier', 'bold');
+          doc.setFont('helvetica', 'bold');
           doc.setFontSize(8.5);
-          doc.setTextColor(...brand);
+          doc.setTextColor(...BRAND_DARK);
           doc.text(`CUSTOMER LEDGER - ${customer.name}`, left, y);
-          doc.setFont('courier', 'bold');
+          doc.setFont('helvetica', 'normal');
           doc.setFontSize(7.5);
-          doc.setTextColor(...muted);
+          doc.setTextColor(...MUTED);
           doc.text(period, right, y, { align: 'right' });
           y += 4;
           tableHeader();
@@ -233,16 +170,16 @@ export function LedgerPdfButton({
           transaction.bookingNumber,
           transaction.bookingType === 'sale' ? 'Sale' : 'Rental',
           transaction.transactionType === 'bill' ? 'Bill' : 'Payment',
-          inr(transaction.billAmount),
-          inr(transaction.paymentAmount),
+          rupees(transaction.billAmount),
+          rupees(transaction.paymentAmount),
           transaction.paymentMethod ? paymentMethodLabel(transaction.paymentMethod) : '-',
           transaction.referenceNumber || '-',
-          inr(transaction.balance),
+          rupees(transaction.balance),
           transaction.status === 'completed' ? 'Paid' : 'Due',
         ];
-        doc.setFont('courier', 'bold');
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.2);
-        doc.setTextColor(...dark);
+        doc.setTextColor(...BRAND_DARK);
         columns.forEach((column, index) => {
           const clipped = doc.splitTextToSize(values[index], column.w - 3)[0] || '-';
           doc.text(
@@ -251,22 +188,31 @@ export function LedgerPdfButton({
             y + 6,
             { align: column.align },
           );
-          doc.setDrawColor(205, 205, 205);
+          doc.setDrawColor(...LINE_FAINT);
           doc.setLineWidth(0.18);
           doc.rect(column.x, y, column.w, 9, 'S');
         });
         y += 9;
       }
       if (!transactions.length) {
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        doc.setTextColor(...muted);
+        doc.setTextColor(...MUTED);
         doc.text('No transactions match the selected ledger period.', left + 2, y + 8);
       }
-      const totalPages = doc.getNumberOfPages();
-      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
-        doc.setPage(pageNumber);
-        footer(pageNumber, totalPages);
-      }
+
+      const generated = new Intl.DateTimeFormat('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Kolkata',
+      }).format(new Date());
+      stampFooterOnAllPages(doc, {
+        left,
+        right,
+        y: height - 10,
+        note: `Generated ${generated} - Computer generated statement`,
+      });
+
       const safeName = customer.name.trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
       const filename = `${safeName || 'Customer'}_Ledger.pdf`;
       const blobUrl = URL.createObjectURL(doc.output('blob'));
@@ -284,7 +230,7 @@ export function LedgerPdfButton({
 
   return (
     <Button type="button" variant="outline" size="sm" onClick={download} disabled={busy}>
-      <Download />
+      {busy ? <LoaderCircle className="animate-spin" /> : <Download />}
       <span className="hidden sm:inline">Download PDF</span>
     </Button>
   );

@@ -267,7 +267,7 @@ export default async function BookingsPage({ searchParams }: Props) {
                               {booking.booking_type}
                             </span>
                             {' · '}
-                            {friendlyDate(booking.created_at.slice(0, 10))}
+                            {friendlyDate(booking.created_at)}
                           </p>
                         </td>
                         <td className="px-5 py-4 font-medium">
