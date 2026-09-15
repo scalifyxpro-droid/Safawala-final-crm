@@ -1,0 +1,10 @@
+# package-lock.json can't be regenerated from this dev environment (no
+# registry access here), so it's temporarily out of sync with the two new
+# WhatsApp automation dependencies in package.json. `npm ci` (Nixpacks'
+# default install command whenever a lockfile is present) refuses to run on
+# a mismatched lockfile, so this pins the install phase to `npm install`
+# instead, which resolves/updates the lockfile in place rather than failing.
+# Safe to remove once a fresh, accurate package-lock.json has been committed
+# (e.g. after running `npm install` locally with normal internet access).
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]

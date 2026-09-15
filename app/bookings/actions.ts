@@ -3,6 +3,7 @@
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
 import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
+import { notifyPaymentReceived, maybeNotifyThankYou } from '@/lib/whatsapp/notify';
 
 type UpdateBookingDetailsPayload = {
   customer_id: number;
@@ -241,6 +242,7 @@ export async function recordBookingPaymentAction(
         input.reference,
       ]),
     );
+    await notifyPaymentReceived(bookingId, input.amount).catch(() => {});
     return { error: '' };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Payment could not be recorded.' };
@@ -262,6 +264,7 @@ export async function processRentalReturnAction(
         input.condition,
       ]),
     );
+    await maybeNotifyThankYou(bookingId).catch(() => {});
     return { error: '' };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'The return could not be processed.' };

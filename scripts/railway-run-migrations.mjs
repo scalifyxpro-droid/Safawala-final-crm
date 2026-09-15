@@ -13,6 +13,7 @@ const migrations = [
   'supabase/migrations/20260915143000_accounts_manager_portals.sql',
   'supabase/migrations/20260915181133_settings_profile_banking.sql',
   'supabase/migrations/20260916001000_accounts_portal_exact_access.sql',
+  'supabase/migrations/20260916100000_whatsapp_automation.sql',
 ];
 const sql = postgres(databaseUrl, {
   max: 1,
