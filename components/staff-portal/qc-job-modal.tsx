@@ -43,7 +43,7 @@ export async function QcJobModal({
     requireDepartment('qc'),
     getJob(jobId),
   ]);
-  if (!job || job.bookingType !== 'rental') return null;
+  if (!job) return null;
   const qcStage = job.stages.find((stage) => stage.key === 'quality_check');
   const packingStage = job.stages.find((stage) => stage.key === 'packing');
   const returnStage = job.stages.find(
@@ -168,7 +168,7 @@ export async function QcJobModal({
                 variant="outline"
                 className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]"
               >
-                Rental QC
+                {job.bookingType === 'sale' ? 'Sale' : 'Rental'} QC
               </Badge>
               <span className="text-sm text-muted-foreground">
                 {qcItems.length} product{qcItems.length === 1 ? '' : 's'}

@@ -33,8 +33,8 @@ export default async function StaffQcPage({
   ]);
   const { view: requestedView, job: selectedJobId, q = '', sort = 'booking', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
-  const rentalJobs = allJobs.filter((job) => job.bookingType === 'rental');
-  const hasOpenQcStage = (job: (typeof rentalJobs)[number]) =>
+  const departmentJobs = allJobs;
+  const hasOpenQcStage = (job: (typeof departmentJobs)[number]) =>
     job.stages.some(
       (stage) =>
         ['quality_check', 'packing', 'return_quality_check'].includes(
@@ -45,15 +45,15 @@ export default async function StaffQcPage({
   // A job QC rejected is handed back to Warehouse for correction — it should
   // disappear from QC's queues entirely (not linger under "Closed" looking
   // finished) until Warehouse re-picks and reopens Quality Check.
-  const isAwaitingRepick = (job: (typeof rentalJobs)[number]) => {
+  const isAwaitingRepick = (job: (typeof departmentJobs)[number]) => {
     const qcStageStatus = job.stages.find((stage) => stage.key === 'quality_check')?.status;
     const warehouseStageStatus = job.stages.find((stage) => stage.key === 'warehouse_pick')?.status;
     return Boolean(job.qualityCheck) && qcStageStatus === 'not_started' && warehouseStageStatus !== 'done';
   };
-  const openJobs = rentalJobs.filter(
+  const openJobs = departmentJobs.filter(
     (job) => job.status === 'active' && hasOpenQcStage(job),
   );
-  const closedJobs = rentalJobs.filter(
+  const closedJobs = departmentJobs.filter(
     (job) =>
       !hasOpenQcStage(job) &&
       !isAwaitingRepick(job) &&
@@ -72,7 +72,7 @@ export default async function StaffQcPage({
     }, new Map<string, typeof jobs>()),
   ).sort(([, firstJobs], [, secondJobs]) => (secondJobs[0]?.createdAt ?? '').localeCompare(firstJobs[0]?.createdAt ?? ''));
 
-  const bookingIds = rentalJobs.map((job) => job.bookingId);
+  const bookingIds = departmentJobs.map((job) => job.bookingId);
   const bookings = bookingIds.length
     ? await withServiceRole((tx) =>
         tx.unsafe(
@@ -102,7 +102,7 @@ export default async function StaffQcPage({
         <QueueFilterBar basePath="/staff-portal/qc" search={q} sort={sort} eventDate={eventDate} bookingDate={bookingDate} />
         <DashboardHeader
           title="QC & Packing"
-          subtitle="Check and pack rental products prepared by Warehouse"
+          subtitle="Check and pack products prepared by Warehouse"
         />
 
         <div className="grid grid-cols-2 gap-3">
@@ -218,7 +218,7 @@ export default async function StaffQcPage({
                   <h3 className="mt-3 font-semibold">No {view} QC jobs</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {view === 'open'
-                      ? 'Rental jobs appear after Warehouse finishes picking.'
+                      ? 'Sale and rental jobs appear after Warehouse finishes picking.'
                       : 'Completed QC and packing jobs appear here.'}
                   </p>
                 </div>

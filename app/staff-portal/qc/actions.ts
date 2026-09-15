@@ -100,8 +100,8 @@ export async function submitPackingChecklistAction(
 
   const job = await getJob(jobId);
   const packingStage = job?.stages.find((stage) => stage.key === 'packing');
-  if (!job || job.bookingType !== 'rental' || job.qualityCheck === null || !packingStage || !['open', 'in_progress'].includes(packingStage.status)) {
-    return { error: 'Packing is not open for this rental job.' };
+  if (!job || job.qualityCheck === null || !packingStage || !['open', 'in_progress'].includes(packingStage.status)) {
+    return { error: 'Packing is not open for this job.' };
   }
 
   const ownerId = await ownerIdForJob(jobId);

@@ -44,7 +44,6 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
   const { jobId } = await params;
   const [session, job] = await Promise.all([requireDepartment('qc'), getJob(jobId)]);
   if (!job) notFound();
-  if (job.bookingType !== 'rental') redirect('/staff-portal/qc');
 
   const qcStage = job.stages.find((stage) => stage.key === 'quality_check');
   const packingStage = job.stages.find((stage) => stage.key === 'packing');
@@ -151,7 +150,7 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">{slipDetails.customerName}</h1>
-                <Badge variant="outline" className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]">Rental QC</Badge>
+                <Badge variant="outline" className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]">{job.bookingType === 'sale' ? 'Sale' : 'Rental'} QC</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{job.id} · {job.bookingNumber}</p>
             </div>

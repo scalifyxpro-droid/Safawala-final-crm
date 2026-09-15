@@ -82,11 +82,11 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
     (grant) => grant.department === 'warehouse',
   );
   const hasQc = activeDepartments.some((grant) => grant.department === 'qc');
-  const rentalJobs =
+  const departmentJobs =
     hasWarehouse || hasQc
-      ? (await listJobs()).filter((job) => job.bookingType === 'rental')
+      ? await listJobs()
       : [];
-  const warehouseJobs = hasWarehouse ? rentalJobs : [];
+  const warehouseJobs = hasWarehouse ? departmentJobs : [];
   const openWarehouseJobs = warehouseJobs.filter(
     (job) =>
       job.status === 'active' &&
@@ -106,7 +106,7 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
           (stage.status === 'open' || stage.status === 'in_progress'),
       ) && Boolean(job.warehousePrep || job.returnWarehouseCheck),
   );
-  const qcJobs = hasQc ? rentalJobs : [];
+  const qcJobs = hasQc ? departmentJobs : [];
   const hasOpenQcStage = (job: (typeof qcJobs)[number]) =>
     job.stages.some(
       (stage) =>

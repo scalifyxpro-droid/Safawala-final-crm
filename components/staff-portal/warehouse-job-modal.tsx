@@ -59,7 +59,7 @@ export async function WarehouseJobModal({
     requireDepartment('warehouse'),
     getJob(jobId),
   ]);
-  if (!job || job.bookingType !== 'rental') return null;
+  if (!job) return null;
 
   const stage = job.stages.find((item) => item.key === 'warehouse_pick');
   const returnStage = job.stages.find(
@@ -170,7 +170,7 @@ export async function WarehouseJobModal({
                 variant="outline"
                 className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]"
               >
-                Rental picking
+                {job.bookingType === 'sale' ? 'Sale' : 'Rental'} picking
               </Badge>
               <span className="text-sm text-muted-foreground">
                 {items.length} item{items.length === 1 ? '' : 's'}

@@ -33,17 +33,17 @@ export default async function StaffWarehousePage({
   ]);
   const { completed, view: requestedView, job: selectedJobId, q = '', sort = 'booking', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
-  const rentalJobs = allJobs.filter((job) => job.bookingType === 'rental');
-  const hasOpenWarehouseStage = (job: (typeof rentalJobs)[number]) =>
+  const departmentJobs = allJobs;
+  const hasOpenWarehouseStage = (job: (typeof departmentJobs)[number]) =>
     job.stages.some(
       (stage) =>
         (stage.key === 'warehouse_pick' || stage.key === 'return_warehouse') &&
         (stage.status === 'open' || stage.status === 'in_progress'),
     );
-  const openJobs = rentalJobs.filter(
+  const openJobs = departmentJobs.filter(
     (job) => job.status === 'active' && hasOpenWarehouseStage(job),
   );
-  const closedJobs = rentalJobs.filter(
+  const closedJobs = departmentJobs.filter(
     (job) =>
       !hasOpenWarehouseStage(job) &&
       Boolean(job.warehousePrep || job.returnWarehouseCheck),
@@ -59,7 +59,7 @@ export default async function StaffWarehousePage({
     }, new Map<string, typeof jobs>()),
   ).sort(([, firstJobs], [, secondJobs]) => (secondJobs[0]?.createdAt ?? '').localeCompare(firstJobs[0]?.createdAt ?? ''));
 
-  const bookingIds = rentalJobs.map((job) => job.bookingId);
+  const bookingIds = departmentJobs.map((job) => job.bookingId);
   const bookings = bookingIds.length
     ? await withServiceRole((tx) =>
         tx.unsafe(
@@ -89,7 +89,7 @@ export default async function StaffWarehousePage({
         <QueueFilterBar basePath="/staff-portal/warehouse" search={q} sort={sort} eventDate={eventDate} bookingDate={bookingDate} />
         <DashboardHeader
           title="Warehouse"
-          subtitle="Pick rental items and send completed jobs to QC & Packing"
+          subtitle="Pick order items and send completed jobs to QC & Packing"
         />
 
         {completed ? (
@@ -224,7 +224,7 @@ export default async function StaffWarehousePage({
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {view === 'open'
-                      ? 'Confirmed rental jobs will appear here for picking.'
+                      ? 'Confirmed sale and rental jobs will appear here for picking.'
                       : 'Completed picking jobs will appear here.'}
                   </p>
                 </div>

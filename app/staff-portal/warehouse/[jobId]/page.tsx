@@ -49,7 +49,6 @@ export default async function WarehouseJobDetailPage({ params }: { params: Promi
   const { jobId } = await params;
   const [session, job] = await Promise.all([requireDepartment('warehouse'), getJob(jobId)]);
   if (!job) notFound();
-  if (job.bookingType !== 'rental') redirect('/staff-portal/warehouse');
 
   const stage = job.stages.find((item) => item.key === 'warehouse_pick');
   const returnStage = job.stages.find((item) => item.key === 'return_warehouse');
@@ -137,7 +136,7 @@ export default async function WarehouseJobDetailPage({ params }: { params: Promi
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">{slipDetails.customerName}</h1>
-                <Badge variant="outline" className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]">Rental picking</Badge>
+                <Badge variant="outline" className="border-[#e4d2b6] bg-[#f5ead8] text-[#70481c]">{job.bookingType === 'sale' ? 'Sale' : 'Rental'} picking</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{job.id} · {job.bookingNumber}</p>
             </div>

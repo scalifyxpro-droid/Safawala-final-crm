@@ -15,6 +15,8 @@ type BookingForEventJob = {
   event_date: string;
   event_time: string | null;
   event_location: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
   total: number;
   paid_amount: number;
   balance_amount: number;
@@ -23,15 +25,24 @@ type BookingForEventJob = {
   booking_items: { item_name: string; quantity: number }[];
 };
 
+function databaseDate(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') return value.slice(0, 10);
+  return '';
+}
+
 async function initializeEventJob(userId: string, bookingId: number) {
   const booking = await withUserContext(userId, async (tx) => {
     const rows = await tx.unsafe(
       `
         select b.id, b.booking_number, b.booking_type, b.status, b.is_quote, b.event_name,
           b.event_date, b.event_time, b.event_location, b.total, b.paid_amount, b.balance_amount,
-          b.security_deposit, b.payment_status,
+          b.security_deposit, b.payment_status, c.name as customer_name, c.phone as customer_phone,
           coalesce(items.rows, '[]'::json) as booking_items
         from public.bookings b
+        left join public.customers c on c.id = b.customer_id
         left join lateral (
           select json_agg(json_build_object('item_name', bi.item_name, 'quantity', bi.quantity)) as rows
           from public.booking_items bi where bi.booking_id = b.id
@@ -53,8 +64,10 @@ async function initializeEventJob(userId: string, bookingId: number) {
     bookingNumber: booking.booking_number,
     bookingType: booking.booking_type,
     status: booking.status,
+    customerName: booking.customer_name,
+    customerPhone: booking.customer_phone,
     eventName: booking.event_name,
-    eventDate: booking.event_date,
+    eventDate: databaseDate(booking.event_date),
     eventTime: booking.event_time,
     eventLocation: booking.event_location,
     items: (booking.booking_items ?? []).map((item) => ({

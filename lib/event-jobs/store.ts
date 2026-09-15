@@ -36,24 +36,37 @@ import type {
 function normalizeJob(job: EventJob): EventJob {
   const bookingType =
     job.bookingType ?? (job.bookingNumber.includes('-S-') ? 'sale' : 'rental');
+  const normalizedStages =
+    bookingType === 'sale'
+      ? EVENT_JOB_STAGE_KEYS.map((key) => {
+          const existing = job.stages.find((stage) => stage.key === key);
+          if (existing) {
+            return key === 'stylist_opportunity' && existing.status !== 'done'
+              ? {
+                  ...existing,
+                  status: 'done' as const,
+                  completedBy: 'Not applicable — sale booking',
+                }
+              : existing;
+          }
+          const missing = newStage(key, false, job.createdAt);
+          return key === 'stylist_opportunity'
+            ? {
+                ...missing,
+                status: 'done' as const,
+                completedAt: job.createdAt,
+                completedBy: 'Not applicable — sale booking',
+              }
+            : missing;
+        })
+      : job.stages;
   return {
     ...job,
     bookingType,
     stylistsRequired: bookingType === 'rental' ? job.stylistsRequired : false,
     stylistsRequiredCount:
       bookingType === 'rental' ? job.stylistsRequiredCount : 0,
-    stages:
-      bookingType === 'sale'
-        ? job.stages.map((stage) =>
-            stage.key === 'stylist_opportunity' && stage.status !== 'done'
-              ? {
-                  ...stage,
-                  status: 'done',
-                  completedBy: 'Not applicable — sale booking',
-                }
-              : stage,
-          )
-        : job.stages,
+    stages: normalizedStages,
     travelPlans: (job.travelPlans ?? []).map((plan) => ({
       ...plan,
       ticketConfirmedAt: plan.ticketConfirmedAt ?? null,
@@ -81,6 +94,23 @@ function normalizeJob(job: EventJob): EventJob {
   };
 }
 
+function isUninitializedJobState(state: unknown): boolean {
+  return Boolean(
+    state &&
+    typeof state === 'object' &&
+    !Array.isArray(state) &&
+    Object.keys(state).length === 0,
+  );
+}
+
+function databaseDate(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') return value.slice(0, 10);
+  return '';
+}
+
 async function readAllRaw(id?: string): Promise<EventJob[]> {
   const rows = await withServiceRole((tx) =>
     id
@@ -106,11 +136,30 @@ async function readAllRaw(id?: string): Promise<EventJob[]> {
 // every job read means a job is fully populated the moment it exists, with no
 // dependency on which page anyone visits first.
 async function syncMissingJobs(): Promise<void> {
-  const rows = await withServiceRole((tx) => tx<{ booking_id: number; status: string; state: EventJob | null }[]>`
-    select booking_id, status, state from public.event_jobs
-  `);
-  const missingBookingIds = rows
-    .filter((row) => {
+  const { rows, bookingsWithoutJobs } = await withServiceRole(async (tx) => {
+    const [rows, bookingsWithoutJobs] = await Promise.all([
+      tx<{
+        booking_id: number;
+        status: string;
+        state: EventJob | Record<string, never> | null;
+        booking_status: string;
+        is_quote: boolean;
+      }[]>`
+        select ej.booking_id, ej.status, ej.state, b.status as booking_status, b.is_quote
+        from public.event_jobs ej
+        join public.bookings b on b.id = ej.booking_id
+      `,
+      tx<{ booking_id: number }[]>`
+        select b.id as booking_id
+        from public.bookings b
+        left join public.event_jobs ej on ej.booking_id = b.id
+        where b.status = 'confirmed' and not b.is_quote and ej.booking_id is null
+      `,
+    ]);
+    return { rows, bookingsWithoutJobs };
+  });
+  const missingBookingIds = [...new Set([
+    ...rows.filter((row) => {
       const state = row.state as EventJob | null;
       // Truly never-synced: the trigger-created row still has its default
       // '{}' state, with no id at all. Safe to build from scratch -- there is
@@ -121,12 +170,16 @@ async function syncMissingJobs(): Promise<void> {
       // stages/travelPlans/status with a freshly-initialized one. That
       // shape should never come up in practice, but must never be
       // auto-"healed" by recreating the job from the current booking alone.
+      if (isUninitializedJobState(state)) {
+        return row.booking_status === 'confirmed' && !row.is_quote;
+      }
       const hasId = Boolean(state?.id);
-      if (!hasId) return true;
+      if (!hasId) return false;
       const looksValid = Array.isArray(state?.stages);
       return looksValid && !state?.eventSummary?.customerName;
-    })
-    .map((row) => Number(row.booking_id));
+    }).map((row) => Number(row.booking_id)),
+    ...bookingsWithoutJobs.map((row) => Number(row.booking_id)),
+  ])];
   if (!missingBookingIds.length) return;
 
   type MissingBookingRow = {
@@ -185,15 +238,15 @@ async function syncMissingJobs(): Promise<void> {
     customerName: booking.customer_name ?? null,
     customerPhone: booking.customer_phone ?? null,
     eventName: booking.event_name,
-    eventDate: booking.event_date,
+    eventDate: databaseDate(booking.event_date),
     eventTime: booking.event_time,
     eventLocation: booking.event_location,
     items: itemsByBookingId.get(booking.id) ?? [],
     payment: {
-      totalAmount: booking.total,
-      amountReceived: booking.paid_amount,
-      pendingBalance: booking.balance_amount,
-      depositAmount: booking.security_deposit,
+      totalAmount: Number(booking.total),
+      amountReceived: Number(booking.paid_amount),
+      pendingBalance: Number(booking.balance_amount),
+      depositAmount: Number(booking.security_deposit),
       paymentStatus: booking.payment_status,
     },
   }));
@@ -558,25 +611,22 @@ export async function syncEventJobs(
   const jobs = await readAllRaw();
   const byBookingId = new Map(jobs.map((job) => [job.bookingId, job] as const));
 
-  // Guards against a rare but serious failure mode: if an event_jobs row
-  // already exists for a booking but its `state` JSON doesn't parse as a
-  // valid EventJob (missing id, or stages isn't an array), readAllRaw()
-  // above quietly filters that row out -- which would otherwise make the
-  // loop below believe no job exists yet for this booking and create a
-  // brand new one, silently overwriting whatever real history that row
-  // held (stages, travelPlans, closed status, etc). Checking which
-  // booking_ids already have an event_jobs row at all -- regardless of
-  // whether its state currently parses -- lets the loop below leave those
-  // alone instead of destroying them.
-  const rawRows = await withServiceRole((tx) => tx<{ booking_id: number }[]>`
-    select booking_id from public.event_jobs
+  // The database trigger deliberately creates an event_jobs row with an
+  // empty `{}` state before this function runs. That placeholder must be
+  // initialized here. Any non-empty row that does not parse as an EventJob,
+  // however, may contain real history and is protected from being replaced.
+  const rawRows = await withServiceRole((tx) => tx<{ booking_id: number; state: unknown }[]>`
+    select booking_id, state from public.event_jobs
   `);
-  const existingRawBookingIds = new Set(
-    rawRows.map((row) => Number(row.booking_id)),
+  const protectedRawBookingIds = new Set(
+    rawRows
+      .filter((row) => !isUninitializedJobState(row.state))
+      .map((row) => Number(row.booking_id)),
   );
 
   const now = new Date().toISOString();
   const changedJobs: EventJob[] = [];
+  const newStylistJobs: EventJob[] = [];
 
   for (const booking of bookings) {
     const existing = byBookingId.get(booking.bookingId);
@@ -651,7 +701,7 @@ export async function syncEventJobs(
       continue;
     }
 
-    if (existingRawBookingIds.has(booking.bookingId)) {
+    if (protectedRawBookingIds.has(booking.bookingId)) {
       // A row exists for this booking but its state didn't parse cleanly
       // above -- do not treat that as "no job yet" and recreate one. Leave
       // it untouched; this needs a human look, not an automatic rewrite.
@@ -659,12 +709,15 @@ export async function syncEventJobs(
     }
 
     const stylistsRequired = booking.bookingType === 'rental';
-    const stages = EVENT_JOB_STAGE_KEYS.filter(
-      (key) => stylistsRequired || key !== 'stylist_opportunity',
-    ).map((key) => {
+    const stages = EVENT_JOB_STAGE_KEYS.map((key) => {
       const stage = newStage(key, INITIAL_OPEN_STAGES.includes(key), now);
       return booking.bookingType === 'sale' &&
-        ['collection', 'return_quality_check', 'return_warehouse'].includes(key)
+        [
+          'stylist_opportunity',
+          'collection',
+          'return_quality_check',
+          'return_warehouse',
+        ].includes(key)
         ? {
             ...stage,
             status: 'done' as const,
@@ -714,15 +767,30 @@ export async function syncEventJobs(
     byBookingId.set(booking.bookingId, job);
     changedJobs.push(job);
     if (stylistsRequired) {
-      await notifyDepartment(
-        job.id,
-        'stylist',
-        `${job.eventSummary.eventName} (${job.id}) is open for stylist interest.`,
-      );
+      newStylistJobs.push(job);
     }
   }
 
   if (changedJobs.length) await writeAll(changedJobs);
+  if (newStylistJobs.length) {
+    const results = await Promise.allSettled(
+      newStylistJobs.map((job) =>
+        notifyDepartment(
+          job.id,
+          'stylist',
+          `${job.eventSummary.eventName} (${job.id}) is open for stylist interest.`,
+        ),
+      ),
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error(
+          '[event-jobs] stylist notification failed',
+          result.reason,
+        );
+      }
+    }
+  }
   return jobs;
 }
 
@@ -827,11 +895,6 @@ export async function submitWarehousePreparation(
   const index = jobs.findIndex((job) => job.id === jobId);
   if (index === -1) return { error: 'Job not found.' };
   const job = jobs[index];
-  if (job.bookingType !== 'rental') {
-    return {
-      error: 'Warehouse picking is available only for rental bookings.',
-    };
-  }
   const stage = findStage(job, 'warehouse_pick');
   if (!stage || (stage.status !== 'open' && stage.status !== 'in_progress')) {
     return { error: 'Warehouse preparation is not open for this job.' };
@@ -906,9 +969,6 @@ export async function submitQualityCheck(
   const index = jobs.findIndex((job) => job.id === jobId);
   if (index === -1) return { error: 'Job not found.' };
   const job = jobs[index];
-  if (job.bookingType !== 'rental') {
-    return { error: 'Quality Check is available only for rental bookings.' };
-  }
   const stage = findStage(job, 'quality_check');
   if (!stage || (stage.status !== 'open' && stage.status !== 'in_progress')) {
     return { error: 'Quality check is not open for this job yet.' };
@@ -1018,9 +1078,6 @@ export async function submitPackingChecklist(
   const index = jobs.findIndex((job) => job.id === jobId);
   if (index === -1) return { error: 'Job not found.' };
   const job = jobs[index];
-  if (job.bookingType !== 'rental') {
-    return { error: 'Packing is available only for rental bookings.' };
-  }
   const qcStage = findStage(job, 'quality_check');
   if (!qcStage || qcStage.status !== 'done') {
     return { error: 'Complete the quality check before packing.' };
