@@ -82,7 +82,7 @@ async function loadDailyReserved(params: {
     where bi.owner_id = ${ownerId}
       and bi.product_id = ${productId}
       and b.booking_type = 'rental'
-      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])}::text[])
       and b.pickup_date <= ${rangeEnd}
       and b.due_date >= ${rangeStart}
   `);
@@ -120,16 +120,16 @@ export async function getAvailabilityForWindow(params: {
   const { products, reservations } = await withServiceRole(async (tx) => {
     const products = await tx<{ id: number; stock_quantity: number | null }[]>`
       select id, stock_quantity from public.products
-      where owner_id = ${ownerId} and id = any(${tx.array(uniqueIds)})
+      where owner_id = ${ownerId} and id = any(${tx.array(uniqueIds)}::bigint[])
     `;
     const reservations = await tx<ReservationRow[]>`
       select bi.product_id, bi.quantity, b.id as booking_id, b.pickup_date, b.due_date
       from public.booking_items bi
       join public.bookings b on b.id = bi.booking_id
       where bi.owner_id = ${ownerId}
-        and bi.product_id = any(${tx.array(uniqueIds)})
+        and bi.product_id = any(${tx.array(uniqueIds)}::bigint[])
         and b.booking_type = 'rental'
-        and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+        and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])}::text[])
         and b.pickup_date <= ${dueDate}
         and b.due_date >= ${pickupDate}
     `;
@@ -299,9 +299,9 @@ export async function getUpcomingReservations(params: {
     join public.bookings b on b.id = bi.booking_id
     where bi.owner_id = ${params.ownerId}
       and bi.product_id is not null
-      and bi.product_id = any(${tx.array(params.productIds)})
+      and bi.product_id = any(${tx.array(params.productIds)}::bigint[])
       and b.booking_type = 'rental'
-      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
+      and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])}::text[])
       and b.due_date >= ${params.fromDate}
   `);
 

@@ -59,7 +59,7 @@ export async function notificationsForSession(accountId: string, activeDepartmen
     activeDepartments.length
       ? tx<Row[]>`
           select * from public.event_job_notifications
-          where recipient_account_id = ${accountId} or recipient_department = any(${tx.array(activeDepartments)})
+          where recipient_account_id = ${accountId} or recipient_department = any(${tx.array(activeDepartments)}::text[])
           order by created_at desc
         `
       : tx<Row[]>`
@@ -79,5 +79,5 @@ export async function markAllReadForSession(accountId: string, activeDepartments
   const mine = await notificationsForSession(accountId, activeDepartments);
   const ids = mine.filter((item) => !item.readAt).map((item) => item.id);
   if (!ids.length) return;
-  await withServiceRole((tx) => tx`update public.event_job_notifications set read_at = now() where id = any(${tx.array(ids)})`);
+  await withServiceRole((tx) => tx`update public.event_job_notifications set read_at = now() where id = any(${tx.array(ids)}::uuid[])`);
 }

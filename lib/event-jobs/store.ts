@@ -154,14 +154,14 @@ async function syncMissingJobs(): Promise<void> {
         b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status
       from public.bookings b
       left join public.customers c on c.id = b.customer_id
-      where b.id = any(${tx.array(missingBookingIds)})
+      where b.id = any(${tx.array(missingBookingIds)}::bigint[])
     `;
     if (!bookings.length) {
       return { bookings, itemsRaw: [] as { booking_id: number; item_name: string; quantity: number }[] };
     }
     const bookingIds = bookings.map((booking) => booking.id);
     const itemsRaw = await tx<{ booking_id: number; item_name: string; quantity: number }[]>`
-      select booking_id, item_name, quantity from public.booking_items where booking_id = any(${tx.array(bookingIds)})
+      select booking_id, item_name, quantity from public.booking_items where booking_id = any(${tx.array(bookingIds)}::bigint[])
     `;
     return { bookings, itemsRaw };
   });
@@ -239,7 +239,7 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
   ];
   const staffRows = staffIds.length
     ? await withServiceRole((tx) => tx<{ id: number; user_id: string | null; name: string }[]>`
-        select id, user_id, name from public.staff_members where id = any(${tx.array(staffIds)})
+        select id, user_id, name from public.staff_members where id = any(${tx.array(staffIds)}::bigint[])
       `)
     : [];
   const staffById = new Map(
@@ -280,7 +280,7 @@ async function writeAll(jobs: EventJob[]) {
 
   await withServiceRole(async (tx) => {
     const bookingRows = await tx<{ id: number; owner_id: string }[]>`
-      select id, owner_id from public.bookings where id = any(${tx.array(bookingIds)})
+      select id, owner_id from public.bookings where id = any(${tx.array(bookingIds)}::bigint[])
     `;
     const owners = new Map(bookingRows.map((booking) => [Number(booking.id), String(booking.owner_id)]));
 
@@ -427,7 +427,7 @@ async function writeAll(jobs: EventJob[]) {
     ];
     if (stylistUserIds.length) {
       const staffRows = await tx<{ id: number; user_id: string }[]>`
-        select id, user_id from public.staff_members where user_id = any(${tx.array(stylistUserIds)})
+        select id, user_id from public.staff_members where user_id = any(${tx.array(stylistUserIds)}::uuid[])
       `;
       const staffByUser = new Map(staffRows.map((row) => [String(row.user_id), Number(row.id)]));
       for (const job of stylistJobs) {
