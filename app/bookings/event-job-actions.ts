@@ -5,6 +5,7 @@ import type { ConfirmedBookingSummary } from '@/lib/event-jobs/types';
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
 import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
+import { notifyBookingConfirmed, maybeNotifyThankYou } from '@/lib/whatsapp/notify';
 
 type BookingForEventJob = {
   id: number;
@@ -117,6 +118,7 @@ export async function convertQuoteToBookingAction(quoteId: number) {
 
   try {
     await initializeEventJob(user.id, bookingId);
+    await notifyBookingConfirmed(bookingId).catch(() => {});
     return { id: bookingId, error: '' };
   } catch (initializationError) {
     // Conversion itself has already committed. Return the booking ID so the
@@ -139,6 +141,12 @@ export async function changeBookingStatusAction(bookingId: number, nextStatus: s
     await withUserContext(user.id, (tx) =>
       tx.unsafe(`select * from public.change_booking_status($1, $2)`, [bookingId, nextStatus]),
     );
+    if (nextStatus === 'confirmed') {
+      await notifyBookingConfirmed(bookingId).catch(() => {});
+    }
+    if (nextStatus === 'completed') {
+      await maybeNotifyThankYou(bookingId).catch(() => {});
+    }
     return { error: '' };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Booking status could not be changed.' };
