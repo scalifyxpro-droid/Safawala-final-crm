@@ -34,6 +34,12 @@ import type {
 } from './types';
 
 function normalizeJob(job: EventJob): EventJob {
+  // PostgreSQL `bigint` values are returned as strings by the postgres driver.
+  // Keep the application boundary numeric because the rest of the booking and
+  // event-job domain models use `number` IDs. Without this normalization a
+  // freshly-triggered job has bookingId "9", while owner maps are keyed by 9,
+  // causing writeAll() to silently skip initialization of the job state.
+  const bookingId = Number(job.bookingId);
   const bookingType =
     job.bookingType ?? (job.bookingNumber.includes('-S-') ? 'sale' : 'rental');
   const normalizedStages =
@@ -62,6 +68,7 @@ function normalizeJob(job: EventJob): EventJob {
       : job.stages;
   return {
     ...job,
+    bookingId,
     bookingType,
     stylistsRequired: bookingType === 'rental' ? job.stylistsRequired : false,
     stylistsRequiredCount:
@@ -225,13 +232,14 @@ async function syncMissingJobs(): Promise<void> {
     { itemName: string; quantity: number }[]
   >();
   for (const item of itemsRaw) {
-    const list = itemsByBookingId.get(item.booking_id) ?? [];
+    const bookingId = Number(item.booking_id);
+    const list = itemsByBookingId.get(bookingId) ?? [];
     list.push({ itemName: item.item_name, quantity: item.quantity });
-    itemsByBookingId.set(item.booking_id, list);
+    itemsByBookingId.set(bookingId, list);
   }
 
   const summaries: ConfirmedBookingSummary[] = bookings.map((booking) => ({
-    bookingId: booking.id,
+    bookingId: Number(booking.id),
     bookingNumber: booking.booking_number,
     bookingType: booking.booking_type,
     status: booking.status,
@@ -241,7 +249,7 @@ async function syncMissingJobs(): Promise<void> {
     eventDate: databaseDate(booking.event_date),
     eventTime: booking.event_time,
     eventLocation: booking.event_location,
-    items: itemsByBookingId.get(booking.id) ?? [],
+    items: itemsByBookingId.get(Number(booking.id)) ?? [],
     payment: {
       totalAmount: Number(booking.total),
       amountReceived: Number(booking.paid_amount),
@@ -329,16 +337,27 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
 
 async function writeAll(jobs: EventJob[]) {
   if (!jobs.length) return;
-  const bookingIds = [...new Set(jobs.map((job) => job.bookingId))];
+  // Multiple portal/dashboard requests can discover the same trigger-created
+  // placeholders at once. Serialize writers and always lock rows in booking
+  // order so concurrent requests cannot deadlock while updating event_jobs and
+  // its child stage rows.
+  const orderedJobs = [...jobs].sort(
+    (first, second) => Number(first.bookingId) - Number(second.bookingId),
+  );
+  const bookingIds = [
+    ...new Set(orderedJobs.map((job) => Number(job.bookingId))),
+  ];
 
   await withServiceRole(async (tx) => {
+    await tx`select pg_advisory_xact_lock(731942615)`;
     const bookingRows = await tx<{ id: number; owner_id: string }[]>`
       select id, owner_id from public.bookings where id = any(${tx.array(bookingIds)}::bigint[])
+      order by id
     `;
     const owners = new Map(bookingRows.map((booking) => [Number(booking.id), String(booking.owner_id)]));
 
-    for (const job of jobs) {
-      const ownerId = owners.get(job.bookingId);
+    for (const job of orderedJobs) {
+      const ownerId = owners.get(Number(job.bookingId));
       if (!ownerId) continue;
       await tx`
         insert into public.event_jobs (

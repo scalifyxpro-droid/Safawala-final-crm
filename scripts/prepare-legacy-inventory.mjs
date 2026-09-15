@@ -209,7 +209,10 @@ function prepare(data) {
       rentalPrice: number(canonical.rental_price),
       securityDeposit: number(canonical.security_deposit),
       stockQuantity: members.reduce(
-        (sum, row) => sum + integer(row.stock_quantity || row.stock_total),
+        (sum, row) => {
+          const legacyTotal = clean(row.stock_total);
+          return sum + integer(legacyTotal === null ? row.stock_quantity : legacyTotal);
+        },
         0,
       ),
       reorderLevel: integer(canonical.reorder_level),

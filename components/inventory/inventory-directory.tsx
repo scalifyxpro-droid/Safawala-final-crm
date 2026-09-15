@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import {
   AlertTriangle,
   Archive,
@@ -11,7 +10,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Download,
   Image as ImageIcon,
   IndianRupee,
   Layers3,
@@ -40,7 +38,6 @@ import {
 } from '@/lib/inventory-catalog';
 import {
   deleteProductAction,
-  importProductAction,
   saveProductAction,
   updateProductStatusAction,
 } from '@/app/inventory/actions';
@@ -227,11 +224,10 @@ export function InventoryDirectory({
   const [message, setMessage] = useState(loadError);
   const [notice, setNotice] = useState('');
   const [showArchived, setShowArchived] = useState(initialShowArchived);
-  const [importing, setImporting] = useState(false);
   const [archiveCandidate, setArchiveCandidate] = useState<InventoryProduct | null>(null);
   const inventoryResultsRef = useRef<HTMLDivElement>(null);
 
-  const { activeCount, archivedCount, inStock, lowStock, outOfStock, inventoryValue } = summary;
+  const { activeCount, inStock, lowStock, outOfStock, inventoryValue } = summary;
   const subcategoryOptions = [
     ...new Set([
       ...(sameInventoryValue(category, 'BARATI SAFA')
@@ -288,138 +284,6 @@ export function InventoryDirectory({
       controller.abort();
     };
   }, [category, filter, page, pageSize, refreshKey, search, showArchived, subcategory]);
-
-  function exportCsv() {
-    const headers = [
-      'barcode',
-      'product_name',
-      'category',
-      'subcategory',
-      'sku',
-      'size',
-      'color',
-      'material',
-      'cost_price',
-      'regular_price',
-      'sale_price',
-      'rental_price',
-      'security_deposit',
-      'stock_quantity',
-      'reorder_level',
-    ];
-    const escape = (value: string | number | null) =>
-      `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const rows = products.map((product) =>
-      [
-        product.barcode,
-        product.name,
-        product.category,
-        product.subcategory,
-        product.sku,
-        product.size,
-        product.color,
-        product.material,
-        product.cost_price,
-        product.regular_price,
-        product.sale_price,
-        product.rental_price,
-        product.security_deposit,
-        product.stock_quantity,
-        product.reorder_level,
-      ]
-        .map(escape)
-        .join(','),
-    );
-    const blob = new Blob([[headers.join(','), ...rows].join('\n')], {
-      type: 'text/csv;charset=utf-8',
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `safawala-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function parseCsvLine(line: string) {
-    const values: string[] = [];
-    let value = '';
-    let quoted = false;
-    for (let index = 0; index < line.length; index += 1) {
-      const character = line[index];
-      if (character === '"' && line[index + 1] === '"' && quoted) {
-        value += '"';
-        index += 1;
-      } else if (character === '"') quoted = !quoted;
-      else if (character === ',' && !quoted) {
-        values.push(value.trim());
-        value = '';
-      } else value += character;
-    }
-    values.push(value.trim());
-    return values;
-  }
-
-  async function importCsv(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setImporting(true);
-    setMessage('');
-    setNotice('');
-    const lines = (await file.text()).split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length < 2) {
-      setMessage('The CSV must include a header row and at least one product.');
-      setImporting(false);
-      return;
-    }
-    const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
-    const rows = lines.slice(1).map((line) => {
-      const values = parseCsvLine(line);
-      return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
-    });
-    let imported = 0;
-    for (const row of rows) {
-      const name = String(row.product_name || row.name || '').trim();
-      if (!name) continue;
-      const barcode = cleanBarcode(String(row.barcode || ''));
-      const values = {
-        name,
-        barcode: barcode || null,
-        sku: String(row.sku || barcode || '').trim() || null,
-        category: String(row.category || '').trim() || null,
-        subcategory: String(row.subcategory || '').trim() || null,
-        size: String(row.size || '').trim() || null,
-        color: String(row.color || '').trim() || null,
-        material: String(row.material || '').trim() || null,
-        cost_price: Math.max(Number(row.cost_price) || 0, 0),
-        regular_price: Math.max(Number(row.regular_price) || 0, 0),
-        sale_price: Math.max(Number(row.sale_price) || 0, 0),
-        rental_price: Math.max(Number(row.rental_price) || 0, 0),
-        security_deposit: Math.max(Number(row.security_deposit) || 0, 0),
-        stock_quantity: Math.max(Math.floor(Number(row.stock_quantity) || 0), 0),
-        reorder_level: Math.max(Math.floor(Number(row.reorder_level) || 0), 0),
-        is_active: String(row.is_active || 'true').toLowerCase() !== 'false',
-      };
-      const existing = products.find((product) =>
-        (barcode && product.barcode === barcode) ||
-        (values.sku && product.sku === values.sku),
-      );
-      const result = await importProductAction(existing?.id ?? null, values);
-      if (result.error) {
-        setMessage(`Import stopped after ${imported} product${imported === 1 ? '' : 's'}: ${result.error}`);
-        setImporting(false);
-        return;
-      }
-      if (result.data) {
-        setProducts((current) => existing ? current.map((product) => product.id === existing.id ? result.data as InventoryProduct : product) : [result.data as InventoryProduct, ...current]);
-        imported += 1;
-      }
-    }
-    setNotice(`${imported} product${imported === 1 ? '' : 's'} imported successfully.`);
-    setImporting(false);
-    setRefreshKey((current) => current + 1);
-  }
 
   function openNewProduct() {
     setEditingProduct(null);
@@ -520,34 +384,6 @@ export function InventoryDirectory({
         backHref="/dashboard"
         actions={
           <>
-            <Button
-              size="sm"
-              variant="outline"
-              className="bg-white dark:bg-card"
-              render={<Link href="/packages" />}
-            >
-                <Layers3 />
-                <span className="hidden sm:inline">Packages & variants</span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={exportCsv}
-              className="bg-white dark:bg-card"
-            >
-              <Download />
-              <span className="hidden sm:inline">Export page CSV</span>
-            </Button>
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-input bg-white dark:bg-card px-3 text-sm font-medium shadow-sm transition hover:bg-accent">
-              <Upload />
-              <span className="hidden sm:inline">{importing ? 'Importing…' : 'Import'}</span>
-              <input type="file" accept=".csv,text/csv" className="sr-only" onChange={importCsv} disabled={importing} />
-            </label>
-            <Button type="button" size="sm" variant={showArchived ? 'default' : 'outline'} onClick={() => { setShowArchived((current) => !current); setPage(1); }}>
-              <Archive />
-              <span className="hidden sm:inline">{showArchived ? 'Active products' : `Archived (${archivedCount})`}</span>
-            </Button>
             <Button type="button" size="sm" onClick={openNewProduct} disabled={showArchived}>
               <Plus />
               <span className="hidden sm:inline">Add product</span>
@@ -688,12 +524,6 @@ export function InventoryDirectory({
           }}
           itemLabel="products"
         />
-        <div className="flex items-center justify-end px-5 py-2.5">
-          <Badge variant="outline" className="bg-white dark:bg-card">
-            <Barcode />
-            Legacy barcode ready
-          </Badge>
-        </div>
       </div>
 
       {products.length ? (
@@ -918,11 +748,20 @@ function ProductCard({
             </ul>
           </div>
         )}
-        <div className="flex items-center gap-2 rounded-lg bg-[#f7f4ef] dark:bg-[#241e17] px-3 py-2 font-mono text-xs text-[#70481c]">
-          <Barcode className="size-4 shrink-0" />
-          <span className="truncate">
-            {product.barcode || product.sku || 'Barcode pending'}
-          </span>
+        <div className="space-y-2 rounded-lg bg-[#f7f4ef] px-3 py-2.5 text-xs dark:bg-[#241e17]">
+          <div className="flex min-w-0 items-center gap-2">
+            <Barcode className="size-4 shrink-0 text-[#70481c]" />
+            <span className="shrink-0 text-muted-foreground">Barcode</span>
+            <span className="ml-auto truncate font-mono font-semibold text-[#70481c]">
+              {product.barcode || 'Not available'}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 border-t border-border/70 pt-2">
+            <span className="shrink-0 text-muted-foreground">SKU / system code</span>
+            <span className="ml-auto truncate font-mono text-foreground">
+              {product.sku || 'Not assigned'}
+            </span>
+          </div>
         </div>
         {!archived ? <Button type="button" variant="outline" className="w-full bg-white dark:bg-card" onClick={onEdit}><Pencil /> Edit product details</Button> : <Button type="button" variant="outline" className="w-full bg-white dark:bg-card" onClick={onRestore}><Check /> Restore to active inventory</Button>}
       </CardContent>
@@ -932,8 +771,8 @@ function ProductCard({
 
 function ProductMenu({ product, archived, onEdit, onArchive, onRestore, onDelete }: { product: InventoryProduct; archived: boolean; onEdit: () => void; onArchive: () => void; onRestore: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
-  async function copyBarcode() { if (product.barcode || product.sku) { try { await navigator.clipboard?.writeText(product.barcode || product.sku || ''); } catch { /* Clipboard access may be unavailable in insecure previews. */ } setOpen(false); } }
-  return <div className="relative shrink-0"><Button type="button" variant="outline" size="icon" aria-label={`Actions for ${product.name}`} onClick={() => setOpen((current) => !current)}><MoreHorizontal className="size-4" /></Button>{open ? <><button type="button" aria-label="Close product actions" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} /><div className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-lg border border-border bg-white p-1 shadow-level-2 dark:bg-card"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onEdit(); setOpen(false); }}><Pencil className="size-4" /> Edit Product</button>{!archived ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onArchive(); setOpen(false); }}><Archive className="size-4" /> Archive Product</button> : <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onRestore(); setOpen(false); }}><Check className="size-4" /> Restore Product</button>}<button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={copyBarcode}><Copy className="size-4" /> Copy Barcode</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-destructive hover:bg-red-50" onClick={() => { onDelete(); setOpen(false); }}><Trash2 className="size-4" /> Delete Product</button></div></> : null}</div>;
+  async function copyBarcode() { if (product.barcode) { try { await navigator.clipboard?.writeText(product.barcode); } catch { /* Clipboard access may be unavailable in insecure previews. */ } setOpen(false); } }
+  return <div className="relative shrink-0"><Button type="button" variant="outline" size="icon" aria-label={`Actions for ${product.name}`} onClick={() => setOpen((current) => !current)}><MoreHorizontal className="size-4" /></Button>{open ? <><button type="button" aria-label="Close product actions" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} /><div className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-lg border border-border bg-white p-1 shadow-level-2 dark:bg-card"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onEdit(); setOpen(false); }}><Pencil className="size-4" /> Edit Product</button>{!archived ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onArchive(); setOpen(false); }}><Archive className="size-4" /> Archive Product</button> : <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onRestore(); setOpen(false); }}><Check className="size-4" /> Restore Product</button>}<button type="button" disabled={!product.barcode} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50" onClick={copyBarcode}><Copy className="size-4" /> {product.barcode ? 'Copy Barcode' : 'No Barcode'}</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-destructive hover:bg-red-50" onClick={() => { onDelete(); setOpen(false); }}><Trash2 className="size-4" /> Delete Product</button></div></> : null}</div>;
 }
 
 function ProductDialog({

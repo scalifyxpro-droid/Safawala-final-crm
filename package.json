@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "migrate:apply-schema": "node scripts/railway-apply-schema.mjs",
-    "migrate:legacy-inventory": "node scripts/migrate-legacy-inventory.mjs"
+    "migrate:legacy-inventory": "node scripts/migrate-legacy-inventory.mjs",
+    "migrate:reconcile-legacy-stock": "node --env-file-if-exists=.env.local scripts/reconcile-legacy-stock.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
