@@ -43,8 +43,15 @@ export type LockedDate = {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function dayOfMonth(dateValue: string) {
-  return Number(dateValue.slice(-2));
+function dayOfMonth(dateValue: unknown) {
+  if (dateValue instanceof Date && !Number.isNaN(dateValue.getTime())) {
+    return dateValue.getUTCDate();
+  }
+  if (typeof dateValue !== 'string') return null;
+  const match = dateValue.match(/^\d{4}-\d{2}-(\d{2})/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
 }
 
 function packageSummary(booking: CalendarBooking) {
@@ -122,6 +129,7 @@ export function CalendarDayGrid({
     const map = new Map<number, CalendarBooking[]>();
     bookings.forEach((booking) => {
       const day = dayOfMonth(booking.event_date);
+      if (day === null) return;
       map.set(day, [...(map.get(day) ?? []), booking]);
     });
     return map;
@@ -145,6 +153,7 @@ export function CalendarDayGrid({
     const map = new Map<number, LockedDate[]>();
     lockedDates.forEach((entry) => {
       const day = dayOfMonth(entry.locked_date);
+      if (day === null) return;
       map.set(day, [...(map.get(day) ?? []), entry]);
     });
     return map;

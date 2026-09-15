@@ -19,7 +19,8 @@ const LIVE_BOOKING_FILTER = `(b.is_quote = false or (b.is_quote = true and b.sta
 const BOOKING_QUERY = `
   select
     b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote,
-    b.event_name, b.event_date, b.event_time, b.event_location, b.pickup_date, b.due_date,
+    b.event_name, b.event_date::text as event_date, b.event_time::text as event_time, b.event_location,
+    b.pickup_date::text as pickup_date, b.due_date::text as due_date,
     b.subtotal, b.discount, b.tax, b.security_deposit, b.total, b.paid_amount, b.balance_amount, b.notes,
     case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
     coalesce(items.rows, '[]'::json) as booking_items
@@ -48,7 +49,8 @@ const BOOKING_QUERY = `
 const MODIFICATION_BOOKING_QUERY = `
   select
     b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote,
-    b.event_name, b.event_date, b.event_time, b.event_location, b.pickup_date, b.due_date,
+    b.event_name, b.event_date::text as event_date, b.event_time::text as event_time, b.event_location,
+    b.pickup_date::text as pickup_date, b.due_date::text as due_date,
     b.subtotal, b.discount, b.tax, b.security_deposit, b.total, b.paid_amount, b.balance_amount, b.notes,
     case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
     coalesce(items.rows, '[]'::json) as booking_items
@@ -106,7 +108,7 @@ export default async function BookingCalendar({
         let lockedDatesRows: LockedDate[] = [];
         try {
           lockedDatesRows = (await tx.unsafe(
-            `select id, locked_date, label, notes from public.lead_locked_dates where locked_date >= $1 and locked_date <= $2`,
+            `select id, locked_date::text as locked_date, label, notes from public.lead_locked_dates where locked_date >= $1 and locked_date <= $2`,
             [start, end],
           )) as unknown as LockedDate[];
         } catch {

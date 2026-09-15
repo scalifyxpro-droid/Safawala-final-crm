@@ -152,7 +152,8 @@ export default async function DashboardPage() {
         tx.unsafe(
           `select
              b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote, b.event_name,
-             b.event_date, b.event_time, b.event_location, b.pickup_date, b.due_date, b.subtotal, b.discount,
+             b.event_date::text as event_date, b.event_time::text as event_time, b.event_location,
+             b.pickup_date::text as pickup_date, b.due_date::text as due_date, b.subtotal, b.discount,
              b.tax, b.security_deposit, b.total, b.paid_amount, b.balance_amount, b.notes,
              case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
              coalesce(items.rows, '[]'::json) as booking_items
@@ -176,7 +177,7 @@ export default async function DashboardPage() {
         // leads_center migration isn't applied yet this just comes back empty.
         tx
           .unsafe(
-            `select id, locked_date, label, notes from public.lead_locked_dates
+            `select id, locked_date::text as locked_date, label, notes from public.lead_locked_dates
            where owner_id = $1 and locked_date >= $2 and locked_date <= $3`,
             [user.id, calendarStart, calendarEnd],
           )
