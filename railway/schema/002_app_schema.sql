@@ -1870,7 +1870,10 @@ CREATE TABLE public.package_variants (
     id bigint NOT NULL,
     owner_id uuid NOT NULL,
     category_id bigint NOT NULL,
+    safa_quantity integer,
+    package_number integer,
     name text NOT NULL,
+    description text,
     base_price numeric(12,2) DEFAULT 0 NOT NULL,
     inclusions text[] DEFAULT '{}'::text[] NOT NULL,
     extra_safa_price numeric(12,2) DEFAULT 0 NOT NULL,
@@ -1883,6 +1886,8 @@ CREATE TABLE public.package_variants (
     CONSTRAINT package_variants_extra_safa_price_check CHECK ((extra_safa_price >= (0)::numeric)),
     CONSTRAINT package_variants_missing_safa_penalty_check CHECK ((missing_safa_penalty >= (0)::numeric)),
     CONSTRAINT package_variants_name_check CHECK ((length(TRIM(BOTH FROM name)) >= 1)),
+    CONSTRAINT package_variants_package_number_check CHECK (((package_number IS NULL) OR (package_number > 0))),
+    CONSTRAINT package_variants_safa_quantity_check CHECK (((safa_quantity IS NULL) OR (safa_quantity > 0))),
     CONSTRAINT package_variants_security_deposit_check CHECK ((security_deposit >= (0)::numeric))
 );
 
@@ -3219,6 +3224,13 @@ CREATE INDEX package_items_product_id_idx ON public.package_items USING btree (p
 --
 
 CREATE UNIQUE INDEX package_variants_category_name_unique ON public.package_variants USING btree (category_id, lower(TRIM(BOTH FROM name)));
+
+
+--
+-- Name: package_variants_category_number_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX package_variants_category_number_unique ON public.package_variants USING btree (category_id, package_number) WHERE (package_number IS NOT NULL);
 
 
 --

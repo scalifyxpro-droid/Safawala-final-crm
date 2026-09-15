@@ -1,7 +1,9 @@
 'use client';
 
 import { useMemo, useState, type SyntheticEvent } from 'react';
+import Link from 'next/link';
 import {
+  Boxes,
   Check,
   ChevronRight,
   FolderPlus,
@@ -20,6 +22,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import {
   createPackageCategoryAction,
+  deletePackageCategoryAction,
   deletePackageVariantAction,
   savePackageVariantAction,
 } from '@/app/packages/actions';
@@ -27,7 +30,10 @@ import {
 export type PackageVariant = {
   id: number;
   category_id: number;
+  safa_quantity: number | null;
+  package_number: number | null;
   name: string;
+  description: string | null;
   base_price: number;
   inclusions: string[];
   extra_safa_price: number;
@@ -61,6 +67,11 @@ function variantCountLabel(count: number) {
   return `${count} ${count === 1 ? 'variant' : 'variants'}`;
 }
 
+function variantDisplayName(variant: PackageVariant) {
+  if (!variant.package_number) return variant.name;
+  return variant.name.replace(/^Package\s+\d+\s*:\s*/i, '');
+}
+
 function formText(form: FormData, key: string) {
   const value = form.get(key);
   return typeof value === 'string' ? value : '';
@@ -85,6 +96,8 @@ export function PackageManagement({
   const [deletingVariant, setDeletingVariant] = useState<PackageVariant | null>(
     null,
   );
+  const [deletingCategory, setDeletingCategory] =
+    useState<PackageCategory | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(loadError);
   const [notice, setNotice] = useState('');
@@ -97,10 +110,6 @@ export function PackageManagement({
     activeCategories.find((category) => category.id === selectedId) ??
     activeCategories[0] ??
     null;
-  const totalVariants = activeCategories.reduce(
-    (total, category) => total + category.package_variants.length,
-    0,
-  );
 
   function flash(message: string) {
     setError('');
@@ -143,7 +152,9 @@ export function PackageManagement({
     setError('');
     const result = await createPackageCategoryAction(name);
     if (result.error || !result.data) {
-      setError(result.error || 'The category could not be created. Please try again.');
+      setError(
+        result.error || 'The category could not be created. Please try again.',
+      );
       setBusy(false);
       return;
     }
@@ -164,6 +175,13 @@ export function PackageManagement({
     if (busy || !selectedCategory) return;
     const form = new FormData(event.currentTarget);
     const name = formText(form, 'name').trim();
+    const description = formText(form, 'description').trim();
+    const readOptionalInteger = (key: string) => {
+      const value = formText(form, key).trim();
+      return value ? Number(value) : null;
+    };
+    const safaQuantity = readOptionalInteger('safa_quantity');
+    const packageNumber = readOptionalInteger('package_number');
     const readPrice = (key: string) => Number(form.get(key) ?? 0);
     const basePrice = readPrice('base_price');
     const extraSafaPrice = readPrice('extra_safa_price');
@@ -184,6 +202,16 @@ export function PackageManagement({
       setError('Variant name is required.');
       return;
     }
+    if (
+      [safaQuantity, packageNumber].some(
+        (value) => value !== null && (!Number.isInteger(value) || value <= 0),
+      )
+    ) {
+      setError(
+        'Safa quantity and package number must be positive whole numbers.',
+      );
+      return;
+    }
     if (prices.some((price) => !Number.isFinite(price) || price < 0)) {
       setError('Prices must be valid numbers and cannot be negative.');
       return;
@@ -195,7 +223,10 @@ export function PackageManagement({
     const result = await savePackageVariantAction({
       id: editingVariant?.id,
       categoryId: selectedCategory.id,
+      safaQuantity,
+      packageNumber,
       name,
+      description,
       basePrice,
       inclusions,
       extraSafaPrice,
@@ -204,7 +235,9 @@ export function PackageManagement({
     });
 
     if (result.error || !result.data) {
-      setError(result.error || 'The variant could not be saved. Please try again.');
+      setError(
+        result.error || 'The variant could not be saved. Please try again.',
+      );
       setBusy(false);
       return;
     }
@@ -257,46 +290,55 @@ export function PackageManagement({
     flash('Variant deleted successfully.');
   }
 
+  async function deleteCategory() {
+    if (!deletingCategory || busy) return;
+    setBusy(true);
+    setError('');
+    const result = await deletePackageCategoryAction(deletingCategory.id);
+    if (result.error) {
+      setError(result.error);
+      setBusy(false);
+      return;
+    }
+
+    const nextCategory = categories.find(
+      (category) => category.is_active && category.id !== deletingCategory.id,
+    );
+    setCategories((current) =>
+      current.map((category) =>
+        category.id === deletingCategory.id
+          ? { ...category, is_active: false }
+          : category,
+      ),
+    );
+    setSelectedId(nextCategory?.id ?? null);
+    setDeletingCategory(null);
+    setBusy(false);
+    flash('Category removed from active packages.');
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       <DashboardHeader
         title="Package Manager"
-        subtitle="Category-based package system"
-        backHref="/dashboard"
+        subtitle="Packages and variants in your inventory catalogue"
+        backHref="/inventory"
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link href="/inventory" />}
+          >
+            <Boxes /> Products
+          </Button>
+        }
       />
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
-        <Card className="justify-center border-border py-0 shadow-level-1 ring-0">
-          <CardContent className="p-5 sm:p-6">
-            <p className="text-[11px] font-semibold tracking-[0.18em] text-primary">
-              PACKAGES
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] sm:text-2xl">
-              Safawala Package Manager
-            </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Category-based package system
-            </p>
-          </CardContent>
-        </Card>
-        <div className="grid grid-cols-2 gap-3 lg:w-[330px]">
-          <SummaryCard
-            icon={<FolderPlus />}
-            value={activeCategories.length}
-            label="Categories"
-          />
-          <SummaryCard
-            icon={<Layers3 />}
-            value={totalVariants}
-            label="Variants"
-          />
-        </div>
-      </section>
 
       {error &&
       !categoryDialogOpen &&
       !variantDialogOpen &&
-      !deletingVariant ? (
+      !deletingVariant &&
+      !deletingCategory ? (
         <Alert variant="destructive">
           <AlertTitle>Package management needs attention</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
@@ -396,9 +438,21 @@ export function PackageManagement({
                       configured
                     </p>
                   </div>
-                  <Button type="button" size="lg" onClick={openCreateVariant}>
-                    <Plus /> Add Variant
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => {
+                        setError('');
+                        setDeletingCategory(selectedCategory);
+                      }}
+                    >
+                      <Trash2 /> Remove category
+                    </Button>
+                    <Button type="button" onClick={openCreateVariant}>
+                      <Plus /> Add Variant
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -493,33 +547,18 @@ export function PackageManagement({
           onConfirm={deleteVariant}
         />
       ) : null}
+      {deletingCategory ? (
+        <DeleteCategoryDialog
+          category={deletingCategory}
+          busy={busy}
+          error={error}
+          onClose={() => {
+            if (!busy) setDeletingCategory(null);
+          }}
+          onConfirm={deleteCategory}
+        />
+      ) : null}
     </div>
-  );
-}
-
-function SummaryCard({
-  icon,
-  value,
-  label,
-}: {
-  icon: React.ReactNode;
-  value: number;
-  label: string;
-}) {
-  return (
-    <Card className="justify-center border-border py-0 shadow-level-1 ring-0">
-      <CardContent className="flex items-center gap-3 p-4">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary [&_svg]:size-5">
-          {icon}
-        </span>
-        <span>
-          <strong className="block text-xl font-semibold tabular-nums">
-            {value}
-          </strong>
-          <span className="text-xs text-muted-foreground">{label}</span>
-        </span>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -537,10 +576,24 @@ function VariantCard({
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold">{variant.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              No description provided.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold">
+                {variantDisplayName(variant)}
+              </h3>
+              {variant.package_number ? (
+                <Badge
+                  variant="outline"
+                  className="bg-white dark:bg-card font-normal"
+                >
+                  Package {variant.package_number}
+                </Badge>
+              ) : null}
+            </div>
+            {variant.description ? (
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                {variant.description}
+              </p>
+            ) : null}
           </div>
           <Badge className="shrink-0 bg-accent px-2.5 py-1 text-sm font-semibold text-primary">
             {currency(variant.base_price)}
@@ -548,6 +601,14 @@ function VariantCard({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border bg-[#fcfaf7] dark:bg-[#241e17] p-3 text-xs">
+          {variant.safa_quantity ? (
+            <div className="col-span-2 border-b pb-2">
+              <PriceDetail
+                label="Package quantity"
+                value={`${variant.safa_quantity} Safas`}
+              />
+            </div>
+          ) : null}
           <PriceDetail
             label="Extra Safa"
             value={currency(variant.extra_safa_price)}
@@ -741,6 +802,42 @@ function VariantDialog({
             className={fieldClass}
           />
         </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="font-medium">Safa Quantity</span>
+            <input
+              name="safa_quantity"
+              type="number"
+              min="1"
+              step="1"
+              defaultValue={variant?.safa_quantity ?? ''}
+              placeholder="E.g. 21"
+              className={fieldClass}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">Package Number</span>
+            <input
+              name="package_number"
+              type="number"
+              min="1"
+              step="1"
+              defaultValue={variant?.package_number ?? ''}
+              placeholder="E.g. 1"
+              className={fieldClass}
+            />
+          </label>
+        </div>
+        <label className="block text-sm">
+          <span className="font-medium">Description</span>
+          <textarea
+            name="description"
+            rows={2}
+            defaultValue={variant?.description ?? ''}
+            placeholder="Optional short description"
+            className="mt-1.5 w-full rounded-lg border border-input bg-white dark:bg-card px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20"
+          />
+        </label>
         <label className="block text-sm">
           <span className="font-medium">Base Price (₹)</span>
           <input
@@ -873,6 +970,54 @@ function DeleteVariantDialog({
             disabled={busy}
           >
             <Trash2 /> {busy ? 'Deleting…' : 'Delete'}
+          </Button>
+        </div>
+      </div>
+    </DialogFrame>
+  );
+}
+
+function DeleteCategoryDialog({
+  category,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  category: PackageCategory;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <DialogFrame title="Remove Category?" icon={<Trash2 />} onClose={onClose}>
+      <div className="space-y-4 p-5 sm:p-6">
+        <p className="text-sm leading-6 text-muted-foreground">
+          Remove <strong className="text-foreground">“{category.name}”</strong>{' '}
+          and its {variantCountLabel(category.package_variants.length)} from
+          active package and booking screens? Existing booking history will
+          remain safe.
+        </p>
+        {error ? (
+          <FormError title="Category was not removed" text={error} />
+        ) : null}
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            <Trash2 /> {busy ? 'Removing…' : 'Remove category'}
           </Button>
         </div>
       </div>

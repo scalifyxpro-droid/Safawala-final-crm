@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, type ChangeEvent, type SyntheticEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState, type ChangeEvent, type SyntheticEvent } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import {
   AlertTriangle,
   Archive,
@@ -46,6 +46,10 @@ import {
 } from '@/app/inventory/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import type { ProductReservation } from '@/lib/inventory-availability';
+import type {
+  InventoryPageData,
+  InventoryStockFilter,
+} from '@/lib/inventory-page-data';
 
 function shortDate(value: string) {
   const [year, month, day] = value.split('-');
@@ -92,7 +96,7 @@ type InventoryVariant = {
   barcode: string | null;
 };
 
-type ProductFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+type ProductFilter = InventoryStockFilter;
 type Step = 'details' | 'photos' | 'pricing' | 'variants' | 'barcode';
 type Draft = {
   name: string;
@@ -181,22 +185,25 @@ function draftFromProduct(product: InventoryProduct): Draft {
 }
 
 export function InventoryDirectory({
-  initialProducts,
+  initialData,
   loadError,
-  reservations = [],
   initialShowArchived = false,
   headerTitle = 'Inventory',
   headerSubtitle = 'Products, pricing, stock & existing printed barcodes',
 }: {
-  initialProducts: InventoryProduct[];
+  initialData: InventoryPageData;
   loadError: string;
-  reservations?: ProductReservation[];
   initialShowArchived?: boolean;
   headerTitle?: string;
   headerSubtitle?: string;
 }) {
-  const router = useRouter();
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState(initialData.products);
+  const [reservations, setReservations] = useState(initialData.reservations);
+  const [total, setTotal] = useState(initialData.total);
+  const [summary, setSummary] = useState(initialData.summary);
+  const [availableSubcategories, setAvailableSubcategories] = useState(
+    initialData.subcategories,
+  );
   const reservationsByProduct = useMemo(() => {
     const map: Record<number, ProductReservation[]> = {};
     for (const reservation of reservations) {
@@ -208,8 +215,10 @@ export function InventoryDirectory({
   const [category, setCategory] = useState('all');
   const [subcategory, setSubcategory] = useState('all');
   const [filter, setFilter] = useState<ProductFilter>('all');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialData.page);
   const [pageSize, setPageSize] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<InventoryProduct | null>(
     null,
@@ -221,73 +230,63 @@ export function InventoryDirectory({
   const [importing, setImporting] = useState(false);
   const [archiveCandidate, setArchiveCandidate] = useState<InventoryProduct | null>(null);
 
-  const activeProducts = products.filter((product) => product.is_active);
-  const archivedProducts = products.filter((product) => !product.is_active);
-  const inStock = activeProducts.filter(
-    (product) => product.stock_quantity > product.reorder_level,
-  ).length;
-  const lowStock = activeProducts.filter(
-    (product) =>
-      product.stock_quantity > 0 &&
-      product.stock_quantity <= product.reorder_level,
-  ).length;
-  const outOfStock = activeProducts.filter(
-    (product) => product.stock_quantity === 0,
-  ).length;
-  const inventoryValue = activeProducts.reduce(
-    (total, product) =>
-      total + Number(product.sale_price) * product.stock_quantity,
-    0,
-  );
+  const { activeCount, archivedCount, inStock, lowStock, outOfStock, inventoryValue } = summary;
   const subcategoryOptions = [
     ...new Set([
       ...(sameInventoryValue(category, 'BARATI SAFA')
         ? BARATI_SAFA_SUBCATEGORIES
         : []),
-      ...(activeProducts
-        .filter(
-          (product) =>
-            category === 'all' ||
-            sameInventoryValue(product.category, category),
-        )
-        .map((product) => product.subcategory)
-        .filter(Boolean) as string[]),
+      ...availableSubcategories,
     ]),
   ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const visibleProducts = (() => {
-    const query = search.trim().toLowerCase();
-    const sourceProducts = showArchived ? archivedProducts : activeProducts;
-    return sourceProducts.filter((product) => {
-      const searchable =
-        `${product.name} ${product.barcode ?? ''} ${product.sku ?? ''} ${product.category ?? ''} ${product.subcategory ?? ''}`.toLowerCase();
-      const matchesSearch = !query || searchable.includes(query);
-      const matchesCategory =
-        category === 'all' || sameInventoryValue(product.category, category);
-      const matchesSubcategory =
-        subcategory === 'all' ||
-        sameInventoryValue(product.subcategory, subcategory);
-      const matchesStock =
-        filter === 'all' ||
-        (filter === 'in_stock' &&
-          product.stock_quantity > product.reorder_level) ||
-        (filter === 'low_stock' &&
-          product.stock_quantity > 0 &&
-          product.stock_quantity <= product.reorder_level) ||
-        (filter === 'out_of_stock' && product.stock_quantity === 0);
-      return (
-        matchesSearch && matchesCategory && matchesSubcategory && matchesStock
-      );
-    });
-  })();
   const inventoryPageCount = Math.max(
     1,
-    Math.ceil(visibleProducts.length / pageSize),
+    Math.ceil(total / pageSize),
   );
   const safeInventoryPage = Math.min(page, inventoryPageCount);
-  const pagedProducts = visibleProducts.slice(
-    (safeInventoryPage - 1) * pageSize,
-    safeInventoryPage * pageSize,
-  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        search: search.trim(),
+        category,
+        subcategory,
+        stock: filter,
+        archived: String(showArchived),
+      });
+      try {
+        const response = await fetch(`/api/inventory?${params}`, {
+          signal: controller.signal,
+        });
+        const result = (await response.json()) as InventoryPageData & {
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || 'Unable to load inventory.');
+        setProducts(result.products);
+        setReservations(result.reservations);
+        setTotal(result.total);
+        setSummary(result.summary);
+        setAvailableSubcategories(result.subcategories);
+        if (result.page !== page) setPage(result.page);
+        setMessage('');
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setMessage(error instanceof Error ? error.message : 'Unable to load inventory.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, search.trim() ? 300 : 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [category, filter, page, pageSize, refreshKey, search, showArchived, subcategory]);
 
   function exportCsv() {
     const headers = [
@@ -418,7 +417,7 @@ export function InventoryDirectory({
     }
     setNotice(`${imported} product${imported === 1 ? '' : 's'} imported successfully.`);
     setImporting(false);
-    router.refresh();
+    setRefreshKey((current) => current + 1);
   }
 
   function openNewProduct() {
@@ -438,6 +437,7 @@ export function InventoryDirectory({
     if (error) { setMessage(error); return; }
     setProducts((current) => current.map((item) => item.id === product.id ? { ...item, is_active: isActive } : item));
     setNotice(isActive ? `${product.name} was restored to inventory.` : `${product.name} was archived.`);
+    setRefreshKey((current) => current + 1);
   }
 
   function requestArchive(product: InventoryProduct) {
@@ -450,6 +450,7 @@ export function InventoryDirectory({
     if (error) { setMessage(error); return; }
     setProducts((current) => current.filter((item) => item.id !== product.id));
     setNotice(`${product.name} was deleted.`);
+    setRefreshKey((current) => current + 1);
   }
 
   function saved(product: InventoryProduct, wasEditing: boolean) {
@@ -465,6 +466,7 @@ export function InventoryDirectory({
         ? `${product.name} was updated successfully.`
         : `${product.name} was added to inventory.`,
     );
+    setRefreshKey((current) => current + 1);
   }
 
   return (
@@ -503,6 +505,15 @@ export function InventoryDirectory({
         actions={
           <>
             <Button
+              size="sm"
+              variant="outline"
+              className="bg-white dark:bg-card"
+              render={<Link href="/packages" />}
+            >
+                <Layers3 />
+                <span className="hidden sm:inline">Packages & variants</span>
+            </Button>
+            <Button
               type="button"
               size="sm"
               variant="outline"
@@ -510,7 +521,7 @@ export function InventoryDirectory({
               className="bg-white dark:bg-card"
             >
               <Download />
-              <span className="hidden sm:inline">Export CSV</span>
+              <span className="hidden sm:inline">Export page CSV</span>
             </Button>
             <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-input bg-white dark:bg-card px-3 text-sm font-medium shadow-sm transition hover:bg-accent">
               <Upload />
@@ -519,7 +530,7 @@ export function InventoryDirectory({
             </label>
             <Button type="button" size="sm" variant={showArchived ? 'default' : 'outline'} onClick={() => { setShowArchived((current) => !current); setPage(1); }}>
               <Archive />
-              <span className="hidden sm:inline">{showArchived ? 'Active products' : `Archived (${archivedProducts.length})`}</span>
+              <span className="hidden sm:inline">{showArchived ? 'Active products' : `Archived (${archivedCount})`}</span>
             </Button>
             <Button type="button" size="sm" onClick={openNewProduct} disabled={showArchived}>
               <Plus />
@@ -533,7 +544,7 @@ export function InventoryDirectory({
         <Metric
           icon={<Boxes />}
           label="Total products"
-          value={activeProducts.length.toLocaleString('en-IN')}
+          value={activeCount.toLocaleString('en-IN')}
           note="Active catalog"
         />
         <Metric
@@ -651,7 +662,7 @@ export function InventoryDirectory({
 
       <div className="overflow-hidden rounded-xl border bg-white dark:bg-card shadow-level-1">
         <ListPagination
-          total={visibleProducts.length}
+          total={total}
           page={safeInventoryPage}
           pageSize={pageSize}
           onPageChange={setPage}
@@ -669,9 +680,12 @@ export function InventoryDirectory({
         </div>
       </div>
 
-      {visibleProducts.length ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {pagedProducts.map((product) => (
+      {products.length ? (
+        <div
+          className={`grid gap-4 transition-opacity sm:grid-cols-2 xl:grid-cols-5 ${loading ? 'opacity-55' : ''}`}
+          aria-busy={loading}
+        >
+          {products.map((product) => (
             <ProductCard
               key={product.id}
               product={product}

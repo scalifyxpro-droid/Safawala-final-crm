@@ -22,7 +22,10 @@ import {
 } from '@/components/bookings/booking-pdf-button';
 import { friendlyDate, friendlyTime, money, statusTone } from '@/lib/bookings';
 import { modificationDetails } from '@/lib/modifications';
-import { importantWeddingDaysForMonth } from '@/lib/important-wedding-dates';
+import {
+  importantWeddingDaysForMonth,
+  nextImportantWeddingMonth,
+} from '@/lib/important-wedding-dates';
 
 export type CalendarBooking = PdfBooking & {
   id: number;
@@ -103,6 +106,17 @@ export function CalendarDayGrid({
     () => importantWeddingDaysForMonth(year, month),
     [year, month],
   );
+  const nextImportantMonth = useMemo(
+    () => nextImportantWeddingMonth(year, month),
+    [year, month],
+  );
+  const nextImportantMonthLabel = nextImportantMonth
+    ? new Date(
+        nextImportantMonth.year,
+        nextImportantMonth.month,
+        1,
+      ).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+    : null;
 
   const eventsByDay = useMemo(() => {
     const map = new Map<number, CalendarBooking[]>();
@@ -177,12 +191,33 @@ export function CalendarDayGrid({
             </p>
           </div>
         </div>
-        <Badge
-          variant="outline"
-          className="w-fit border-[#d9b77f] bg-white dark:bg-card text-[#7c5225]"
-        >
-          {importantDays.length} this month
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="outline"
+            className="w-fit border-[#d9b77f] bg-white dark:bg-card text-[#7c5225]"
+          >
+            {importantDays.length
+              ? `${importantDays.length} marked this month`
+              : 'No supplied dates this month'}
+          </Badge>
+          {!importantDays.length &&
+          nextImportantMonth &&
+          nextImportantMonthLabel ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 border-[#d9b77f] bg-white text-xs text-[#7c5225] hover:bg-[#fff4df] dark:bg-card"
+              render={
+                <Link
+                  href={`/bookings/calendar?month=${nextImportantMonth.year}-${String(nextImportantMonth.month + 1).padStart(2, '0')}`}
+                  aria-label={`View the next important wedding dates in ${nextImportantMonthLabel}`}
+                />
+              }
+            >
+              Next: {nextImportantMonth.days[0]} {nextImportantMonthLabel}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <Card className="gap-0 overflow-x-auto border-border py-0 shadow-level-1 ring-0">
         <div className="grid min-w-[840px] grid-cols-7 border-b bg-[#fcfaf7] dark:bg-[#241e17]">
@@ -208,11 +243,11 @@ export function CalendarDayGrid({
             return (
               <div
                 key={index}
-                className={`min-h-32 border-b border-r p-2 ${
+                className={`relative min-h-32 border-b border-r p-2 ${
                   isLocked
                     ? 'bg-[#fdf0ef] dark:bg-[#2a1c1c]'
                     : isImportant
-                      ? 'bg-[#fff8eb] dark:bg-[#241e17]'
+                      ? 'bg-[#fff3d9] shadow-[inset_0_0_0_2px_#d9b77f] dark:bg-[#33291c]'
                       : ''
                 }`}
               >
@@ -231,6 +266,11 @@ export function CalendarDayGrid({
                           ? 'text-[#9a6124]'
                           : 'text-primary'
                     }`}
+                    aria-label={
+                      isImportant
+                        ? `${day} ${new Date(year, month, day).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}, important wedding date`
+                        : undefined
+                    }
                   >
                     {day}
                   </button>

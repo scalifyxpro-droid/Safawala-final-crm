@@ -284,19 +284,22 @@ type ReservationJoinRow = {
 };
 
 /**
- * All current/future reservations (from today onward) across every product,
- * for the Inventory page to show which dates a product is already booked.
+ * Current/future reservations for the products visible on one Inventory page.
  */
 export async function getUpcomingReservations(params: {
   ownerId: string;
+  productIds: number[];
   fromDate: string;
 }): Promise<ProductReservation[]> {
+  if (!params.productIds.length) return [];
+
   const rows = await withServiceRole((tx) => tx<ReservationJoinRow[]>`
     select bi.product_id, bi.quantity, b.pickup_date, b.due_date, b.booking_number
     from public.booking_items bi
     join public.bookings b on b.id = bi.booking_id
     where bi.owner_id = ${params.ownerId}
       and bi.product_id is not null
+      and bi.product_id = any(${tx.array(params.productIds)})
       and b.booking_type = 'rental'
       and b.status = any(${tx.array(ACTIVE_RENTAL_STATUSES as unknown as string[])})
       and b.due_date >= ${params.fromDate}

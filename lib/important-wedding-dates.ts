@@ -24,12 +24,37 @@ const IMPORTANT_WEDDING_DAYS: Record<string, readonly number[]> = {
   '2027-12': [2, 7, 8, 9, 12, 13, 14, 17, 18, 20, 21, 23, 25, 26, 28, 30],
 };
 
+export type ImportantWeddingMonth = {
+  year: number;
+  month: number;
+  days: readonly number[];
+};
+
 function monthKey(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
 export function importantWeddingDaysForMonth(year: number, month: number) {
   return IMPORTANT_WEDDING_DAYS[monthKey(year, month)] ?? [];
+}
+
+export function nextImportantWeddingMonth(
+  year: number,
+  month: number,
+): ImportantWeddingMonth | null {
+  const currentKey = monthKey(year, month);
+  const nextKey = Object.keys(IMPORTANT_WEDDING_DAYS)
+    .sort()
+    .find((key) => key > currentKey);
+
+  if (!nextKey) return null;
+
+  const [nextYear, nextMonth] = nextKey.split('-').map(Number);
+  return {
+    year: nextYear,
+    month: nextMonth - 1,
+    days: IMPORTANT_WEDDING_DAYS[nextKey],
+  };
 }
 
 export function isImportantWeddingDate(

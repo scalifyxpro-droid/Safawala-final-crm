@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ListPagination } from '@/components/ui/list-pagination';
 type Staff = { id: number; name: string };
 type Row = {
   id: string;
@@ -41,6 +42,8 @@ export function WorkOrdersManager({
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('all');
   const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [detail, setDetail] = useState<Row | null>(null);
   const departments = [...new Set(Object.values(names))];
   const rows = useMemo(
@@ -55,13 +58,22 @@ export function WorkOrdersManager({
       ),
     [initialRecords, department, status, search],
   );
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedRows = rows.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <Card
           role="button"
           tabIndex={0}
-          onClick={() => setStatus('all')}
+          onClick={() => {
+            setStatus('all');
+            setPage(1);
+          }}
           className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
         >
           <CardContent className="p-4">
@@ -74,7 +86,10 @@ export function WorkOrdersManager({
         <Card
           role="button"
           tabIndex={0}
-          onClick={() => setStatus('in_progress')}
+          onClick={() => {
+            setStatus('in_progress');
+            setPage(1);
+          }}
           className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
         >
           <CardContent className="p-4">
@@ -89,7 +104,10 @@ export function WorkOrdersManager({
         <Card
           role="button"
           tabIndex={0}
-          onClick={() => setStatus('done')}
+          onClick={() => {
+            setStatus('done');
+            setPage(1);
+          }}
           className="cursor-pointer transition hover:-translate-y-0.5 hover:border-[#d6b98d]"
         >
           <CardContent className="p-4">
@@ -106,13 +124,19 @@ export function WorkOrdersManager({
         <CardContent className="flex flex-wrap gap-3 p-4">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search job or event"
             className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
           />
           <select
             value={department}
-            onChange={(e) => setDepartment(e.target.value)}
+            onChange={(e) => {
+              setDepartment(e.target.value);
+              setPage(1);
+            }}
             className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
           >
             <option value="all">All departments</option>
@@ -122,7 +146,10 @@ export function WorkOrdersManager({
           </select>
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
             className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
           >
             <option value="all">All statuses</option>
@@ -134,7 +161,18 @@ export function WorkOrdersManager({
           </select>
         </CardContent>
       </Card>
-      <Card>
+      <Card className="gap-0 overflow-hidden py-0">
+        <ListPagination
+          total={rows.length}
+          page={safePage}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          itemLabel="work orders"
+        />
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead>
@@ -148,7 +186,7 @@ export function WorkOrdersManager({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {pagedRows.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
                   <td className="px-5 py-4 font-medium">
                     {r.event_jobs?.job_number ?? 'Job'}

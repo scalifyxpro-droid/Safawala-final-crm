@@ -254,15 +254,14 @@ export function ModificationQueue({
       <DashboardHeader
         title="Modifications"
         subtitle={staffMode ? 'Work assigned to the modification department' : 'Delivery-first workshop queue for Sale bookings'}
-        backHref={null}
+        backHref={staffMode ? null : '/dashboard'}
         actions={!staffMode ? (
           <Button
             size="sm"
-            variant="outline"
-            render={<Link href="/bookings/new" />}
+            render={<Link href="/bookings/new?type=sale" />}
           >
-            <ArrowRight />
             <span className="hidden sm:inline">Create sale booking</span>
+            <ArrowRight />
           </Button>
         ) : undefined}
       />

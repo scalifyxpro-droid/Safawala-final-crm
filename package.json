@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/railway-run-migrations.mjs && next start",
     "lint": "oxlint",
     "format": "oxfmt",
     "migrate:apply-schema": "node scripts/railway-apply-schema.mjs",

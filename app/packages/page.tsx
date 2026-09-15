@@ -1,8 +1,12 @@
 import { redirect } from 'next/navigation';
-import { PackageManagement, type PackageCategory } from '@/components/packages/package-management';
+import {
+  PackageManagement,
+  type PackageCategory,
+} from '@/components/packages/package-management';
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { ensureSafawalaPackageCatalog } from '@/lib/safawala-package-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,10 +18,12 @@ const CATEGORY_QUERY = `
   from public.package_categories c
   left join lateral (
     select json_agg(json_build_object(
-      'id', pv.id, 'category_id', pv.category_id, 'name', pv.name, 'base_price', pv.base_price,
+      'id', pv.id, 'category_id', pv.category_id, 'safa_quantity', pv.safa_quantity,
+      'package_number', pv.package_number, 'name', pv.name, 'description', pv.description,
+      'base_price', pv.base_price,
       'inclusions', pv.inclusions, 'extra_safa_price', pv.extra_safa_price, 'missing_safa_penalty', pv.missing_safa_penalty,
       'security_deposit', pv.security_deposit, 'created_at', pv.created_at, 'updated_at', pv.updated_at
-    ) order by pv.created_at) as rows
+    ) order by pv.package_number nulls last, pv.created_at) as rows
     from public.package_variants pv where pv.category_id = c.id
   ) v on true
   where c.is_active = true
@@ -31,10 +37,20 @@ export default async function PackagesPage() {
   let categories: PackageCategory[] = [];
   let loadError = '';
   try {
-    const rows = await withUserContext(user.id, (tx) => tx.unsafe(CATEGORY_QUERY));
+    if (user.role === 'admin') {
+      await ensureSafawalaPackageCatalog(user.id);
+    }
+    const rows = await withUserContext(user.id, (tx) =>
+      tx.unsafe(CATEGORY_QUERY),
+    );
     categories = (rows as unknown as PackageCategory[]).map((category) => ({
       ...category,
-      package_variants: [...(category.package_variants ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+      package_variants: [...(category.package_variants ?? [])].sort(
+        (a, b) =>
+          (a.package_number ?? Number.MAX_SAFE_INTEGER) -
+            (b.package_number ?? Number.MAX_SAFE_INTEGER) ||
+          a.created_at.localeCompare(b.created_at),
+      ),
     }));
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Unable to load packages.';

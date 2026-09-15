@@ -273,8 +273,23 @@ export async function importProductAction(
   try {
     const user = await requireUser();
     const result = await withUserContext(user.id, async (tx) => {
+      let resolvedExistingId = existingId;
+      if (!resolvedExistingId && (values.barcode || values.sku)) {
+        const matches = await tx.unsafe(
+          `select id from public.products
+           where owner_id = $1
+             and (($2::text is not null and barcode = $2) or ($3::text is not null and sku = $3))
+           order by id
+           limit 1`,
+          [user.id, values.barcode, values.sku],
+        );
+        resolvedExistingId = Number(
+          (matches[0] as { id?: number } | undefined)?.id ?? 0,
+        ) || null;
+      }
+
       let productRowId: number;
-      if (existingId) {
+      if (resolvedExistingId) {
         const [row] = await tx.unsafe(
           `update public.products set
             name=$1, barcode=$2, sku=$3, category=$4, subcategory=$5, size=$6, color=$7, material=$8,
@@ -286,7 +301,7 @@ export async function importProductAction(
             values.name, values.barcode, values.sku, values.category, values.subcategory, values.size,
             values.color, values.material, values.cost_price, values.regular_price, values.sale_price,
             values.rental_price, values.security_deposit, values.stock_quantity, values.reorder_level,
-            values.is_active, existingId,
+            values.is_active, resolvedExistingId,
           ],
         );
         productRowId = (row as unknown as { id: number }).id;
