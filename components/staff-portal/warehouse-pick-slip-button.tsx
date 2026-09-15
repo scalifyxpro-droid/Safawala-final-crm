@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { LoaderCircle, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
+import { BORDER_SOFT, BRAND_DARK, MUTED, OK_GREEN, ROW_ALT, ROW_TINT, WARN_RED, randomOwnerPassword, loadBrandLogo } from '@/lib/pdf/brand';
 
 export type WarehousePickSlipDetails = {
   jobId: string;
@@ -37,34 +38,46 @@ export function WarehousePickSlipButton({
   async function createSlip() {
     setCreating(true);
     try {
-      const { jsPDF } = await import('jspdf');
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadBrandLogo()]);
+      const doc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+      });
       const drawSlip = (top: number) => {
         const left = 12;
         const right = 198;
         const width = right - left;
-        doc.setDrawColor(166, 111, 44);
-        doc.setFillColor(250, 246, 240);
+        doc.setDrawColor(...BORDER_SOFT);
+        doc.setFillColor(255, 255, 255);
+        doc.setLineWidth(0.4);
         doc.roundedRect(left, top, width, 133, 2, 2, 'FD');
-        doc.setTextColor(112, 72, 28);
+        if (logo) {
+          const logoH = 9;
+          doc.addImage(logo.dataUrl, 'PNG', left + 5, top + 4, logoH * logo.ratio, logoH);
+        } else {
+          doc.setTextColor(...BRAND_DARK);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.text('SAFAWALA', left + 5, top + 10);
+        }
+        doc.setTextColor(...BRAND_DARK);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text('SAFAWALA', left + 5, top + 10);
         doc.setFontSize(8);
         doc.text('WAREHOUSE PICK SLIP', right - 5, top + 10, { align: 'right' });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
-        doc.setTextColor(95, 88, 80);
+        doc.setTextColor(...MUTED);
         doc.text(`${details.jobId}  |  ${details.bookingNumber}`, right - 5, top + 17, { align: 'right' });
 
         let y = top + 27;
         const row = (label: string, value: string, x: number, rowWidth: number) => {
           doc.setFont('helvetica', 'bold');
-          doc.setTextColor(70, 64, 58);
+          doc.setTextColor(...BRAND_DARK);
           doc.setFontSize(6.5);
           doc.text(label, x, y);
           doc.setFont('helvetica', 'normal');
-          doc.setTextColor(35, 32, 29);
+          doc.setTextColor(...MUTED);
           doc.text(doc.splitTextToSize(value || '-', rowWidth - 25) as string[], x + 25, y);
         };
         row('Customer', details.customerName, left + 3, width / 2);
@@ -75,10 +88,12 @@ export function WarehousePickSlipButton({
         y += 6;
         row('Venue', details.venue || '-', left + 3, width);
         y += 8;
-        doc.setFillColor(245, 234, 216);
-        doc.rect(left + 2, y - 4, width - 4, 7, 'F');
+        doc.setFillColor(...ROW_TINT);
+        doc.setDrawColor(...BORDER_SOFT);
+        doc.setLineWidth(0.3);
+        doc.rect(left + 2, y - 4, width - 4, 7, 'FD');
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(112, 72, 28);
+        doc.setTextColor(...BRAND_DARK);
         doc.setFontSize(6.5);
         doc.text('ITEM', left + 5, y);
         doc.text('BARCODE', left + 100, y);
@@ -91,31 +106,34 @@ export function WarehousePickSlipButton({
           const height = Math.max(6, itemLines.length * 3 + 2);
           if (y < top + 116) {
             if (index % 2 === 0) {
-              doc.setFillColor(252, 250, 247);
+              doc.setFillColor(...ROW_ALT);
               doc.rect(left + 2, y - 4, width - 4, height, 'F');
             }
             doc.setFont('helvetica', 'normal');
-            doc.setTextColor(35, 32, 29);
+            doc.setTextColor(...BRAND_DARK);
             doc.text(itemLines, left + 5, y);
+            doc.setTextColor(...MUTED);
             doc.text(item.barcode || '-', left + 100, y);
+            doc.setTextColor(...BRAND_DARK);
             doc.text(String(item.quantity), left + 150, y, { align: 'right' });
-            doc.setTextColor(item.picked ? 25 : 151, item.picked ? 119 : 91, item.picked ? 82 : 38);
+            doc.setTextColor(...(item.picked ? OK_GREEN : WARN_RED));
             doc.text(item.picked ? 'PICKED' : 'NOT PICKED', right - 5, y, { align: 'right' });
             y += height;
-            doc.setDrawColor(225, 218, 208);
+            doc.setDrawColor(205, 205, 205);
             doc.line(left + 2, y - 3, right - 2, y - 3);
           }
         });
-        doc.setDrawColor(145, 136, 126);
+        doc.setDrawColor(...BORDER_SOFT);
+        doc.setLineWidth(0.3);
         doc.line(left + 5, top + 121, left + 55, top + 121);
         doc.line(right - 55, top + 121, right - 5, top + 121);
-        doc.setTextColor(95, 88, 80);
+        doc.setTextColor(...MUTED);
         doc.setFontSize(6);
         doc.text('Picked by', left + 5, top + 126);
         doc.text('Checked by', right - 55, top + 126);
       };
 
-      // Two identical copies, stacked on one A4 page for warehouse handover.
+      // Two identical branded copies, stacked on one A4 page for warehouse handover.
       drawSlip(7);
       drawSlip(151);
       doc.save(`Pick-Slip-${details.bookingNumber}.pdf`);

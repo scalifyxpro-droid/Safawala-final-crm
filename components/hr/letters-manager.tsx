@@ -6,6 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { saveLetterAction } from '@/app/hr/actions';
 import jsPDF from 'jspdf';
+import {
+  BORDER_SOFT,
+  BRAND_DARK,
+  BRAND_MID,
+  MUTED,
+  ROW_TINT,
+  loadBrandLogo,
+  loadBrandSignature,
+  randomOwnerPassword,
+  sectionBox,
+  stampFooterOnAllPages,
+} from '@/lib/pdf/brand';
 
 type Staff = {
   id: number;
@@ -112,7 +124,7 @@ export function LettersManager({
                 <th className="px-5 py-3">Letter type</th>
                 <th className="px-5 py-3">Title</th>
                 <th className="px-5 py-3">Issued</th>
-                <th aria-label="Actions" className="px-5 py-3" />
+                <th className="px-5 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -342,7 +354,7 @@ function LetterPreview({
               <Image
                 src="/safawala-wordmark-transparent.png"
                 alt="Safawala.com"
-                width={240}
+                width={260}
                 height={48}
                 className="h-12 w-auto object-contain"
               />
@@ -545,7 +557,7 @@ function LetterOpening({ type, name }: { type: string; name: string }) {
   if (normalized.includes('termination'))
     return (
       <>
-        This letter confirms the termination of <strong>{name}</strong>&apos;s
+        This letter confirms the termination of <strong>{name}</strong>&rsquo;s
         employment with <strong>Safawala.com</strong>, effective as communicated
         by Human Resources.
       </>
@@ -670,136 +682,103 @@ function letterBodyPlainText(type: string, name: string): string {
   return `Please retain this document for your official records. Any terms specified by HR form part of this letter.`;
 }
 
-async function loadImageAsDataUrl(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () =>
-        resolve(typeof reader.result === 'string' ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
+// ---- Branded PDF export: matches the sale/rental invoice's look (crown
+// logo header, bordered boxes, signature block, numbered conditions and the
+// same footer treatment) instead of the previous blue letterhead style. ----
 async function downloadLetterPdf(
   letter: Letter,
   details: OfferDetails,
   name: string,
 ) {
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 55;
-  const rightEdge = pageWidth - margin;
-  const contentWidth = pageWidth - margin * 2;
+  const [logo, signature] = await Promise.all([loadBrandLogo(), loadBrandSignature()]);
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const left = 16;
+  const right = pageWidth - 16;
+  const boxWidth = right - left;
   const isOfferType = letter.letter_type.toLowerCase().includes('offer');
-  let y = margin - 3;
+  const refNumber = `VADODARA-BRANCH-${String(letter.id).padStart(6, '0')}`;
 
-  const ensureSpace = (height: number) => {
-    if (y + height > pageHeight - 70) {
-      pdf.addPage();
-      y = margin;
+  const ensureSpace = (height: number, cursor: number) => {
+    if (cursor + height > 266) {
+      doc.addPage();
+      return 20;
     }
+    return cursor;
   };
 
-  const logoDataUrl = await loadImageAsDataUrl(
-    '/safawala-wordmark-transparent.png',
-  );
-  if (logoDataUrl) {
-    try {
-      pdf.addImage(logoDataUrl, 'PNG', margin, y - 6, 132, 32);
-    } catch {
-      pdf.setTextColor(18, 52, 91);
-      pdf.setFontSize(18);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('SAFAWALA.COM', margin, y + 12);
-    }
+  // ---- Header banner ----
+  const headerTop = 10;
+  const headerHeight = 34;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...BORDER_SOFT);
+  doc.setLineWidth(0.45);
+  doc.roundedRect(left - 6, headerTop, boxWidth + 12, headerHeight, 3, 3, 'FD');
+  if (logo) {
+    const logoH = 13;
+    doc.addImage(logo.dataUrl, 'PNG', left, headerTop + 5, logoH * logo.ratio, logoH);
   } else {
-    pdf.setTextColor(18, 52, 91);
-    pdf.setFontSize(18);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('SAFAWALA.COM', margin, y + 12);
+    doc.setTextColor(...BRAND_DARK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('SAFAWALA', left, headerTop + 14);
   }
-  pdf.setTextColor(80, 92, 112);
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(
-    'Fashion Rental & Styling - Wedding Turbans & Accessories',
-    margin,
-    y + 36,
-  );
-  pdf.text('info@safawala.com  |  +91 98765 43210', margin, y + 49);
-  pdf.text('www.safawala.com  |  Mumbai, Maharashtra, India', margin, y + 62);
+  doc.setTextColor(...MUTED);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Premium Wedding Accessories', left, headerTop + headerHeight - 4);
+  doc.setTextColor(...BRAND_DARK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(refNumber, right, headerTop + 10, { align: 'right' });
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(letter.letter_type.toUpperCase(), right, headerTop + 17, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MUTED);
+  doc.text(`Date: ${formatDate(letter.issued_on)}`, right, headerTop + 23, { align: 'right' });
+  doc.text('Issued by: Human Resources', right, headerTop + 29, { align: 'right' });
 
-  pdf.setTextColor(18, 52, 91);
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(`Date: ${formatDate(letter.issued_on)}`, rightEdge, y, {
-    align: 'right',
-  });
-  pdf.text(
-    `Ref No.: VADODARA-BRANCH-${String(letter.id).padStart(6, '0')}`,
-    rightEdge,
-    y + 15,
-    { align: 'right' },
-  );
-  pdf.text('Issuing Authority: Human Resources', rightEdge, y + 30, {
-    align: 'right',
-  });
+  let y = headerTop + headerHeight + 8;
 
-  y += 74;
-  pdf.setDrawColor(91, 99, 246);
-  pdf.setLineWidth(2.5);
-  pdf.line(margin, y, rightEdge, y);
+  // ---- Subject box ----
+  sectionBox(doc, left, y, boxWidth, 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MUTED);
+  doc.text('SUBJECT', left + 5, y + 6);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...BRAND_DARK);
+  doc.text(letter.title || letter.letter_type, left + 5, y + 12.5);
+  y += 24;
 
-  y += 22;
-  pdf.setDrawColor(216, 224, 235);
-  pdf.setLineWidth(0.75);
-  pdf.line(margin, y, rightEdge, y);
-  y += 18;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(8);
-  pdf.setTextColor(138, 155, 181);
-  pdf.text('HUMAN RESOURCES DEPARTMENT', pageWidth / 2, y, {
-    align: 'center',
-  });
-  y += 20;
-  pdf.setFontSize(16);
-  pdf.setTextColor(91, 99, 246);
-  pdf.text(letter.letter_type.toUpperCase(), pageWidth / 2, y, {
-    align: 'center',
-  });
-  y += 15;
-  pdf.setDrawColor(216, 224, 235);
-  pdf.line(margin, y, rightEdge, y);
-  y += 28;
+  // ---- Department / title band ----
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...MUTED);
+  doc.text('HUMAN RESOURCES DEPARTMENT', pageWidth / 2, y, { align: 'center' });
+  y += 6.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...BRAND_DARK);
+  doc.text(letter.letter_type.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+  y += 3.5;
+  doc.setDrawColor(...BORDER_SOFT);
+  doc.setLineWidth(0.3);
+  doc.line(left, y, right, y);
+  y += 8;
 
-  ensureSpace(48);
-  pdf.setDrawColor(216, 224, 235);
-  pdf.setFillColor(248, 250, 252);
-  pdf.rect(margin, y, contentWidth, 40, 'FD');
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(8);
-  pdf.setTextColor(109, 127, 153);
-  pdf.text('SUBJECT', margin + 10, y + 15);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10.5);
-  pdf.setTextColor(18, 52, 91);
-  pdf.text(letter.title || letter.letter_type, margin + 10, y + 31);
-  y += 58;
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(30, 41, 59);
-  ensureSpace(20);
-  pdf.text(`Dear ${name},`, margin, y);
-  y += 22;
+  // ---- Body ----
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...BRAND_DARK);
+  doc.text(`Dear ${name},`, left, y);
+  y += 7;
 
   const paragraph1 = isOfferType
     ? 'We are delighted to inform you that, after evaluating your profile and interview performance, Safawala.com is pleased to extend this formal offer of employment to you. We believe your skills and experience will be a valuable addition to our team.'
@@ -809,22 +788,22 @@ async function downloadLetterPdf(
     : letterBodyPlainText(letter.letter_type, name);
 
   for (const paragraph of [paragraph1, paragraph2]) {
-    const lines = pdf.splitTextToSize(paragraph, contentWidth);
-    ensureSpace(lines.length * 14 + 10);
-    pdf.text(lines, margin, y);
-    y += lines.length * 14 + 12;
+    const lines = doc.splitTextToSize(paragraph, boxWidth) as string[];
+    y = ensureSpace(lines.length * 4.6 + 4, y);
+    doc.text(lines, left, y);
+    y += lines.length * 4.6 + 5;
   }
 
   if (isOfferType) {
-    ensureSpace(30);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9.5);
-    pdf.setTextColor(138, 155, 181);
-    pdf.text('EMPLOYMENT TERMS', margin, y);
-    y += 14;
+    y = ensureSpace(9, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...BRAND_MID);
+    doc.text('EMPLOYMENT TERMS', left, y);
+    y += 5;
 
-    const labelWidth = contentWidth * 0.38;
-    const valueWidth = contentWidth - labelWidth - 16;
+    const labelWidth = boxWidth * 0.38;
+    const valueWidth = boxWidth - labelWidth - 6;
     const terms: [string, string][] = [
       ['POSITION / DESIGNATION', details.designation],
       ['DEPARTMENT', details.department],
@@ -834,95 +813,105 @@ async function downloadLetterPdf(
       ['PLACE OF POSTING', details.posting],
       ['WORKING HOURS', details.workingHours],
     ];
-    pdf.setFontSize(9);
+    doc.setFontSize(8.5);
     for (const [label, value] of terms) {
-      const valueLines = pdf.splitTextToSize(value || '-', valueWidth);
-      const labelLines = pdf.splitTextToSize(label, labelWidth - 12);
-      const rowHeight =
-        Math.max(labelLines.length, valueLines.length) * 12 + 12;
-      ensureSpace(rowHeight);
-      pdf.setDrawColor(216, 224, 235);
-      pdf.setFillColor(245, 248, 252);
-      pdf.rect(margin, y, labelWidth, rowHeight, 'FD');
-      pdf.setFillColor(255, 255, 255);
-      pdf.rect(
-        margin + labelWidth,
-        y,
-        contentWidth - labelWidth,
-        rowHeight,
-        'FD',
-      );
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(30, 41, 59);
-      pdf.text(labelLines, margin + 8, y + 14);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(valueLines, margin + labelWidth + 8, y + 14);
+      const valueLines = doc.splitTextToSize(value || '-', valueWidth) as string[];
+      const labelLines = doc.splitTextToSize(label, labelWidth - 5) as string[];
+      const rowHeight = Math.max(labelLines.length, valueLines.length) * 3.9 + 3;
+      y = ensureSpace(rowHeight, y);
+      doc.setDrawColor(...BORDER_SOFT);
+      doc.setLineWidth(0.3);
+      doc.setFillColor(...ROW_TINT);
+      doc.rect(left, y, labelWidth, rowHeight, 'FD');
+      doc.setFillColor(255, 255, 255);
+      doc.rect(left + labelWidth, y, boxWidth - labelWidth, rowHeight, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...BRAND_DARK);
+      doc.text(labelLines, left + 2.5, y + 4.2);
+      doc.setFont('helvetica', 'normal');
+      doc.text(valueLines, left + labelWidth + 2.5, y + 4.2);
       y += rowHeight;
     }
-    y += 18;
+    y += 5;
 
-    ensureSpace(24);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9.5);
-    pdf.setTextColor(138, 155, 181);
-    pdf.text('CONDITIONS OF OFFER', margin, y);
-    y += 16;
-    pdf.setFontSize(9.5);
-    pdf.setTextColor(30, 41, 59);
+    y = ensureSpace(8, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...BRAND_MID);
+    doc.text('CONDITIONS OF OFFER', left, y);
+    y += 2.5;
+    doc.setDrawColor(...BORDER_SOFT);
+    doc.setLineWidth(0.3);
+    doc.line(left, y, right, y);
+    y += 4.5;
+
     const conditions = details.conditions
       .replace(/\\r\\n/g, '\n')
       .replace(/\\n/g, '\n')
       .split('\n')
       .map((entry) => entry.trim())
       .filter(Boolean);
+    doc.setFontSize(8.2);
     conditions.forEach((condition, index) => {
-      const lines = pdf.splitTextToSize(
-        `${index + 1}. ${condition}`,
-        contentWidth - 8,
-      );
-      ensureSpace(lines.length * 13 + 6);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(lines, margin + 4, y);
-      y += lines.length * 13 + 6;
+      const lines = doc.splitTextToSize(condition, boxWidth - 6.5) as string[];
+      const blockHeight = lines.length * 3.7 + 1.4;
+      y = ensureSpace(blockHeight, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...BRAND_DARK);
+      doc.text(`${index + 1}.`, left, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(lines, left + 6.5, y);
+      y += blockHeight;
     });
-    y += 8;
+    y += 2;
   }
 
   if (details.notes) {
-    const noteLines = pdf.splitTextToSize(details.notes, contentWidth - 16);
-    const boxHeight = noteLines.length * 13 + 16;
-    ensureSpace(boxHeight + 12);
-    pdf.setDrawColor(91, 99, 246);
-    pdf.setLineWidth(2);
-    pdf.line(margin, y, margin, y + boxHeight);
-    pdf.setFont('helvetica', 'italic');
-    pdf.setFontSize(9.5);
-    pdf.setTextColor(60, 70, 90);
-    pdf.text(noteLines, margin + 12, y + 12);
-    y += boxHeight + 16;
+    const noteLines = doc.splitTextToSize(details.notes, boxWidth - 10) as string[];
+    const boxHeight = noteLines.length * 4 + 6;
+    y = ensureSpace(boxHeight + 5, y);
+    doc.setDrawColor(...BORDER_SOFT);
+    doc.setLineWidth(0.6);
+    doc.line(left, y, left, y + boxHeight);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUTED);
+    doc.text(noteLines, left + 4, y + 4);
+    y += boxHeight + 6;
   }
 
-  ensureSpace(70);
-  y += 6;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(30, 41, 59);
-  pdf.text('Regards,', margin, y);
-  y += 17;
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Admin / Human Resources', margin, y);
-  y += 26;
+  // ---- Sign-off ----
+  y = ensureSpace(28, y);
+  y += 3;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...BRAND_DARK);
+  doc.text('Regards,', left, y);
+  y += 5.5;
+  if (signature) {
+    const signatureW = 26;
+    const signatureH = signatureW / signature.ratio;
+    doc.addImage(signature.dataUrl, 'PNG', left, y, signatureW, signatureH, undefined, 'FAST');
+    y += signatureH + 2;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.text('Admin / Human Resources', left, y);
+  y += 8;
 
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
-  pdf.setTextColor(120, 130, 150);
-  const footerLines = pdf.splitTextToSize(
-    `This document was generated from the Safawala CRM Staff Directory on ${formatDate(letter.issued_on)}.`,
-    contentWidth,
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...MUTED);
+  doc.text(
+    doc.splitTextToSize(
+      `This document was generated from the Safawala CRM Staff Directory on ${formatDate(letter.issued_on)}.`,
+      boxWidth,
+    ) as string[],
+    left,
+    y,
   );
-  pdf.text(footerLines, margin, y);
 
-  pdf.save(
+  stampFooterOnAllPages(doc, { left, right, note: 'Generated by Safawala Human Resources.' });
+  doc.save(
     `safawala-${letter.letter_type.toLowerCase().replace(/\s+/g, '-')}-${letter.id}.pdf`,
   );
 }

@@ -4,6 +4,19 @@ import { useState } from 'react';
 import { LoaderCircle, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
+import {
+  BRAND_DARK,
+  MUTED,
+  OK_GREEN,
+  ROW_ALT,
+  WARN_RED,
+  randomOwnerPassword,
+  drawSignOffLines,
+  drawTableHeaderRow,
+  loadBrandLogo,
+  sectionBox,
+  stampFooterOnAllPages,
+} from '@/lib/pdf/brand';
 
 export type CollectionSlipDetails = {
   jobId: string;
@@ -39,61 +52,110 @@ export function CollectionSlipButton({
   async function createSlip() {
     setCreating(true);
     try {
-      const { jsPDF } = await import('jspdf');
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadBrandLogo()]);
+      const doc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+      });
+      const width = doc.internal.pageSize.getWidth();
       const left = 16;
-      const right = 194;
-      const width = right - left;
+      const right = width - 16;
+      const boxWidth = right - left;
 
-      doc.setDrawColor(166, 111, 44);
-      doc.setFillColor(250, 246, 240);
-      doc.roundedRect(left, 14, width, 32, 3, 3, 'FD');
-      doc.setTextColor(112, 72, 28);
+      // ---- Header banner ----
+      const headerTop = 10;
+      const headerHeight = 34;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(92, 92, 92);
+      doc.setLineWidth(0.45);
+      doc.roundedRect(left - 6, headerTop, boxWidth + 12, headerHeight, 3, 3, 'FD');
+      if (logo) {
+        const logoH = 13;
+        doc.addImage(logo.dataUrl, 'PNG', left, headerTop + 5, logoH * logo.ratio, logoH);
+      } else {
+        doc.setTextColor(...BRAND_DARK);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text('SAFAWALA', left, headerTop + 14);
+      }
+      doc.setTextColor(...MUTED);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Premium Wedding Accessories', left, headerTop + headerHeight - 4);
+      doc.setTextColor(...BRAND_DARK);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('SAFAWALA', left + 6, 27);
-      doc.setFontSize(12);
-      doc.text('RENTAL COLLECTION SLIP', right - 6, 27, { align: 'right' });
+      doc.setFontSize(13);
+      doc.text(details.bookingNumber, right, headerTop + 11, { align: 'right' });
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('RENTAL COLLECTION SLIP', right, headerTop + 18, { align: 'right' });
+      doc.setFontSize(7.5);
+      doc.setTextColor(...MUTED);
+      doc.text(`Job: ${details.jobId}`, right, headerTop + 24, { align: 'right' });
+
+      // ---- Job / event / hand-off info box ----
+      let y = headerTop + headerHeight + 6;
+      const boxH = 38;
+      sectionBox(doc, left, y, boxWidth, boxH);
+      const columnGap = 6;
+      const columnWidth = (boxWidth - columnGap) / 2;
+      const eventX = left + columnWidth + columnGap;
+      doc.setDrawColor(190, 190, 190);
+      doc.setLineWidth(0.25);
+      doc.line(left + columnWidth + columnGap / 2, y + 5, left + columnWidth + columnGap / 2, y + boxH - 5);
+      let by = y + 8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...BRAND_DARK);
+      doc.text('CUSTOMER', left + 5, by);
+      doc.text('EVENT & PICKUP', eventX + 2, by);
+      by += 5.5;
+      doc.setFontSize(9.5);
+      doc.text(details.customerName, left + 5, by);
+      doc.text(details.eventName, eventX + 2, by);
+      by += 4.6;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(95, 88, 80);
-      doc.text(`${details.jobId}  |  ${details.bookingNumber}`, right - 6, 36, { align: 'right' });
-
-      let y = 56;
-      const row = (label: string, value: string, x: number, rowWidth: number) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(70, 64, 58);
-        doc.text(label, x, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(35, 32, 29);
-        const lines = doc.splitTextToSize(value || '-', rowWidth - 30) as string[];
-        doc.text(lines, x + 29, y);
-      };
-      row('Customer', details.customerName, left, width / 2);
-      row('Phone', details.customerPhone || '-', left + width / 2, width / 2);
-      y += 8;
-      row('Event', details.eventName, left, width / 2);
-      row('Date', `${friendlyDate(details.eventDate)}${details.eventTime ? ` · ${friendlyTime(details.eventTime)}` : ''}`, left + width / 2, width / 2);
-      y += 8;
-      row('Pickup', details.venue || '-', left, width);
-      y += 8;
-      row('Collected from', details.collectedFrom, left, width / 2);
-      row('Handed over to', details.handedOverTo, left + width / 2, width / 2);
-
-      y += 12;
-      doc.setFillColor(245, 234, 216);
-      doc.rect(left, y - 5, width, 9, 'F');
+      doc.setTextColor(...MUTED);
+      doc.text(details.customerPhone || 'Phone not added', left + 5, by);
+      doc.text(
+        `${friendlyDate(details.eventDate)}${details.eventTime ? `, ${friendlyTime(details.eventTime)}` : ''}`,
+        eventX + 2,
+        by,
+      );
+      by += 4.6;
+      doc.text(details.venue || 'Venue not added', eventX + 2, by, { maxWidth: columnWidth - 4 });
+      by += 6.5;
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(112, 72, 28);
-      doc.setFontSize(9);
-      doc.text('ITEM', left + 3, y);
-      doc.text('SENT', left + 128, y, { align: 'right' });
-      doc.text('COLLECTED', left + 151, y, { align: 'right' });
-      doc.text('STATUS', right - 3, y, { align: 'right' });
-      y += 8;
+      doc.setTextColor(...BRAND_DARK);
+      doc.text('Collected from:', left + 5, by);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text(details.collectedFrom || '-', left + 33, by);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...BRAND_DARK);
+      doc.text('Handed to:', eventX + 2, by);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text(details.handedOverTo || '-', eventX + 22, by);
+      y += boxH + 6;
 
+      // ---- Items table ----
+      const nameX = left + 3;
+      y = drawTableHeaderRow(doc, {
+        x: left,
+        y,
+        w: boxWidth,
+        columns: [
+          { label: 'ITEM', x: nameX },
+          { label: 'SENT', x: left + 128, align: 'right' },
+          { label: 'COLLECTED', x: left + 151, align: 'right' },
+          { label: 'STATUS', x: right - 3, align: 'right' },
+        ],
+      });
       items.forEach((item, index) => {
-        if (y > 274) {
+        if (y > 262) {
           doc.addPage();
           y = 20;
         }
@@ -101,36 +163,42 @@ export function CollectionSlipButton({
         const remarkLines = item.remarks ? (doc.splitTextToSize(item.remarks, 105) as string[]) : [];
         const height = Math.max(10, itemLines.length * 4 + remarkLines.length * 3.5 + 4);
         if (index % 2 === 0) {
-          doc.setFillColor(252, 250, 247);
-          doc.rect(left, y - 5, width, height, 'F');
+          doc.setFillColor(...ROW_ALT);
+          doc.rect(left, y - 5, boxWidth, height, 'F');
         }
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(35, 32, 29);
-        doc.text(itemLines, left + 3, y);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(itemLines, nameX, y);
         if (remarkLines.length) {
           doc.setFontSize(7.5);
-          doc.setTextColor(95, 88, 80);
-          doc.text(remarkLines, left + 3, y + itemLines.length * 4);
+          doc.setTextColor(...MUTED);
+          doc.text(remarkLines, nameX, y + itemLines.length * 4);
           doc.setFontSize(9);
         }
+        doc.setTextColor(...BRAND_DARK);
         doc.text(String(item.sentQuantity), left + 128, y, { align: 'right' });
         doc.text(String(item.returnedQuantity), left + 151, y, { align: 'right' });
         const complete = item.returnedQuantity === item.sentQuantity;
-        doc.setTextColor(complete ? 25 : 151, complete ? 119 : 91, complete ? 82 : 38);
+        doc.setTextColor(...(complete ? OK_GREEN : WARN_RED));
         doc.text(complete ? 'COMPLETE' : 'MISSING', right - 3, y, { align: 'right' });
         y += height;
       });
 
-      y = Math.min(Math.max(y + 10, 235), 270);
-      doc.setDrawColor(145, 136, 126);
-      doc.line(left, y, left + 55, y);
-      doc.line(right - 55, y, right, y);
-      doc.setTextColor(95, 88, 80);
-      doc.setFontSize(8);
-      doc.text(`Collected by: ${details.completedBy}`, left, y + 5);
-      doc.text(`Received by: ${details.handedOverTo}`, right - 55, y + 5);
-      doc.text(`Completed ${new Date(details.completedAt).toLocaleString('en-IN')}`, left, 290);
-      doc.text('Safawala Collection', right, 290, { align: 'right' });
+      y = Math.min(Math.max(y + 10, 235), 268);
+      drawSignOffLines(doc, {
+        left,
+        right,
+        y,
+        leftLabel: `Collected by: ${details.completedBy}`,
+        rightLabel: `Received by: ${details.handedOverTo}`,
+        lineWidth: 65,
+      });
+
+      stampFooterOnAllPages(doc, {
+        left,
+        right,
+        note: `Completed ${new Date(details.completedAt).toLocaleString('en-IN')} - Safawala Collection.`,
+      });
       doc.save(`Collection-Slip-${details.bookingNumber}.pdf`);
     } finally {
       setCreating(false);

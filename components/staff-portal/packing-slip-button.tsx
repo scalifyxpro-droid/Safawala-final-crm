@@ -4,6 +4,17 @@ import { useState } from 'react';
 import { FileText, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
+import {
+  BRAND_DARK,
+  MUTED,
+  ROW_ALT,
+  randomOwnerPassword,
+  drawSignOffLines,
+  drawTableHeaderRow,
+  loadBrandLogo,
+  sectionBox,
+  stampFooterOnAllPages,
+} from '@/lib/pdf/brand';
 
 export type PackingSlipDetails = {
   jobId: string;
@@ -28,86 +39,123 @@ export function PackingSlipButton({ details, items }: { details: PackingSlipDeta
   async function createSlip() {
     setCreating(true);
     try {
-      const { jsPDF } = await import('jspdf');
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadBrandLogo()]);
+      const doc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+      });
+      const width = doc.internal.pageSize.getWidth();
       const left = 16;
-      const right = 194;
-      const width = right - left;
+      const right = width - 16;
+      const boxWidth = right - left;
 
-      doc.setDrawColor(166, 111, 44);
-      doc.setFillColor(250, 246, 240);
-      doc.roundedRect(left, 14, width, 32, 3, 3, 'FD');
-      doc.setTextColor(112, 72, 28);
+      // ---- Header banner ----
+      const headerTop = 10;
+      const headerHeight = 34;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(92, 92, 92);
+      doc.setLineWidth(0.45);
+      doc.roundedRect(left - 6, headerTop, boxWidth + 12, headerHeight, 3, 3, 'FD');
+      if (logo) {
+        const logoH = 13;
+        doc.addImage(logo.dataUrl, 'PNG', left, headerTop + 5, logoH * logo.ratio, logoH);
+      } else {
+        doc.setTextColor(...BRAND_DARK);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text('SAFAWALA', left, headerTop + 14);
+      }
+      doc.setTextColor(...MUTED);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Premium Wedding Accessories', left, headerTop + headerHeight - 4);
+      doc.setTextColor(...BRAND_DARK);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('SAFAWALA', left + 6, 27);
-      doc.setFontSize(12);
-      doc.text('QC & PACKING SLIP', right - 6, 27, { align: 'right' });
+      doc.setFontSize(13);
+      doc.text(details.bookingNumber, right, headerTop + 11, { align: 'right' });
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text('QC & PACKING SLIP', right, headerTop + 18, { align: 'right' });
+      doc.setFontSize(7.5);
+      doc.setTextColor(...MUTED);
+      doc.text(`Job: ${details.jobId}`, right, headerTop + 24, { align: 'right' });
+
+      // ---- Job / event info box ----
+      let y = headerTop + headerHeight + 6;
+      const boxH = 25;
+      sectionBox(doc, left, y, boxWidth, boxH);
+      const columnGap = 6;
+      const columnWidth = (boxWidth - columnGap) / 2;
+      const eventX = left + columnWidth + columnGap;
+      doc.setDrawColor(190, 190, 190);
+      doc.setLineWidth(0.25);
+      doc.line(left + columnWidth + columnGap / 2, y + 5, left + columnWidth + columnGap / 2, y + boxH - 5);
+      let by = y + 8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...BRAND_DARK);
+      doc.text('CUSTOMER', left + 5, by);
+      doc.text('EVENT & VENUE', eventX + 2, by);
+      by += 5.5;
+      doc.setFontSize(9.5);
+      doc.text(details.customerName, left + 5, by);
+      doc.text(details.eventName, eventX + 2, by);
+      by += 4.6;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(95, 88, 80);
-      doc.text(`${details.jobId} - ${details.bookingNumber}`, right - 6, 36, { align: 'right' });
+      doc.setTextColor(...MUTED);
+      doc.text(details.customerPhone || 'Phone not added', left + 5, by);
+      doc.text(
+        `${friendlyDate(details.eventDate)}${details.eventTime ? `, ${friendlyTime(details.eventTime)}` : ''}`,
+        eventX + 2,
+        by,
+      );
+      by += 4.6;
+      doc.text(details.venue || 'Venue not added', eventX + 2, by, { maxWidth: columnWidth - 4 });
+      y += boxH + 6;
 
-      let y = 56;
-      const row = (label: string, value: string, x: number, rowWidth: number) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(70, 64, 58);
-        doc.text(label, x, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(35, 32, 29);
-        doc.text(doc.splitTextToSize(value || '-', rowWidth - 30), x + 29, y);
-      };
-      row('Customer', details.customerName, left, width / 2);
-      row('Phone', details.customerPhone || '-', left + width / 2, width / 2);
-      y += 8;
-      row('Event', details.eventName, left, width / 2);
-      row('Date', `${friendlyDate(details.eventDate)}${details.eventTime ? ` - ${friendlyTime(details.eventTime)}` : ''}`, left + width / 2, width / 2);
-      y += 8;
-      row('Venue', details.venue || '-', left, width);
-
-      y += 12;
-      doc.setFillColor(245, 234, 216);
-      doc.rect(left, y - 5, width, 9, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(112, 72, 28);
-      doc.setFontSize(9);
-      doc.text('PACKED ITEM', left + 3, y);
-      doc.text('BARCODE', left + 110, y);
-      doc.text('QTY', right - 3, y, { align: 'right' });
-      y += 8;
-
+      // ---- Packed items table ----
+      const nameX = left + 3;
+      y = drawTableHeaderRow(doc, {
+        x: left,
+        y,
+        w: boxWidth,
+        columns: [
+          { label: 'PACKED ITEM', x: nameX },
+          { label: 'BARCODE', x: left + 110 },
+          { label: 'QTY', x: right - 3, align: 'right' },
+        ],
+      });
       doc.setFontSize(9);
       items.forEach((item, index) => {
-        if (y > 270) {
+        if (y > 262) {
           doc.addPage();
           y = 20;
         }
-        const lines = doc.splitTextToSize(item.itemName, 100) as string[];
+        const lines = doc.splitTextToSize(item.itemName, 88) as string[];
         const height = Math.max(9, lines.length * 4.5 + 3);
         if (index % 2 === 0) {
-          doc.setFillColor(252, 250, 247);
-          doc.rect(left, y - 5, width, height, 'F');
+          doc.setFillColor(...ROW_ALT);
+          doc.rect(left, y - 5, boxWidth, height, 'F');
         }
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(35, 32, 29);
-        doc.text(lines, left + 3, y);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(lines, nameX, y);
+        doc.setTextColor(...MUTED);
         doc.text(item.barcode || '-', left + 110, y);
+        doc.setTextColor(...BRAND_DARK);
         doc.text(String(item.quantity), right - 3, y, { align: 'right' });
         y += height;
-        doc.setDrawColor(225, 218, 208);
+        doc.setDrawColor(205, 205, 205);
+        doc.setLineWidth(0.18);
         doc.line(left, y - 5, right, y - 5);
       });
 
-      y = Math.min(Math.max(y + 12, 235), 270);
-      doc.setDrawColor(145, 136, 126);
-      doc.line(left, y, left + 55, y);
-      doc.line(right - 55, y, right, y);
-      doc.setTextColor(95, 88, 80);
-      doc.setFontSize(8);
-      doc.text('Packed by', left, y + 5);
-      doc.text('Received by', right - 55, y + 5);
-      doc.text(`Generated ${new Date().toLocaleString('en-IN')}`, left, 290);
-      doc.text('Safawala QC & Packing', right, 290, { align: 'right' });
+      y = Math.min(Math.max(y + 12, 235), 268);
+      drawSignOffLines(doc, { left, right, y, leftLabel: 'Packed by', rightLabel: 'Received by' });
+
+      stampFooterOnAllPages(doc, { left, right, note: 'Generated by Safawala QC & Packing.' });
       doc.save(`Packing-Slip-${details.bookingNumber}.pdf`);
     } finally {
       setCreating(false);

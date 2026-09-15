@@ -1,9 +1,21 @@
 'use client';
 import { useMemo, useState, useTransition } from 'react';
-import { Download, Eye, FileText, Pencil } from 'lucide-react';
+import { Download, Eye, FileText, Pencil, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { savePayrollAction } from '@/app/hr/actions';
+import {
+  BORDER_SOFT,
+  BRAND_DARK,
+  BRAND_MID,
+  MUTED,
+  ROW_ALT,
+  loadBrandLogo,
+  loadBrandSignature,
+  randomOwnerPassword,
+  sectionBox,
+  stampFooterOnAllPages,
+} from '@/lib/pdf/brand';
 type Staff = { id: number; name: string };
 type Row = {
   id: number;
@@ -18,6 +30,248 @@ type Row = {
   staff_members?: { name?: string } | null;
 };
 const statuses = ['pending', 'processed', 'paid'];
+const inr = (value: number) => `Rs. ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const periodLabel = (period: string) =>
+  new Date(`${period.slice(0, 7)}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+async function drawBrandHeader(
+  doc: import('jspdf').jsPDF,
+  opts: { left: number; right: number; docNumber: string; docLabel: string; dateLabel: string },
+) {
+  const logo = await loadBrandLogo();
+  const headerTop = 10;
+  const headerHeight = 30;
+  const boxWidth = opts.right - opts.left;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...BORDER_SOFT);
+  doc.setLineWidth(0.45);
+  doc.roundedRect(opts.left - 6, headerTop, boxWidth + 12, headerHeight, 3, 3, 'FD');
+  if (logo) {
+    const logoH = 12;
+    doc.addImage(logo.dataUrl, 'PNG', opts.left, headerTop + 5, logoH * logo.ratio, logoH);
+  } else {
+    doc.setTextColor(...BRAND_DARK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('SAFAWALA', opts.left, headerTop + 13);
+  }
+  doc.setTextColor(...MUTED);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text('Premium Wedding Accessories', opts.left, headerTop + headerHeight - 4);
+  doc.setTextColor(...BRAND_DARK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(opts.docNumber, opts.right, headerTop + 10, { align: 'right' });
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(opts.docLabel, opts.right, headerTop + 17, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MUTED);
+  doc.text(opts.dateLabel, opts.right, headerTop + 23, { align: 'right' });
+  return headerTop + headerHeight;
+}
+
+async function downloadPayslipPdf(row: Row) {
+  const [{ jsPDF }, signature] = await Promise.all([import('jspdf'), loadBrandSignature()]);
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+  });
+  const width = doc.internal.pageSize.getWidth();
+  const left = 16;
+  const right = width - 16;
+  const boxWidth = right - left;
+  const employeeName = row.staff_members?.name ?? 'Employee';
+
+  let y = (await drawBrandHeader(doc, {
+    left,
+    right,
+    docNumber: `PAYSLIP-${row.id}`,
+    docLabel: 'SALARY SLIP',
+    dateLabel: periodLabel(row.period),
+  })) + 8;
+
+  // ---- Employee / period box ----
+  const boxH = 22;
+  sectionBox(doc, left, y, boxWidth, boxH);
+  const columnGap = 6;
+  const columnWidth = (boxWidth - columnGap) / 2;
+  const rightColX = left + columnWidth + columnGap;
+  doc.setDrawColor(190, 190, 190);
+  doc.setLineWidth(0.25);
+  doc.line(left + columnWidth + columnGap / 2, y + 5, left + columnWidth + columnGap / 2, y + boxH - 5);
+  let by = y + 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...BRAND_DARK);
+  doc.text('EMPLOYEE', left + 5, by);
+  doc.text('PAY PERIOD', rightColX + 2, by);
+  by += 5.5;
+  doc.setFontSize(9.5);
+  doc.text(employeeName, left + 5, by);
+  doc.text(periodLabel(row.period), rightColX + 2, by);
+  by += 4.6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text(`Staff ID: ${row.staff_id}`, left + 5, by);
+  doc.text(`Status: ${row.status}`, rightColX + 2, by);
+  y += boxH + 8;
+
+  // ---- Earnings / deductions summary ----
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...BRAND_MID);
+  doc.text('SALARY BREAKDOWN', left, y);
+  y += 2.5;
+  doc.setDrawColor(...BORDER_SOFT);
+  doc.setLineWidth(0.3);
+  doc.line(left, y, right, y);
+  y += 7;
+  const summary: [string, number, boolean?][] = [
+    ['Base salary', row.base_salary],
+    ['Allowances', row.allowances],
+    ['Deductions', -row.deductions],
+    ['Advances adjusted', -row.advances],
+    ['Net salary', row.net_salary, true],
+  ];
+  for (const [label, value, strong] of summary) {
+    doc.setFont('helvetica', strong ? 'bold' : 'normal');
+    doc.setFontSize(strong ? 10.5 : 9.5);
+    doc.setTextColor(...(strong ? BRAND_DARK : MUTED));
+    doc.text(label, left + 5, y);
+    doc.setTextColor(...BRAND_DARK);
+    doc.text(inr(value), right - 5, y, { align: 'right' });
+    y += strong ? 7 : 6;
+    if (strong) {
+      doc.setDrawColor(...BORDER_SOFT);
+      doc.setLineWidth(0.3);
+      doc.line(left, y - 5, right, y - 5);
+    }
+  }
+  y += 10;
+
+  // ---- Sign-off ----
+  if (signature) {
+    const signatureW = 30;
+    const signatureH = signatureW / signature.ratio;
+    doc.addImage(signature.dataUrl, 'PNG', right - signatureW - 5, y, signatureW, signatureH, undefined, 'FAST');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...MUTED);
+    doc.text('Authorized Signatory', right - signatureW / 2 - 5, y + signatureH + 4, { align: 'center' });
+  }
+
+  stampFooterOnAllPages(doc, { left, right, note: 'Generated by Safawala Human Resources.' });
+  doc.save(`Payslip-${employeeName.replace(/\s+/g, '-')}-${row.period.slice(0, 7)}.pdf`);
+}
+
+async function downloadPayrollReportPdf(rows: Row[]) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    orientation: 'landscape',
+    encryption: { userPassword: '', ownerPassword: randomOwnerPassword(), userPermissions: ['print', 'copy'] },
+  });
+  const width = doc.internal.pageSize.getWidth();
+  const left = 14;
+  const right = width - 14;
+  const generatedOn = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  let y = (await drawBrandHeader(doc, {
+    left,
+    right,
+    docNumber: `${rows.length} record${rows.length === 1 ? '' : 's'}`,
+    docLabel: 'PAYROLL REPORT',
+    dateLabel: `Generated ${generatedOn}`,
+  })) + 8;
+
+  const columns = [
+    { label: 'EMPLOYEE', x: left, w: 55 },
+    { label: 'PERIOD', x: left + 55, w: 30 },
+    { label: 'BASE', x: left + 85, w: 30, align: 'right' as const },
+    { label: 'ALLOWANCES', x: left + 115, w: 32, align: 'right' as const },
+    { label: 'DEDUCTIONS', x: left + 147, w: 32, align: 'right' as const },
+    { label: 'ADVANCES', x: left + 179, w: 30, align: 'right' as const },
+    { label: 'NET SALARY', x: left + 209, w: 32, align: 'right' as const },
+    { label: 'STATUS', x: left + 241, w: right - (left + 241), align: 'right' as const },
+  ];
+
+  const tableHeader = () => {
+    doc.setFillColor(245, 245, 245);
+    doc.setDrawColor(...BORDER_SOFT);
+    doc.setLineWidth(0.3);
+    doc.rect(left, y, right - left, 7, 'FD');
+    doc.setTextColor(...BRAND_DARK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.6);
+    columns.forEach((column) =>
+      doc.text(column.label, column.align === 'right' ? column.x + column.w - 2 : column.x + 2, y + 4.8, {
+        align: column.align ?? 'left',
+      }),
+    );
+    y += 7;
+  };
+
+  tableHeader();
+  let grandTotal = 0;
+  rows.forEach((row, index) => {
+    if (y > 180) {
+      doc.addPage('a4', 'landscape');
+      y = 16;
+      tableHeader();
+    }
+    grandTotal += Number(row.net_salary || 0);
+    if (index % 2 === 0) {
+      doc.setFillColor(...ROW_ALT);
+      doc.rect(left, y, right - left, 7, 'F');
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.6);
+    doc.setTextColor(...BRAND_DARK);
+    const values = [
+      row.staff_members?.name ?? 'Employee',
+      row.period.slice(0, 7),
+      inr(row.base_salary),
+      inr(row.allowances),
+      inr(row.deductions),
+      inr(row.advances),
+      inr(row.net_salary),
+      row.status,
+    ];
+    columns.forEach((column, columnIndex) => {
+      const clipped = doc.splitTextToSize(values[columnIndex], column.w - 4)[0] || '-';
+      doc.text(clipped, column.align === 'right' ? column.x + column.w - 2 : column.x + 2, y + 4.8, {
+        align: column.align ?? 'left',
+      });
+    });
+    y += 7;
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.15);
+    doc.line(left, y, right, y);
+  });
+
+  if (!rows.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...MUTED);
+    doc.text('No payroll records match the selected filters.', left + 2, y + 8);
+  } else {
+    y += 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...BRAND_DARK);
+    doc.text('Total payroll', left, y);
+    doc.text(inr(grandTotal), right, y, { align: 'right' });
+  }
+
+  stampFooterOnAllPages(doc, { left, right, note: 'Generated by Safawala Human Resources.' });
+  doc.save(`Payroll-Report-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
 export function PayrollManager({
   initialRecords,
   staff,
@@ -33,6 +287,8 @@ export function PayrollManager({
   const [preview, setPreview] = useState<Row | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [pending, start] = useTransition();
+  const [exportingReport, setExportingReport] = useState(false);
+  const [exportingSlip, setExportingSlip] = useState(false);
   const filtered = useMemo(
     () =>
       rows.filter(
@@ -61,9 +317,7 @@ export function PayrollManager({
     };
     start(async () => {
       setErrorMessage('');
-      const result = await savePayrollAction(
-        editing?.id ? { id: editing.id, ...payload } : payload,
-      );
+      const result = await savePayrollAction(editing?.id ? { id: editing.id, ...payload } : payload);
       if (result.error) setErrorMessage(result.error);
       else window.location.reload();
     });
@@ -104,6 +358,14 @@ export function PayrollManager({
     a.download = 'payroll.csv';
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+  async function downloadReport() {
+    setExportingReport(true);
+    try {
+      await downloadPayrollReportPdf(filtered);
+    } finally {
+      setExportingReport(false);
+    }
   }
   const blank: Row = {
     id: 0,
@@ -166,8 +428,8 @@ export function PayrollManager({
             <Download />
             CSV
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
-            <FileText />
+          <Button variant="outline" onClick={downloadReport} disabled={exportingReport}>
+            {exportingReport ? <LoaderCircle className="animate-spin" /> : <FileText />}
             PDF
           </Button>
         </CardContent>
@@ -260,11 +522,7 @@ export function PayrollManager({
               <h2 className="mb-4 text-lg font-semibold">
                 {editing.id ? 'Edit salary breakdown' : 'Add payroll'}
               </h2>
-              {errorMessage ? (
-                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {errorMessage}
-                </p>
-              ) : null}
+              {errorMessage ? <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p> : null}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -383,8 +641,20 @@ export function PayrollManager({
                 </p>
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => window.print()}>
-                  Print / PDF
+                <Button
+                  variant="outline"
+                  disabled={exportingSlip}
+                  onClick={async () => {
+                    setExportingSlip(true);
+                    try {
+                      await downloadPayslipPdf(preview);
+                    } finally {
+                      setExportingSlip(false);
+                    }
+                  }}
+                >
+                  {exportingSlip ? <LoaderCircle className="animate-spin" /> : <Download />}
+                  Download PDF
                 </Button>
                 <Button onClick={() => setPreview(null)}>Close</Button>
               </div>
