@@ -205,7 +205,7 @@ export async function startWhatsAppSession(): Promise<void> {
           if (connection === 'close') {
             clearConnectTimer();
             const statusCode = (
-              lastDisconnect?.error as { output?: { statusCode?: number } | undefined
+              lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
             )?.output?.statusCode;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
 
