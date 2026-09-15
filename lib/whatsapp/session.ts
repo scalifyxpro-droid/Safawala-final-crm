@@ -114,7 +114,7 @@ export async function startWhatsAppSession(): Promise<void> {
           keys: makeCacheableSignalKeyStore(
             {
               get: async (type: string, ids: string[]) => {
-                const result: Record<string, unknown> = {};
+                const result: Record<string, any> = {};
                 for (const id of ids) {
                   const value = keys[type]?.[id];
                   if (value !== undefined) result[id] = value;
