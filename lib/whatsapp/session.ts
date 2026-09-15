@@ -205,7 +205,7 @@ export async function startWhatsAppSession(): Promise<void> {
           if (connection === 'close') {
             clearConnectTimer();
             const statusCode = (
-              lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
+              lastDisconnect?.error as { output?: { statusCode?: number } | undefined
             )?.output?.statusCode;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
 
@@ -273,4 +273,28 @@ export async function sendWhatsAppText(phone: string, text: string) {
     throw new Error('WhatsApp is not connected. Open /whatsapp-qr and scan the QR code.');
   }
   return s.sock.sendMessage(toWhatsAppJid(phone), { text });
+}
+
+/**
+ * Sends a document (used for the invoice PDF) with an optional caption.
+ * Same never-throws-to-nothing contract as sendWhatsAppText — callers in
+ * lib/whatsapp/notify.ts always wrap this so a delivery failure is logged,
+ * never allowed to break the CRM action that triggered it.
+ */
+export async function sendWhatsAppDocument(
+  phone: string,
+  document: Buffer,
+  fileName: string,
+  caption?: string,
+) {
+  const s = state();
+  if (!s.sock || s.status !== 'CONNECTED') {
+    throw new Error('WhatsApp is not connected. Open /whatsapp-qr and scan the QR code.');
+  }
+  return s.sock.sendMessage(toWhatsAppJid(phone), {
+    document,
+    fileName,
+    mimetype: 'application/pdf',
+    caption,
+  });
 }
