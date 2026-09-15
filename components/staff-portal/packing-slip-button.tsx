@@ -135,21 +135,22 @@ export function PackingSlipButton({ details, items }: { details: PackingSlipDeta
         }
         const lines = doc.splitTextToSize(item.itemName, 88) as string[];
         const height = Math.max(9, lines.length * 4.5 + 3);
+        const textY = y + 5;
         if (index % 2 === 0) {
           doc.setFillColor(...ROW_ALT);
-          doc.rect(left, y - 5, boxWidth, height, 'F');
+          doc.rect(left, y, boxWidth, height, 'F');
         }
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...BRAND_DARK);
-        doc.text(lines, nameX, y);
+        doc.text(lines, nameX, textY);
         doc.setTextColor(...MUTED);
-        doc.text(item.barcode || '-', left + 110, y);
+        doc.text(item.barcode || '-', left + 110, textY);
         doc.setTextColor(...BRAND_DARK);
-        doc.text(String(item.quantity), right - 3, y, { align: 'right' });
+        doc.text(String(item.quantity), right - 3, textY, { align: 'right' });
         y += height;
         doc.setDrawColor(205, 205, 205);
         doc.setLineWidth(0.18);
-        doc.line(left, y - 5, right, y - 5);
+        doc.line(left, y, right, y);
       });
 
       y = Math.min(Math.max(y + 12, 235), 268);

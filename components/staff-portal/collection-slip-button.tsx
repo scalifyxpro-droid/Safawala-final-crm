@@ -162,25 +162,26 @@ export function CollectionSlipButton({
         const itemLines = doc.splitTextToSize(item.itemName, 105) as string[];
         const remarkLines = item.remarks ? (doc.splitTextToSize(item.remarks, 105) as string[]) : [];
         const height = Math.max(10, itemLines.length * 4 + remarkLines.length * 3.5 + 4);
+        const textY = y + 5;
         if (index % 2 === 0) {
           doc.setFillColor(...ROW_ALT);
-          doc.rect(left, y - 5, boxWidth, height, 'F');
+          doc.rect(left, y, boxWidth, height, 'F');
         }
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...BRAND_DARK);
-        doc.text(itemLines, nameX, y);
+        doc.text(itemLines, nameX, textY);
         if (remarkLines.length) {
           doc.setFontSize(7.5);
           doc.setTextColor(...MUTED);
-          doc.text(remarkLines, nameX, y + itemLines.length * 4);
+          doc.text(remarkLines, nameX, textY + itemLines.length * 4);
           doc.setFontSize(9);
         }
         doc.setTextColor(...BRAND_DARK);
-        doc.text(String(item.sentQuantity), left + 128, y, { align: 'right' });
-        doc.text(String(item.returnedQuantity), left + 151, y, { align: 'right' });
+        doc.text(String(item.sentQuantity), left + 128, textY, { align: 'right' });
+        doc.text(String(item.returnedQuantity), left + 151, textY, { align: 'right' });
         const complete = item.returnedQuantity === item.sentQuantity;
         doc.setTextColor(...(complete ? OK_GREEN : WARN_RED));
-        doc.text(complete ? 'COMPLETE' : 'MISSING', right - 3, y, { align: 'right' });
+        doc.text(complete ? 'COMPLETE' : 'MISSING', right - 3, textY, { align: 'right' });
         y += height;
       });
 

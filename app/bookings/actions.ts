@@ -35,10 +35,10 @@ export async function updateBookingDetailsAction(
   try {
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
-      tx.unsafe(`select * from public.update_booking_details($1, $2)`, [
-        bookingId,
-        JSON.stringify(payload),
-      ]),
+      tx`select * from public.update_booking_details(
+        ${bookingId},
+        ${tx.json(payload as never)}::jsonb
+      )`,
     );
     return { error: '' };
   } catch (error) {
@@ -97,17 +97,51 @@ export async function createBookingAction(
     };
   }
 
-  // RLS requires newly-created inventory rows to belong to the authenticated
-  // user. The booking RPC applies its own caller ownership separately.
-  const items = payload.items.map((item) => ({ ...item }));
+  // Validate the client selection again on the server. Custom rows are saved
+  // under the booking owner; package variants already belong to the package
+  // catalogue and must not be converted into inventory products.
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    return {
+      id: null,
+      bookingNumber: null,
+      error: 'Add at least one product or package before creating the order.',
+      stage: 'booking',
+    };
+  }
+
+  const items = payload.items.map((item) => ({
+    ...item,
+    item_name: String(item.item_name ?? '').trim(),
+    quantity: Math.max(0, Math.floor(Number(item.quantity) || 0)),
+    unit_price: Math.max(0, Number(item.unit_price) || 0),
+    security_deposit: Math.max(0, Number(item.security_deposit) || 0),
+  }));
+  const invalidItem = items.find(
+    (item) => item.item_name.length < 2 || item.quantity < 1,
+  );
+  if (invalidItem) {
+    return {
+      id: null,
+      bookingNumber: null,
+      error: 'Every selected product or package needs a name and quantity of at least 1.',
+      stage: 'booking',
+    };
+  }
+
   for (const item of items) {
-    if (!item.product_id && !item.package_id) {
+    if (!item.product_id && !item.package_id && !item.package_variant_id) {
       try {
-        const [inventoryProduct] = await withUserContext(user.id, (tx) => tx<{ id: number }[]>`
-          insert into public.products (owner_id, name, sale_price, rental_price, security_deposit, stock_quantity, is_active)
-          values (${user.id}, ${item.item_name.trim()}, ${item.unit_price}, ${item.unit_price}, ${item.security_deposit}, 0, true)
-          returning id
-        `);
+        const [inventoryProduct] = await withUserContext(user.id, async (tx) => {
+          const [context] = await tx<{ owner_id: string | null }[]>`
+            select public.current_booking_owner() as owner_id
+          `;
+          if (!context?.owner_id) throw new Error('You do not have access to create booking products.');
+          return tx<{ id: number }[]>`
+            insert into public.products (owner_id, name, sale_price, rental_price, security_deposit, stock_quantity, is_active)
+            values (${context.owner_id}, ${item.item_name}, ${item.unit_price}, ${item.unit_price}, ${item.security_deposit}, 0, true)
+            returning id
+          `;
+        });
         if (!inventoryProduct) throw new Error('Please try again.');
         item.product_id = inventoryProduct.id;
       } catch (error) {
@@ -126,12 +160,15 @@ export async function createBookingAction(
   let bookingNumber: string;
   try {
     const rows = await withUserContext(user.id, (tx) =>
-      tx.unsafe(
-        `select * from public.${options.quote ? 'create_booking_quote' : 'create_booking'}($1)`,
-        [JSON.stringify(finalPayload)],
-      ),
+      options.quote
+        ? tx<{ id: number; booking_number: string }[]>`
+            select * from public.create_booking_quote(${tx.json(finalPayload as never)}::jsonb)
+          `
+        : tx<{ id: number; booking_number: string }[]>`
+            select * from public.create_booking(${tx.json(finalPayload as never)}::jsonb)
+          `,
     );
-    const created = (rows as unknown as { id: number; booking_number: string }[])[0];
+    const created = rows[0];
     if (!created) throw new Error('The booking was not saved.');
     bookingId = Number(created.id);
     bookingNumber = created.booking_number;

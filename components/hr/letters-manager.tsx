@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { saveLetterAction } from '@/app/hr/actions';
-import jsPDF from 'jspdf';
 import {
   BORDER_SOFT,
   BRAND_DARK,
@@ -58,6 +57,23 @@ const types = [
   'Termination letter',
 ];
 
+const normalizeLetter = (letter: Letter): Letter => ({
+  ...letter,
+  id: Number(letter?.id || 0),
+  staff_id: Number(letter?.staff_id || 0),
+  letter_type: typeof letter?.letter_type === 'string' && letter.letter_type.trim() ? letter.letter_type : 'HR letter',
+  title: typeof letter?.title === 'string' ? letter.title : '',
+  issued_on: typeof letter?.issued_on === 'string' ? letter.issued_on.slice(0, 10) : '',
+  notes: typeof letter?.notes === 'string' ? letter.notes : null,
+  staff_members: letter?.staff_members && typeof letter.staff_members === 'object'
+    ? {
+        name: typeof letter.staff_members.name === 'string' ? letter.staff_members.name : 'Employee',
+        phone: typeof letter.staff_members.phone === 'string' ? letter.staff_members.phone : undefined,
+        email: typeof letter.staff_members.email === 'string' ? letter.staff_members.email : undefined,
+      }
+    : null,
+});
+
 export function LettersManager({
   initialRecords,
   staff,
@@ -65,7 +81,7 @@ export function LettersManager({
   initialRecords: Letter[];
   staff: Staff[];
 }) {
-  const [rows] = useState(initialRecords);
+  const [rows] = useState(() => (Array.isArray(initialRecords) ? initialRecords : []).map(normalizeLetter));
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<Letter | null>(null);
   const [pending, start] = useTransition();
@@ -690,7 +706,11 @@ async function downloadLetterPdf(
   details: OfferDetails,
   name: string,
 ) {
-  const [logo, signature] = await Promise.all([loadBrandLogo(), loadBrandSignature()]);
+  const [{ jsPDF }, logo, signature] = await Promise.all([
+    import('jspdf'),
+    loadBrandLogo(),
+    loadBrandSignature(),
+  ]);
   const doc = new jsPDF({
     unit: 'mm',
     format: 'a4',

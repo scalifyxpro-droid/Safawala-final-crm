@@ -139,11 +139,11 @@ async function downloadSlip(
     }
     if (rowIndex % 2 === 0) {
       doc.setFillColor(...ROW_ALT);
-      doc.rect(left, y - 5, boxWidth, height, 'F');
+      doc.rect(left, y, boxWidth, height, 'F');
     }
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...BRAND_DARK);
-    wrapped.forEach((lines, index) => doc.text(lines, left + 3 + columnWidth * index, y));
+    wrapped.forEach((lines, index) => doc.text(lines, left + 3 + columnWidth * index, y + 5));
     y += height;
   });
 
