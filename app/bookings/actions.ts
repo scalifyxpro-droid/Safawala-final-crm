@@ -3,7 +3,7 @@
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
 import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
-import { notifyPaymentReceived, maybeNotifyThankYou } from '@/lib/whatsapp/notify';
+import { notifyBookingConfirmed, notifyPaymentReceived, maybeNotifyThankYou } from '@/lib/whatsapp/notify';
 
 type UpdateBookingDetailsPayload = {
   customer_id: number;
@@ -200,6 +200,13 @@ export async function createBookingAction(
         stage: 'date',
       };
     }
+  }
+
+  // Fire the WhatsApp "booking confirmed" + invoice messages for real sale
+  // bookings (quotes never carry a 'confirmed' status, so notifyBookingConfirmed
+  // would no-op for them anyway). Never allowed to fail booking creation.
+  if (!options.quote) {
+    await notifyBookingConfirmed(bookingId).catch(() => {});
   }
 
   return { id: bookingId, bookingNumber, error: '', stage: '' };
