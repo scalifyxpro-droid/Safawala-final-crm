@@ -29,9 +29,10 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
           is_active: boolean;
           access_type: string;
           staff_type: string;
+          portal_kind: string;
         }[]
       >`
-        select id, name, login_id, portal_active, is_active, access_type, staff_type
+        select id, name, login_id, portal_active, is_active, access_type, staff_type, portal_kind
         from public.staff_members
         where user_id = ${userId}
       `,
@@ -59,6 +60,9 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
   const permissions = [...new Set(departments.flatMap((department) => DEPARTMENT_STAFF_MODULES[department]))];
   const accessType = account.access_type === 'main' ? 'main' : 'staff';
   const staffType = account.staff_type === 'stylist' ? 'stylist' : 'regular';
+  const portalKind = account.portal_kind === 'accounts' || account.portal_kind === 'manager'
+    ? account.portal_kind
+    : 'staff';
   const configuredModules = result.modules.filter((item) => item.enabled).map((item) => item.module as AccessModule);
   const accessModules: AccessModule[] =
     staffType === 'stylist'
@@ -82,6 +86,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
     permissions,
     accessType,
     staffType,
+    portalKind,
     accessModules,
     isMainId: accessType === 'main',
     managedDepartment: departments[0] ?? null,

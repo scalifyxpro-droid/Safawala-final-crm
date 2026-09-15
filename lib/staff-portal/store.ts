@@ -3,7 +3,7 @@ import 'server-only';
 import { withUserContext, withServiceRole, type Tx } from '@/lib/db/client';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import type { StaffDepartment } from './constants';
-import type { StaffPortalAccount, StaffType, StaffAccessType } from './types';
+import type { StaffPortalAccount, StaffType, StaffAccessType, StaffPortalKind } from './types';
 import type { AccessModule } from './access-modules';
 import { normalizeStaffLoginId, staffAuthEmail } from './credentials';
 
@@ -15,6 +15,7 @@ type StaffRow = {
   portal_active: boolean;
   access_type: StaffAccessType;
   staff_type: StaffType;
+  portal_kind: StaffPortalKind;
   created_at: string;
   updated_at: string;
   staff_departments: { department: StaffDepartment }[] | null;
@@ -24,7 +25,7 @@ type StaffRow = {
 // Hand-written replacement for the PostgREST embedded select
 // `staff_members(...staff_departments(department),staff_access_modules(module,enabled))`.
 const STAFF_ROW_QUERY = `
-  select sm.id, sm.user_id, sm.name, sm.login_id, sm.portal_active, sm.access_type, sm.staff_type, sm.created_at, sm.updated_at,
+  select sm.id, sm.user_id, sm.name, sm.login_id, sm.portal_active, sm.access_type, sm.staff_type, sm.portal_kind, sm.created_at, sm.updated_at,
     coalesce(dept.rows, '[]'::json) as staff_departments,
     coalesce(mod.rows, '[]'::json) as staff_access_modules
   from public.staff_members sm
@@ -47,6 +48,7 @@ function toAccount(row: StaffRow): StaffPortalAccount {
     active: row.portal_active,
     accessType: row.access_type ?? 'staff',
     staffType: row.staff_type ?? 'regular',
+    portalKind: row.portal_kind ?? 'staff',
     modules: (row.staff_access_modules ?? []).filter((item) => item.enabled).map((item) => item.module),
     departments: (row.staff_departments ?? []).map(({ department }) => ({
       department,
@@ -74,6 +76,7 @@ export async function createAccount(ownerId: string, input: {
   departments: StaffDepartment[];
   accessType?: StaffAccessType;
   staffType?: StaffType;
+  portalKind?: StaffPortalKind;
   modules?: AccessModule[];
   removeStaffMemberOnFailure?: boolean;
 }): Promise<{ account?: StaffPortalAccount; error?: string }> {
@@ -81,6 +84,7 @@ export async function createAccount(ownerId: string, input: {
   const email = staffAuthEmail(loginId);
   const accessType = input.accessType ?? 'staff';
   const staffType = input.staffType ?? 'regular';
+  const portalKind = staffType === 'stylist' ? 'staff' : input.portalKind ?? 'staff';
   if (input.name.trim().length < 2) return { error: 'Enter the staff member’s name.' };
   if (input.password.length < 6) return { error: 'Password must be at least 6 characters.' };
 
@@ -121,7 +125,7 @@ export async function createAccount(ownerId: string, input: {
       const linked = await tx`
         update public.staff_members set
           user_id = ${userId}, login_id = ${loginId}, portal_active = true, is_active = true,
-          name = ${input.name.trim()}, access_type = ${staffType === 'stylist' ? 'staff' : accessType}, staff_type = ${staffType}
+          name = ${input.name.trim()}, access_type = ${staffType === 'stylist' ? 'staff' : accessType}, staff_type = ${staffType}, portal_kind = ${portalKind}
         where id = ${staffId} and owner_id = ${ownerId}
       `;
       if (linked.count === 0) {
@@ -131,8 +135,8 @@ export async function createAccount(ownerId: string, input: {
       }
     } else {
       const [inserted] = await tx<{ id: number }[]>`
-        insert into public.staff_members (owner_id, user_id, login_id, portal_active, name, is_active, access_type, staff_type)
-        values (${ownerId}, ${userId}, ${loginId}, true, ${input.name.trim()}, true, ${staffType === 'stylist' ? 'staff' : accessType}, ${staffType})
+        insert into public.staff_members (owner_id, user_id, login_id, portal_active, name, is_active, access_type, staff_type, portal_kind)
+        values (${ownerId}, ${userId}, ${loginId}, true, ${input.name.trim()}, true, ${staffType === 'stylist' ? 'staff' : accessType}, ${staffType}, ${portalKind})
         returning id
       `;
       if (!inserted) {
@@ -234,6 +238,42 @@ export async function setDepartmentGrant(ownerId: string, userId: string, depart
 
 export async function setAccountStaffType(ownerId: string, userId: string, staffType: StaffType) {
   await withUserContext(ownerId, (tx) => tx`select public.configure_staff_type(${userId}, ${staffType})`);
+  if (staffType === 'stylist') {
+    await withServiceRole((tx) => tx`update public.staff_members set portal_kind = 'staff' where owner_id = ${ownerId} and user_id = ${userId}`);
+  }
+}
+
+export async function setAccountPortalKind(
+  ownerId: string,
+  userId: string,
+  portalKind: StaffPortalKind,
+  departments: StaffDepartment[],
+  modules: AccessModule[],
+) {
+  await withServiceRole(async (tx) => {
+    const staffId = await getOwnedStaffId(tx, ownerId, userId);
+    await tx`
+      update public.staff_members
+      set portal_kind = ${portalKind}, staff_type = 'regular', access_type = ${portalKind === 'staff' ? 'staff' : 'main'}
+      where id = ${staffId} and owner_id = ${ownerId}
+    `;
+    await tx`delete from public.staff_departments where staff_id = ${staffId}`;
+    await tx`delete from public.staff_access_modules where staff_id = ${staffId}`;
+    for (const department of departments) {
+      await tx`
+        insert into public.staff_departments (staff_id, department, granted_by)
+        values (${staffId}, ${department}, ${ownerId})
+        on conflict (staff_id, department) do nothing
+      `;
+    }
+    for (const accessModule of modules) {
+      await tx`
+        insert into public.staff_access_modules (owner_id, staff_id, module, enabled)
+        values (${ownerId}, ${staffId}, ${accessModule}, true)
+        on conflict (staff_id, module) do update set enabled = true
+      `;
+    }
+  });
 }
 
 export async function resetAccountPassword(ownerId: string, userId: string, password: string) {

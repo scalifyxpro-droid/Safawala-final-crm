@@ -24,9 +24,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
 import { friendlyDate } from '@/lib/bookings';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { ACCESS_MODULES, ACCESS_MODULE_META, type AccessModule } from '@/lib/staff-portal/access-modules';
+import { ACCESS_MODULES, ACCESS_MODULE_META, ACCOUNTS_PORTAL_MODULES, MANAGER_PORTAL_MODULES, type AccessModule } from '@/lib/staff-portal/access-modules';
 import { DEPARTMENT_META, STAFF_DEPARTMENTS, type StaffDepartment } from '@/lib/staff-portal/constants';
-import type { StaffAccessType, StaffType } from '@/lib/staff-portal/types';
+import type { StaffAccessType, StaffPortalKind, StaffType } from '@/lib/staff-portal/types';
 import {
   createStaffLoginAction,
   resetStaffLoginPasswordAction,
@@ -34,6 +34,7 @@ import {
   setStaffDepartmentAction,
   setStaffLoginActiveAction,
   setStaffModuleAction,
+  setStaffPortalKindAction,
   setStaffTypeAction,
   toggleStaffStatusAction,
 } from '@/app/staff/actions';
@@ -57,6 +58,7 @@ export type StaffMember = {
   portal_active: boolean | null;
   access_type: StaffAccessType | null;
   staff_type: StaffType | null;
+  portal_kind: StaffPortalKind | null;
   staff_departments: { department: StaffDepartment }[] | null;
   staff_access_modules: { module: AccessModule; enabled: boolean }[] | null;
 };
@@ -505,9 +507,14 @@ function StaffDialog({
   const loginRequired = showLoginSection;
   const [accessType, setAccessType] = useState<StaffAccessType>('staff');
   const [staffType, setStaffType] = useState<StaffType>('regular');
+  const [portalKind, setPortalKind] = useState<StaffPortalKind>('staff');
   const [departments, setDepartments] = useState<StaffDepartment[]>([]);
 
-  const effectiveDepartments = staffType === 'stylist'
+  const effectiveDepartments = portalKind === 'manager'
+    ? ([...STAFF_DEPARTMENTS] as StaffDepartment[])
+    : portalKind === 'accounts'
+      ? (['booking'] as StaffDepartment[])
+      : staffType === 'stylist'
     ? (['stylist'] as StaffDepartment[])
     : accessType === 'staff' ? (['booking'] as StaffDepartment[]) : departments;
 
@@ -578,7 +585,8 @@ function StaffDialog({
         departments: effectiveDepartments,
         accessType,
         staffType,
-        modules: [],
+        portalKind,
+        modules: portalKind === 'accounts' ? ACCOUNTS_PORTAL_MODULES : portalKind === 'manager' ? MANAGER_PORTAL_MODULES : [],
         rollbackStaffMemberOnFailure: !member,
       });
       if (loginResult.error || !loginResult.account) {
@@ -598,6 +606,7 @@ function StaffDialog({
         portal_active: loginResult.account.active,
         access_type: loginResult.account.accessType,
         staff_type: loginResult.account.staffType,
+        portal_kind: loginResult.account.portalKind,
         staff_departments: loginResult.account.departments.map((grant) => ({ department: grant.department })),
         staff_access_modules: loginResult.account.modules.map((module) => ({ module, enabled: true })),
       });
@@ -712,6 +721,18 @@ function StaffDialog({
                 <input name="password" type="password" required={loginRequired} minLength={6} placeholder="At least 6 characters" className={fieldClass} />
               </label>
               <label className="block text-sm">
+                <span className="font-medium">Portal role</span>
+                <select
+                  value={portalKind}
+                  onChange={(event) => setPortalKind(event.target.value as StaffPortalKind)}
+                  className={fieldClass}
+                >
+                  <option value="staff">Staff Portal</option>
+                  <option value="accounts">Accounts Portal</option>
+                  <option value="manager">Manager Portal</option>
+                </select>
+              </label>
+              {portalKind === 'staff' ? <label className="block text-sm">
                 <span className="font-medium">Staff type</span>
                 <select
                   value={staffType}
@@ -721,8 +742,8 @@ function StaffDialog({
                   <option value="regular">Regular staff</option>
                   <option value="stylist">Stylist</option>
                 </select>
-              </label>
-              {staffType === 'regular' ? <label className="block text-sm">
+              </label> : null}
+              {portalKind === 'staff' && staffType === 'regular' ? <label className="block text-sm">
                 <span className="font-medium">Access type</span>
                 <select
                   value={accessType}
@@ -733,7 +754,15 @@ function StaffDialog({
                   <option value="main">Main ID — choose departments</option>
                 </select>
               </label> : null}
-              {staffType === 'regular' && accessType === 'main' ? (
+              {portalKind === 'accounts' ? (
+                <div className="rounded-lg border border-[#e4d2b6] bg-[#f5ead8] p-3 text-xs text-[#70481c] dark:bg-[#33291c]">
+                  Accounts Portal includes bookings, quotations, customers, ledgers, challans, vouchers and expenses.
+                </div>
+              ) : portalKind === 'manager' ? (
+                <div className="rounded-lg border border-[#e4d2b6] bg-[#f5ead8] p-3 text-xs text-[#70481c] dark:bg-[#33291c]">
+                  Manager Portal includes the complete operational module set and all departments.
+                </div>
+              ) : staffType === 'regular' && accessType === 'main' ? (
                 <div>
                   <p className="text-sm font-medium">Departments</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -844,6 +873,42 @@ function AccessDialog({
         </div>
 
         <label className="block text-sm">
+          <span className="font-medium">Portal role</span>
+          <select
+            value={member.portal_kind ?? 'staff'}
+            disabled={pending}
+            onChange={(event) => {
+              const next = event.target.value as StaffPortalKind;
+              startTransition(async () => {
+                const result = await setStaffPortalKindAction(member.user_id as string, next);
+                if (result.error) return;
+                const nextDepartments: StaffDepartment[] = next === 'manager' ? [...STAFF_DEPARTMENTS] : ['booking'];
+                const nextModules: AccessModule[] = next === 'accounts'
+                  ? ACCOUNTS_PORTAL_MODULES
+                  : next === 'manager'
+                    ? MANAGER_PORTAL_MODULES
+                    : ['quotations', 'create_booking'];
+                onPatch({
+                  portal_kind: next,
+                  staff_type: 'regular',
+                  access_type: next === 'staff' ? 'staff' : 'main',
+                  staff_departments: nextDepartments.map((department) => ({ department })),
+                  staff_access_modules: nextModules.map((module) => ({ module, enabled: true })),
+                });
+              });
+            }}
+            className={fieldClass}
+          >
+            <option value="staff">Staff Portal</option>
+            <option value="accounts">Accounts Portal</option>
+            <option value="manager">Manager Portal</option>
+          </select>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Accounts and Manager roles apply a secure access preset automatically.
+          </span>
+        </label>
+
+        {(member.portal_kind ?? 'staff') === 'staff' ? <label className="block text-sm">
           <span className="font-medium">Staff type</span>
           <select
             value={member.staff_type === 'stylist' ? 'stylist' : 'regular'}
@@ -871,9 +936,20 @@ function AccessDialog({
             <option value="regular">Regular staff</option>
             <option value="stylist">Stylist</option>
           </select>
-        </label>
+        </label> : null}
 
-        {member.staff_type !== 'stylist' && member.access_type === 'main' ? (
+        {(member.portal_kind ?? 'staff') !== 'staff' ? (
+          <div className="rounded-xl border border-[#e4d2b6] bg-[#fffaf2] p-4 text-sm dark:bg-[#241e17]">
+            <p className="font-medium text-[#70481c]">
+              {member.portal_kind === 'accounts' ? 'Accounts Portal' : 'Manager Portal'}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              {member.portal_kind === 'accounts'
+                ? 'Focused access to bookings, quotations, customers, ledgers, challans, vouchers and expenses.'
+                : 'Broad access to operational departments and management modules.'}
+            </p>
+          </div>
+        ) : member.staff_type !== 'stylist' && member.access_type === 'main' ? (
           <div>
             <p className="text-sm font-medium">Departments</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -920,7 +996,7 @@ function AccessDialog({
           </div>
         )}
 
-        {member.staff_type !== 'stylist' && member.access_type === 'main' ? (
+        {(member.portal_kind ?? 'staff') === 'staff' && member.staff_type !== 'stylist' && member.access_type === 'main' ? (
           <div>
             <p className="text-sm font-medium">Module access</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -1001,10 +1077,15 @@ function CreateLoginForm({
   const [error, setError] = useState('');
   const [accessType, setAccessType] = useState<StaffAccessType>('staff');
   const [staffType, setStaffType] = useState<StaffType>('regular');
+  const [portalKind, setPortalKind] = useState<StaffPortalKind>('staff');
   const [departments, setDepartments] = useState<StaffDepartment[]>([]);
   const [modules, setModules] = useState<AccessModule[]>([]);
 
-  const effectiveDepartments = staffType === 'stylist'
+  const effectiveDepartments = portalKind === 'manager'
+    ? ([...STAFF_DEPARTMENTS] as StaffDepartment[])
+    : portalKind === 'accounts'
+      ? (['booking'] as StaffDepartment[])
+      : staffType === 'stylist'
     ? (['stylist'] as StaffDepartment[])
     : accessType === 'staff' ? (['booking'] as StaffDepartment[]) : departments;
 
@@ -1036,7 +1117,8 @@ function CreateLoginForm({
       departments: effectiveDepartments,
       accessType,
       staffType,
-      modules,
+      portalKind,
+      modules: portalKind === 'accounts' ? ACCOUNTS_PORTAL_MODULES : portalKind === 'manager' ? MANAGER_PORTAL_MODULES : modules,
     });
     setBusy(false);
     if (result.error || !result.account) {
@@ -1050,6 +1132,7 @@ function CreateLoginForm({
       portal_active: result.account.active,
       access_type: result.account.accessType,
       staff_type: result.account.staffType,
+      portal_kind: result.account.portalKind,
       staff_departments: result.account.departments.map((grant) => ({ department: grant.department })),
       staff_access_modules: result.account.modules.map((module) => ({ module, enabled: true })),
     });
@@ -1070,13 +1153,21 @@ function CreateLoginForm({
         <input name="password" type="password" required minLength={6} className={fieldClass} />
       </label>
       <label className="block text-sm">
+        <span className="font-medium">Portal role</span>
+        <select value={portalKind} onChange={(event) => setPortalKind(event.target.value as StaffPortalKind)} className={fieldClass}>
+          <option value="staff">Staff Portal</option>
+          <option value="accounts">Accounts Portal</option>
+          <option value="manager">Manager Portal</option>
+        </select>
+      </label>
+      {portalKind === 'staff' ? <label className="block text-sm">
         <span className="font-medium">Staff type</span>
         <select value={staffType} onChange={(event) => setStaffType(event.target.value as StaffType)} className={fieldClass}>
           <option value="regular">Regular staff</option>
           <option value="stylist">Stylist</option>
         </select>
-      </label>
-      {staffType === 'regular' ? <label className="block text-sm">
+      </label> : null}
+      {portalKind === 'staff' && staffType === 'regular' ? <label className="block text-sm">
         <span className="font-medium">Access type</span>
         <select
           value={accessType}
@@ -1088,7 +1179,17 @@ function CreateLoginForm({
         </select>
       </label> : null}
 
-      {staffType === 'regular' && accessType === 'main' ? (
+      {portalKind === 'accounts' ? (
+        <div className="rounded-xl border border-[#e4d2b6] bg-[#f5ead8] p-4 text-sm text-[#70481c] dark:bg-[#33291c]">
+          <strong>Accounts Portal preset</strong>
+          <p className="mt-1">Bookings, quotations, customers, ledgers, challans, vouchers and expenses.</p>
+        </div>
+      ) : portalKind === 'manager' ? (
+        <div className="rounded-xl border border-[#e4d2b6] bg-[#f5ead8] p-4 text-sm text-[#70481c] dark:bg-[#33291c]">
+          <strong>Manager Portal preset</strong>
+          <p className="mt-1">All operational departments and management modules.</p>
+        </div>
+      ) : staffType === 'regular' && accessType === 'main' ? (
         <div>
           <p className="text-sm font-medium">Departments</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -1121,7 +1222,7 @@ function CreateLoginForm({
         </div>
       )}
 
-      {staffType === 'regular' && accessType === 'main' ? (
+      {portalKind === 'staff' && staffType === 'regular' && accessType === 'main' ? (
         <div>
           <p className="text-sm font-medium">Module access</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">

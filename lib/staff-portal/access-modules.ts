@@ -14,9 +14,29 @@ export const ACCESS_MODULES = [
   'packages',
   'customers',
   'ledger',
+  'challans',
+  'vouchers',
+  'expenses',
+  'reports',
 ] as const;
 
 export type AccessModule = (typeof ACCESS_MODULES)[number];
+
+export const ACCOUNTS_PORTAL_MODULES: AccessModule[] = [
+  'bookings',
+  'quotations',
+  'customers',
+  'ledger',
+  'challans',
+  'vouchers',
+  'expenses',
+];
+
+// The role-specific portal home is the manager dashboard; the admin dashboard
+// remains excluded because it contains owner-only configuration widgets.
+export const MANAGER_PORTAL_MODULES: AccessModule[] = ACCESS_MODULES.filter(
+  (module) => module !== 'dashboard',
+);
 
 export const ACCESS_MODULE_META: Record<
   AccessModule,
@@ -36,6 +56,10 @@ export const ACCESS_MODULE_META: Record<
   packages: { label: 'Package Manager', description: 'View and manage packages', href: '/packages' },
   customers: { label: 'Customers', description: 'View customer information', href: '/customers' },
   ledger: { label: 'Customer ledger', description: 'View customer accounts', href: '/ledger' },
+  challans: { label: 'Challans', description: 'Manage delivery and account challans', href: '/challans' },
+  vouchers: { label: 'Vouchers', description: 'Record receipts and payments', href: '/vouchers' },
+  expenses: { label: 'Expenses', description: 'Record and review business expenses', href: '/expenses' },
+  reports: { label: 'Reports', description: 'Review business and finance reports', href: '/reports' },
 };
 
 export function accessModuleForPath(path: string): AccessModule | null {
@@ -53,5 +77,9 @@ export function accessModuleForPath(path: string): AccessModule | null {
   if (path.startsWith('/packages')) return 'packages';
   if (path.startsWith('/customers')) return 'customers';
   if (path.startsWith('/ledger')) return 'ledger';
+  if (path.startsWith('/challans')) return 'challans';
+  if (path.startsWith('/vouchers')) return 'vouchers';
+  if (path.startsWith('/expenses')) return 'expenses';
+  if (path.startsWith('/reports')) return 'reports';
   return null;
 }

@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 const STAFF_QUERY = `
   select sm.id, sm.name, sm.phone, sm.email, sm.address, sm.is_active, sm.created_at, sm.updated_at,
-    sm.user_id, sm.login_id, sm.portal_active, sm.access_type, sm.staff_type,
+    sm.user_id, sm.login_id, sm.portal_active, sm.access_type, sm.staff_type, sm.portal_kind,
     coalesce(dept.rows, '[]'::json) as staff_departments,
     coalesce(mod.rows, '[]'::json) as staff_access_modules
   from public.staff_members sm

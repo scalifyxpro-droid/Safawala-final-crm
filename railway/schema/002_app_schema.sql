@@ -2157,7 +2157,7 @@ CREATE TABLE public.staff_access_modules (
     enabled boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT staff_access_modules_module_check CHECK ((module = ANY (ARRAY['dashboard'::text, 'bookings'::text, 'quotations'::text, 'create_booking'::text, 'calendar'::text, 'event_jobs'::text, 'stylist_approvals'::text, 'travel'::text, 'performance'::text, 'modifications'::text, 'inventory'::text, 'packages'::text, 'customers'::text, 'ledger'::text])))
+    CONSTRAINT staff_access_modules_module_check CHECK ((module = ANY (ARRAY['dashboard'::text, 'bookings'::text, 'quotations'::text, 'create_booking'::text, 'calendar'::text, 'event_jobs'::text, 'stylist_approvals'::text, 'travel'::text, 'performance'::text, 'modifications'::text, 'inventory'::text, 'packages'::text, 'customers'::text, 'ledger'::text, 'challans'::text, 'vouchers'::text, 'expenses'::text, 'reports'::text])))
 );
 
 
@@ -2207,9 +2207,11 @@ CREATE TABLE public.staff_members (
     email text,
     address text,
     staff_type text DEFAULT 'regular'::text NOT NULL,
+    portal_kind text DEFAULT 'staff'::text NOT NULL,
     CONSTRAINT staff_members_access_type_check CHECK ((access_type = ANY (ARRAY['main'::text, 'staff'::text]))),
     CONSTRAINT staff_members_name_check CHECK ((length(TRIM(BOTH FROM name)) >= 2)),
-    CONSTRAINT staff_members_staff_type_check CHECK ((staff_type = ANY (ARRAY['regular'::text, 'stylist'::text])))
+    CONSTRAINT staff_members_staff_type_check CHECK ((staff_type = ANY (ARRAY['regular'::text, 'stylist'::text]))),
+    CONSTRAINT staff_members_portal_kind_check CHECK ((portal_kind = ANY (ARRAY['staff'::text, 'accounts'::text, 'manager'::text])))
 );
 
 
@@ -4513,6 +4515,8 @@ ALTER TABLE public.challans ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY challans_owner ON public.challans TO authenticated USING ((owner_id = ( SELECT auth.uid() AS uid))) WITH CHECK ((owner_id = ( SELECT auth.uid() AS uid)));
 
+CREATE POLICY challans_staff_access ON public.challans TO authenticated USING (((owner_id = public.current_staff_owner()) AND public.staff_can_access('challans'::text))) WITH CHECK (((owner_id = public.current_staff_owner()) AND public.staff_can_access('challans'::text)));
+
 
 --
 -- Name: coupon_offers; Type: ROW SECURITY; Schema: public; Owner: -
@@ -4760,6 +4764,8 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY expenses_owner ON public.expenses TO authenticated USING ((owner_id = ( SELECT auth.uid() AS uid))) WITH CHECK ((owner_id = ( SELECT auth.uid() AS uid)));
+
+CREATE POLICY expenses_staff_access ON public.expenses TO authenticated USING (((owner_id = public.current_staff_owner()) AND public.staff_can_access('expenses'::text))) WITH CHECK (((owner_id = public.current_staff_owner()) AND public.staff_can_access('expenses'::text)));
 
 
 --
@@ -5239,6 +5245,8 @@ CREATE POLICY staff_access_modules_owner_all ON public.staff_access_modules TO a
 
 CREATE POLICY staff_access_modules_self_select ON public.staff_access_modules FOR SELECT TO authenticated USING ((staff_id = public.current_staff_member_id()));
 
+CREATE POLICY staff_members_reports_select ON public.staff_members FOR SELECT TO authenticated USING (((owner_id = public.current_staff_owner()) AND public.staff_can_access('reports'::text)));
+
 
 --
 -- Name: staff_departments; Type: ROW SECURITY; Schema: public; Owner: -
@@ -5361,6 +5369,8 @@ ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 --
 
 CREATE POLICY vouchers_owner ON public.vouchers TO authenticated USING ((owner_id = ( SELECT auth.uid() AS uid))) WITH CHECK ((owner_id = ( SELECT auth.uid() AS uid)));
+
+CREATE POLICY vouchers_staff_access ON public.vouchers TO authenticated USING (((owner_id = public.current_staff_owner()) AND public.staff_can_access('vouchers'::text))) WITH CHECK (((owner_id = public.current_staff_owner()) AND public.staff_can_access('vouchers'::text)));
 
 
 --

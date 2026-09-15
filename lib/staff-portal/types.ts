@@ -6,6 +6,8 @@ export type StaffAccessType = 'main' | 'staff';
 
 export type StaffType = 'regular' | 'stylist';
 
+export type StaffPortalKind = 'staff' | 'accounts' | 'manager';
+
 export type StaffPortalRole = 'staff' | 'lead';
 
 export type StaffDepartmentGrant = {
@@ -22,6 +24,7 @@ export type StaffPortalAccount = {
   active: boolean;
   accessType: StaffAccessType;
   staffType: StaffType;
+  portalKind: StaffPortalKind;
   modules: AccessModule[];
   departments: StaffDepartmentGrant[];
   createdAt: string;
@@ -37,6 +40,7 @@ export type StaffSession = {
   permissions: StaffModule[];
   accessType: StaffAccessType;
   staffType: StaffType;
+  portalKind: StaffPortalKind;
   accessModules: AccessModule[];
   isMainId: boolean;
   managedDepartment: StaffDepartment | null;

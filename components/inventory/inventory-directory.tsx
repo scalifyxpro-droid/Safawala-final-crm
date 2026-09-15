@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ChangeEvent, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -229,6 +229,7 @@ export function InventoryDirectory({
   const [showArchived, setShowArchived] = useState(initialShowArchived);
   const [importing, setImporting] = useState(false);
   const [archiveCandidate, setArchiveCandidate] = useState<InventoryProduct | null>(null);
+  const inventoryResultsRef = useRef<HTMLDivElement>(null);
 
   const { activeCount, archivedCount, inStock, lowStock, outOfStock, inventoryValue } = summary;
   const subcategoryOptions = [
@@ -426,6 +427,23 @@ export function InventoryDirectory({
     setDialogOpen(true);
   }
 
+  function reviewStockItems() {
+    setSearch('');
+    setCategory('all');
+    setSubcategory('all');
+    setShowArchived(false);
+    setFilter(outOfStock > 0 ? 'out_of_stock' : 'low_stock');
+    setPage(1);
+    setMessage('');
+    setRefreshKey((current) => current + 1);
+    window.requestAnimationFrame(() => {
+      inventoryResultsRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }
+
   function openEditProduct(product: InventoryProduct, step: Step = 'details') {
     setEditingProduct(product);
     setDialogStep(step);
@@ -474,10 +492,8 @@ export function InventoryDirectory({
       {lowStock + outOfStock > 0 ? (
         <button
           type="button"
-          onClick={() => {
-            setFilter(outOfStock ? 'out_of_stock' : 'low_stock');
-            setPage(1);
-          }}
+          onClick={reviewStockItems}
+          aria-label={`Review ${outOfStock > 0 ? 'out-of-stock' : 'low-stock'} products`}
           className="flex w-full items-start justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-level-1 transition hover:border-amber-300"
         >
           <span className="flex gap-3">
@@ -660,7 +676,7 @@ export function InventoryDirectory({
         </CardContent>
       </Card>
 
-      <div className="overflow-hidden rounded-xl border bg-white dark:bg-card shadow-level-1">
+      <div ref={inventoryResultsRef} className="scroll-mt-20 overflow-hidden rounded-xl border bg-white dark:bg-card shadow-level-1">
         <ListPagination
           total={total}
           page={safeInventoryPage}

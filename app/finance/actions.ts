@@ -21,6 +21,18 @@ function randomCode(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
 }
 
+async function financeOwnerId(tx: Tx, userId: string, mode: FinanceMode) {
+  const [profile] = await tx<{ role: string }[]>`select role from public.profiles where id = ${userId}`;
+  if (profile?.role === 'admin') return userId;
+  const [account] = await tx<{ owner_id: string; allowed: boolean }[]>`
+    select sm.owner_id, public.staff_can_access(${mode}) as allowed
+    from public.staff_members sm
+    where sm.user_id = ${userId} and sm.portal_active = true and sm.is_active = true
+  `;
+  if (!account?.allowed) throw new Error('You do not have permission to manage these finance records.');
+  return account.owner_id;
+}
+
 async function insertRecord(tx: Tx, ownerId: string, mode: FinanceMode, payload: Record<string, unknown>) {
   const amount = Number(payload.amount || 0);
   if (mode === 'challans') {
@@ -96,7 +108,7 @@ async function deleteRecord(tx: Tx, ownerId: string, mode: FinanceMode, id: numb
 
 export async function createFinanceRecordAction(mode: FinanceMode, payload: Record<string, unknown>): Promise<FinanceRecord> {
   const user = await requireUser();
-  const record = await withUserContext(user.id, (tx) => insertRecord(tx, user.id, mode, payload));
+  const record = await withUserContext(user.id, async (tx) => insertRecord(tx, await financeOwnerId(tx, user.id, mode), mode, payload));
   if (!record) throw new Error('Unable to save record.');
   revalidatePath(`/${mode}`);
   return record;
@@ -104,7 +116,7 @@ export async function createFinanceRecordAction(mode: FinanceMode, payload: Reco
 
 export async function updateFinanceRecordAction(mode: FinanceMode, id: number, payload: Record<string, unknown>): Promise<FinanceRecord> {
   const user = await requireUser();
-  const record = await withUserContext(user.id, (tx) => updateRecord(tx, user.id, mode, id, payload));
+  const record = await withUserContext(user.id, async (tx) => updateRecord(tx, await financeOwnerId(tx, user.id, mode), mode, id, payload));
   if (!record) throw new Error('Unable to update record — it may belong to a different account.');
   revalidatePath(`/${mode}`);
   return record;
@@ -112,6 +124,6 @@ export async function updateFinanceRecordAction(mode: FinanceMode, id: number, p
 
 export async function deleteFinanceRecordAction(mode: FinanceMode, id: number): Promise<void> {
   const user = await requireUser();
-  await withUserContext(user.id, (tx) => deleteRecord(tx, user.id, mode, id));
+  await withUserContext(user.id, async (tx) => deleteRecord(tx, await financeOwnerId(tx, user.id, mode), mode, id));
   revalidatePath(`/${mode}`);
 }

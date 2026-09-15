@@ -10,6 +10,7 @@ if (!databaseUrl) {
 
 const migrations = [
   'supabase/migrations/20260915090000_package_catalog_details.sql',
+  'supabase/migrations/20260915143000_accounts_manager_portals.sql',
 ];
 const sql = postgres(databaseUrl, {
   max: 1,

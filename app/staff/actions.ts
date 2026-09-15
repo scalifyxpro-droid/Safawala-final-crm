@@ -1,14 +1,19 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import type { AccessModule } from '@/lib/staff-portal/access-modules';
+import {
+  ACCOUNTS_PORTAL_MODULES,
+  MANAGER_PORTAL_MODULES,
+  type AccessModule,
+} from '@/lib/staff-portal/access-modules';
 import type { StaffDepartment } from '@/lib/staff-portal/constants';
-import type { StaffAccessType, StaffType } from '@/lib/staff-portal/types';
+import type { StaffAccessType, StaffPortalKind, StaffType } from '@/lib/staff-portal/types';
 import {
   createAccount,
   resetAccountPassword,
   setAccountActive,
   setAccountModule,
+  setAccountPortalKind,
   setAccountStaffType,
   setDepartmentGrant,
 } from '@/lib/staff-portal/store';
@@ -104,19 +109,32 @@ export async function createStaffLoginAction(input: {
   departments: StaffDepartment[];
   accessType: StaffAccessType;
   staffType: StaffType;
+  portalKind: StaffPortalKind;
   modules: AccessModule[];
   rollbackStaffMemberOnFailure?: boolean;
 }) {
   try {
+    const effectiveAccessType: StaffAccessType = input.portalKind === 'staff' ? input.accessType : 'main';
+    const effectiveStaffType: StaffType = input.portalKind === 'staff' ? input.staffType : 'regular';
+    const effectiveModules = input.portalKind === 'accounts'
+      ? ACCOUNTS_PORTAL_MODULES
+      : input.portalKind === 'manager'
+        ? MANAGER_PORTAL_MODULES
+        : effectiveStaffType === 'stylist'
+          ? []
+          : effectiveAccessType === 'staff'
+            ? (['quotations', 'create_booking'] as AccessModule[])
+            : input.modules;
     const result = await createAccount(await requireAdmin(), {
       staffMemberId: input.staffMemberId,
       name: input.name,
       loginId: input.loginId,
       password: input.password,
       departments: input.departments,
-      accessType: input.accessType,
-      staffType: input.staffType,
-      modules: input.staffType === 'stylist' ? [] : input.accessType === 'staff' ? ['quotations', 'create_booking'] : input.modules,
+      accessType: effectiveAccessType,
+      staffType: effectiveStaffType,
+      portalKind: input.portalKind,
+      modules: effectiveModules,
       removeStaffMemberOnFailure: input.rollbackStaffMemberOnFailure,
     });
     revalidatePath('/staff');
@@ -125,6 +143,27 @@ export async function createStaffLoginAction(input: {
     return {
       error: error instanceof Error ? error.message : 'Could not create this login.',
     };
+  }
+}
+
+export async function setStaffPortalKindAction(
+  userId: string,
+  portalKind: StaffPortalKind,
+): Promise<{ error: string }> {
+  try {
+    const departments: StaffDepartment[] = portalKind === 'manager'
+      ? ['booking', 'warehouse', 'qc', 'stylist', 'collection', 'modification']
+      : ['booking'];
+    const modules = portalKind === 'accounts'
+      ? ACCOUNTS_PORTAL_MODULES
+      : portalKind === 'manager'
+        ? MANAGER_PORTAL_MODULES
+        : (['quotations', 'create_booking'] as AccessModule[]);
+    await setAccountPortalKind(await requireAdmin(), userId, portalKind, departments, modules);
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not update portal role.' };
   }
 }
 

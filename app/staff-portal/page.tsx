@@ -24,7 +24,9 @@ type Props = {
 
 export default async function StaffPortalHomePage({ searchParams }: Props) {
   const session = await requireStaffSession();
+  const isSpecialPortal = session.portalKind === 'accounts' || session.portalKind === 'manager';
   const isBookingMainId =
+    !isSpecialPortal &&
     session.isMainId &&
     session.departments.some(
       (grant) => grant.active && grant.department === 'booking',
@@ -35,23 +37,23 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
   const isWarehouseStaff = activeDepartments.some(
     (grant) => grant.department === 'warehouse',
   );
-  if (isWarehouseStaff) redirect('/staff-portal/warehouse');
+  if (!isSpecialPortal && isWarehouseStaff) redirect('/staff-portal/warehouse');
   const isQcStaff = activeDepartments.some(
     (grant) => grant.department === 'qc',
   );
-  if (isQcStaff) redirect('/staff-portal/qc');
+  if (!isSpecialPortal && isQcStaff) redirect('/staff-portal/qc');
   const isCollectionStaff = activeDepartments.some(
     (grant) => grant.department === 'collection',
   );
-  if (isCollectionStaff) redirect('/staff-portal/collection');
+  if (!isSpecialPortal && isCollectionStaff) redirect('/staff-portal/collection');
   const isStylistStaff = activeDepartments.some(
     (grant) => grant.department === 'stylist',
   );
   const isModificationStaff = activeDepartments.some(
     (grant) => grant.department === 'modification',
   );
-  if (isModificationStaff) redirect('/staff-portal/modifications');
-  if (isStylistStaff) redirect('/staff-portal/stylist');
+  if (!isSpecialPortal && isModificationStaff) redirect('/staff-portal/modifications');
+  if (!isSpecialPortal && isStylistStaff) redirect('/staff-portal/stylist');
   const isBookingStaff =
     !session.isMainId &&
     activeDepartments.some((grant) => grant.department === 'booking');
@@ -141,6 +143,7 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
         permissions={session.permissions}
         accessModules={session.accessModules}
         isMainId={session.isMainId}
+        portalKind={session.portalKind}
         notificationCount={notificationCount}
       >
         <div className="mx-auto max-w-[960px] space-y-5">
@@ -173,12 +176,17 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
       permissions={session.permissions}
       accessModules={session.accessModules}
       isMainId={session.isMainId}
+      portalKind={session.portalKind}
       notificationCount={notificationCount}
     >
       <div className="mx-auto max-w-[1440px] space-y-6">
         <DashboardHeader
-          title={`Welcome, ${session.name}`}
-          subtitle="Your Safawala staff portal"
+          title={session.portalKind === 'accounts' ? 'Accounts Portal' : session.portalKind === 'manager' ? 'Manager Portal' : `Welcome, ${session.name}`}
+          subtitle={session.portalKind === 'accounts'
+            ? `Welcome, ${session.name} · Finance and customer accounts`
+            : session.portalKind === 'manager'
+              ? `Welcome, ${session.name} · Business operations overview`
+              : 'Your Safawala staff portal'}
         />
 
         {deniedDepartment ? (

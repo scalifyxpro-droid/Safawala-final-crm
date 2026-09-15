@@ -17,7 +17,7 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { staffLogoutAction } from '@/lib/staff-portal/logout-action';
 import { DEPARTMENT_META } from '@/lib/staff-portal/constants';
-import type { StaffDepartmentGrant } from '@/lib/staff-portal/types';
+import type { StaffDepartmentGrant, StaffPortalKind } from '@/lib/staff-portal/types';
 import type { StaffModule } from '@/lib/staff-portal/modules';
 import {
   ACCESS_MODULE_META,
@@ -51,11 +51,13 @@ function SidebarNavigation({
   permissions,
   departments,
   isMainId,
+  portalKind,
 }: {
   modules: AccessModule[];
   permissions: StaffModule[];
   departments: StaffDepartmentGrant[];
   isMainId: boolean;
+  portalKind: StaffPortalKind;
 }) {
   const pathname = usePathname();
   const moduleIcons: Partial<Record<AccessModule, typeof LayoutDashboard>> = {
@@ -73,27 +75,33 @@ function SidebarNavigation({
     inventory: Boxes,
     packages: PackageCheck,
     ledger: IndianRupee,
+    challans: ReceiptText,
+    vouchers: ReceiptText,
+    expenses: IndianRupee,
+    reports: CircleGauge,
   };
   const isBookingPortal =
+    portalKind === 'staff' &&
     isMainId &&
     departments.some((grant) => grant.active && grant.department === 'booking');
   const isBookingStaff =
+    portalKind === 'staff' &&
     !isMainId &&
     departments.some((grant) => grant.active && grant.department === 'booking');
-  const isWarehouseStaff = departments.some(
+  const isWarehouseStaff = portalKind === 'staff' && departments.some(
     (grant) => grant.active && grant.department === 'warehouse',
   );
-  const isQcStaff = departments.some(
+  const isQcStaff = portalKind === 'staff' && departments.some(
     (grant) => grant.active && grant.department === 'qc',
   );
-  const isCollectionStaff = departments.some(
+  const isCollectionStaff = portalKind === 'staff' && departments.some(
     (grant) => grant.active && grant.department === 'collection',
   );
-  const isStylistStaff = departments.some(
+  const isStylistStaff = portalKind === 'staff' && departments.some(
     (grant) => grant.active && grant.department === 'stylist',
   );
   const isStylistMain = isMainId && isStylistStaff;
-  const isModificationStaff = departments.some(
+  const isModificationStaff = portalKind === 'staff' && departments.some(
     (grant) => grant.active && grant.department === 'modification',
   );
   const seen = new Set<string>();
@@ -273,9 +281,11 @@ function SidebarNavigation({
 function AccountPanel({
   name,
   departments,
+  portalKind,
 }: {
   name: string;
   departments: StaffDepartmentGrant[];
+  portalKind: StaffPortalKind;
 }) {
   const [open, setOpen] = useState(false);
   const initials = name.slice(0, 2).toUpperCase();
@@ -302,9 +312,13 @@ function AccountPanel({
             {name}
           </strong>
           <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-            {activeLabels.length
-              ? activeLabels.join(', ')
-              : 'No department access'}
+            {portalKind === 'accounts'
+              ? 'Accounts Portal'
+              : portalKind === 'manager'
+                ? 'Manager Portal'
+                : activeLabels.length
+                  ? activeLabels.join(', ')
+                  : 'No department access'}
           </span>
         </span>
         <ChevronUp
@@ -341,6 +355,7 @@ export function StaffPortalShell({
   accessModules,
   permissions = [],
   isMainId = false,
+  portalKind = 'staff',
 }: {
   name: string;
   departments: StaffDepartmentGrant[];
@@ -349,6 +364,7 @@ export function StaffPortalShell({
   permissions?: StaffModule[];
   accessModules?: AccessModule[];
   isMainId?: boolean;
+  portalKind?: StaffPortalKind;
 }) {
   const effectiveModules = accessModules ?? [];
   const [pageHeader, setPageHeader] = useState<PageHeader>(null);
@@ -363,12 +379,13 @@ export function StaffPortalShell({
             permissions={permissions}
             departments={departments}
             isMainId={isMainId}
+            portalKind={portalKind}
           />
         </div>
         <div className="mt-4">
-          <AccountPanel name={name} departments={departments} />
+          <AccountPanel name={name} departments={departments} portalKind={portalKind} />
           <p className="mt-3 text-center text-[10px] text-muted-foreground">
-            Safawala Staff Portal
+            Safawala {portalKind === 'accounts' ? 'Accounts' : portalKind === 'manager' ? 'Manager' : 'Staff'} Portal
           </p>
         </div>
       </aside>
@@ -401,10 +418,11 @@ export function StaffPortalShell({
                     permissions={permissions}
                     departments={departments}
                     isMainId={isMainId}
+                    portalKind={portalKind}
                   />
                 </div>
                 <div className="mt-4">
-                  <AccountPanel name={name} departments={departments} />
+                  <AccountPanel name={name} departments={departments} portalKind={portalKind} />
                 </div>
               </SheetContent>
             </Sheet>
