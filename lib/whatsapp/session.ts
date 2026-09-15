@@ -102,7 +102,12 @@ async function loadAuthState() {
 /** Starts (or reconnects) the WhatsApp socket. Safe to call more than once. */
 export async function startWhatsAppSession(): Promise<void> {
   const s = state();
-  if (s.status === 'CONNECTED' || s.status === 'CONNECTING') return;
+  // PENDING_QR must also short-circuit here: once a QR is showing, repeated
+  // calls (the admin page polls every few seconds) must NOT tear the socket
+  // down and mint a fresh QR each time — that made the code change faster
+  // than anyone could scan it. Only DISCONNECTED (never started, timed out,
+  // or explicitly closed) should start a new attempt.
+  if (s.status === 'CONNECTED' || s.status === 'CONNECTING' || s.status === 'PENDING_QR') return;
   if (globalThis.__waStarting) return globalThis.__waStarting;
 
   globalThis.__waStarting = (async () => {
