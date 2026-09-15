@@ -29,6 +29,11 @@ import { withServiceRole } from '@/lib/db/client';
 
 const SESSION_ID = 'main';
 const logger = pino({ level: 'warn' });
+// If WhatsApp never responds with a QR or an open connection within this
+// window, something (most often outbound network policy) is silently
+// blocking the handshake. Surface that as a clear error instead of leaving
+// the admin staring at "Connecting..." forever.
+const CONNECT_TIMEOUT_MS = 30_000;
 
 type SessionStatus = 'DISCONNECTED' | 'CONNECTING' | 'PENDING_QR' | 'CONNECTED';
 
@@ -101,11 +106,14 @@ export async function startWhatsAppSession(): Promise<void> {
   if (globalThis.__waStarting) return globalThis.__waStarting;
 
   globalThis.__waStarting = (async () => {
+    let connectTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       s.status = 'CONNECTING';
       s.lastError = null;
+      console.log('[whatsapp] starting session...');
       const { creds, keys, persist } = await loadAuthState();
       const { version } = await fetchLatestBaileysVersion();
+      console.log('[whatsapp] using baileys version', version);
 
       const sock = makeWASocket({
         version,
@@ -140,53 +148,84 @@ export async function startWhatsAppSession(): Promise<void> {
       s.sock = sock;
       sock.ev.on('creds.update', persist);
 
-      sock.ev.on('connection.update', (update: { connection?: string; lastDisconnect?: { error?: unknown }; qr?: string }) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-          QRCode.toDataURL(qr)
-            .then((url) => {
-              state().qrDataUrl = url;
-              state().status = 'PENDING_QR';
-            })
-            .catch((err) => console.error('[whatsapp] failed to render QR', err));
+      const clearConnectTimer = () => {
+        if (connectTimer) {
+          clearTimeout(connectTimer);
+          connectTimer = null;
         }
+      };
 
-        if (connection === 'open') {
-          state().status = 'CONNECTED';
-          state().qrDataUrl = null;
-          state().lastError = null;
-          state().phoneNumber = sock.user?.id?.split(':')[0] ?? null;
-          console.log('[whatsapp] connected', state().phoneNumber);
-        }
-
-        if (connection === 'close') {
-          const statusCode = (
-            lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
-          )?.output?.statusCode;
-          const loggedOut = statusCode === DisconnectReason.loggedOut;
-
+      connectTimer = setTimeout(() => {
+        if (state().status === 'CONNECTING') {
+          console.error(
+            '[whatsapp] connection timed out waiting for QR/open — likely blocked outbound network',
+          );
           state().status = 'DISCONNECTED';
+          state().lastError =
+            'Could not reach WhatsApp servers (timed out). This can happen if the hosting network blocks the connection. Try again in a moment.';
           state().sock = null;
-          state().lastError = loggedOut
-            ? 'Logged out from the phone — scan the QR code again.'
-            : 'Disconnected — reconnecting automatically.';
-
-          if (loggedOut) {
-            // Clear the stale credentials so the next start issues a fresh QR
-            // instead of looping on rejected creds.
-            withServiceRole(
-              (tx) => tx`delete from public.whatsapp_auth_state where id = ${SESSION_ID}`,
-            ).catch((err) => console.error('[whatsapp] failed to clear auth state', err));
-          } else {
-            setTimeout(() => {
-              startWhatsAppSession().catch((err) =>
-                console.error('[whatsapp] reconnect failed', err),
-              );
-            }, 4000);
+          try {
+            sock.end(new Error('connect timeout'));
+          } catch {
+            // best-effort cleanup
           }
         }
-      });
+      }, CONNECT_TIMEOUT_MS);
+
+      sock.ev.on(
+        'connection.update',
+        (update: { connection?: string; lastDisconnect?: { error?: unknown }; qr?: string }) => {
+          const { connection, lastDisconnect, qr } = update;
+          console.log('[whatsapp] connection.update', { connection, hasQr: Boolean(qr) });
+
+          if (qr) {
+            clearConnectTimer();
+            QRCode.toDataURL(qr)
+              .then((url) => {
+                state().qrDataUrl = url;
+                state().status = 'PENDING_QR';
+              })
+              .catch((err) => console.error('[whatsapp] failed to render QR', err));
+          }
+
+          if (connection === 'open') {
+            clearConnectTimer();
+            state().status = 'CONNECTED';
+            state().qrDataUrl = null;
+            state().lastError = null;
+            state().phoneNumber = sock.user?.id?.split(':')[0] ?? null;
+            console.log('[whatsapp] connected', state().phoneNumber);
+          }
+
+          if (connection === 'close') {
+            clearConnectTimer();
+            const statusCode = (
+              lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
+            )?.output?.statusCode;
+            const loggedOut = statusCode === DisconnectReason.loggedOut;
+
+            state().status = 'DISCONNECTED';
+            state().sock = null;
+            state().lastError = loggedOut
+              ? 'Logged out from the phone — scan the QR code again.'
+              : 'Disconnected — reconnecting automatically.';
+
+            if (loggedOut) {
+              // Clear the stale credentials so the next start issues a fresh QR
+              // instead of looping on rejected creds.
+              withServiceRole(
+                (tx) => tx`delete from public.whatsapp_auth_state where id = ${SESSION_ID}`,
+              ).catch((err) => console.error('[whatsapp] failed to clear auth state', err));
+            } else {
+              setTimeout(() => {
+                startWhatsAppSession().catch((err) =>
+                  console.error('[whatsapp] reconnect failed', err),
+                );
+              }, 4000);
+            }
+          }
+        },
+      );
     } catch (err) {
       s.status = 'DISCONNECTED';
       s.lastError = err instanceof Error ? err.message : 'Failed to start WhatsApp session.';
