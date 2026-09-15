@@ -330,12 +330,12 @@ export function DashboardShell({
         </aside>
 
         <div className="lg:pl-64">
-          <header className="pointer-events-none sticky top-0 z-40 flex min-h-16 flex-wrap items-center justify-between gap-y-1 border-b border-border bg-white px-4 py-1 dark:bg-card sm:px-6 lg:px-8">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+          <header className="pointer-events-none fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-border bg-white/95 px-3 shadow-[0_1px_0_rgba(98,68,38,0.04)] backdrop-blur supports-[backdrop-filter]:bg-white/90 dark:bg-card/95 sm:px-6 lg:left-64 lg:px-8">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
               <Sheet>
                 <SheetTrigger
                   aria-label="Open navigation"
-                  className="pointer-events-auto fixed left-4 top-3 z-40 inline-flex size-9 items-center justify-center rounded-lg border border-border bg-white text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-card lg:hidden"
+                  className="pointer-events-auto absolute left-3 top-1/2 z-40 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-lg border border-border bg-white text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-card sm:left-6 lg:hidden"
                 >
                   <Menu aria-hidden="true" className="size-5" />
                 </SheetTrigger>
@@ -360,12 +360,12 @@ export function DashboardShell({
                 </SheetContent>
               </Sheet>
               {pageHeader ? (
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-12 lg:pl-0">
-                  <div className="flex min-w-0 flex-1 basis-[220px] items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-2 pl-12 lg:pl-0">
+                  <div className="flex min-w-0 flex-1 items-center">
                     {pageHeader.backHref ? (
                       <Link
                         href={pageHeader.backHref}
-                        className="pointer-events-auto mr-3 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"
+                        className="pointer-events-auto mr-2 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted sm:mr-3"
                         aria-label="Back"
                       >
                         <ArrowLeft
@@ -385,7 +385,7 @@ export function DashboardShell({
                     </span>
                   </div>
                   {pageHeader.actions ? (
-                    <div className="pointer-events-auto ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:px-3 [&_[data-slot=button]]:text-sm">
+                    <div className="pointer-events-auto ml-auto flex max-w-[42vw] shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:max-w-[52vw] lg:max-w-none [&::-webkit-scrollbar]:hidden [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:shrink-0 [&_[data-slot=button]]:px-3 [&_[data-slot=button]]:text-sm">
                       {pageHeader.actions}
                     </div>
                   ) : null}
@@ -393,12 +393,12 @@ export function DashboardShell({
               ) : (
                 <div className="min-w-0 flex-1" />
               )}
-              <div className="pointer-events-auto flex items-center gap-2">
+              <div className="pointer-events-auto flex shrink-0 items-center gap-2">
                 <AdminNotificationPopover />
               </div>
             </div>
           </header>
-          <main className="bg-surface px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+          <main className="min-w-0 bg-surface px-4 pb-4 pt-20 sm:px-6 sm:pb-6 sm:pt-[5.5rem] lg:px-8">
             {children}
           </main>
         </div>

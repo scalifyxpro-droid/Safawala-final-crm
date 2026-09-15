@@ -186,7 +186,7 @@ export function CalendarDayGrid({
 
   return (
     <>
-      <div className="flex flex-col gap-3 rounded-xl border border-[#e4d2b6] bg-[#fffaf1] dark:bg-[#241e17] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-xl border border-[#e4d2b6] bg-[#fffaf1] px-3 py-3 dark:bg-[#241e17] sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="flex items-center gap-2 text-sm">
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#a86f2d] text-white">
             <Sparkles className="size-4" />
@@ -195,7 +195,7 @@ export function CalendarDayGrid({
             <p className="font-semibold text-[#6f481f]">
               Important wedding dates
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="hidden text-xs text-muted-foreground sm:block">
               Highlighted for planning across every portal calendar.
             </p>
           </div>
@@ -228,7 +228,67 @@ export function CalendarDayGrid({
           ) : null}
         </div>
       </div>
-      <Card className="gap-0 overflow-x-auto border-border py-0 shadow-level-1 ring-0">
+      <Card className="gap-0 overflow-hidden border-border py-0 shadow-level-1 ring-0 sm:hidden">
+        <div className="grid grid-cols-7 border-b bg-[#fcfaf7] dark:bg-[#241e17]">
+          {WEEKDAYS.map((day) => (
+            <div
+              key={day}
+              className="py-2 text-center text-[10px] font-semibold text-muted-foreground"
+              aria-label={day}
+            >
+              {day.slice(0, 1)}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {cells.map((day, index) => {
+            const events = day ? (eventsByDay.get(day) ?? []) : [];
+            const mods = day ? (modsByDay.get(day) ?? []) : [];
+            const locked = day ? (lockedByDay.get(day) ?? []) : [];
+            const isImportant = day !== null && importantDays.includes(day);
+            const isLocked = locked.length > 0;
+            const hasDetail =
+              day !== null &&
+              (events.length > 0 || mods.length > 0 || isImportant || isLocked);
+            return day === null ? (
+              <div
+                key={index}
+                className="aspect-square min-h-10 border-b border-r bg-muted/20"
+              />
+            ) : (
+              <button
+                key={index}
+                type="button"
+                disabled={!hasDetail}
+                onClick={() => {
+                  setSelectedDay(day);
+                  setTab(events.length || !mods.length ? 'events' : 'mod');
+                  setSearch('');
+                }}
+                className={`relative flex aspect-square min-h-10 flex-col items-center justify-center border-b border-r text-xs transition disabled:cursor-default ${
+                  isLocked
+                    ? 'bg-[#fdf0ef] text-[#9c2f2a] dark:bg-[#2a1c1c]'
+                    : isImportant
+                      ? 'bg-[#fff3d9] font-semibold text-[#9a6124] dark:bg-[#33291c]'
+                      : hasDetail
+                        ? 'bg-accent/55 font-semibold text-primary hover:bg-accent'
+                        : 'text-muted-foreground'
+                }`}
+                aria-label={`${day} ${new Date(year, month, day).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}${events.length ? `, ${events.length} booking${events.length === 1 ? '' : 's'}` : ''}${isImportant ? ', important wedding date' : ''}${isLocked ? ', locked' : ''}`}
+              >
+                <span>{day}</span>
+                <span className="mt-1 flex h-1.5 items-center gap-0.5" aria-hidden="true">
+                  {events.length > 0 ? <span className="size-1.5 rounded-full bg-emerald-600" /> : null}
+                  {mods.length > 0 ? <span className="size-1.5 rounded-full bg-amber-600" /> : null}
+                  {isImportant ? <span className="size-1.5 rounded-full bg-[#a86f2d]" /> : null}
+                  {isLocked ? <span className="size-1.5 rounded-full bg-rose-600" /> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+      <Card className="hidden gap-0 overflow-x-auto border-border py-0 shadow-level-1 ring-0 sm:block">
         <div className="grid min-w-[840px] grid-cols-7 border-b bg-[#fcfaf7] dark:bg-[#241e17]">
           {WEEKDAYS.map((day) => (
             <div
@@ -349,7 +409,7 @@ export function CalendarDayGrid({
       </Card>
 
       {selectedDay !== null ? (
-        <div className="fixed inset-0 z-[70] grid place-items-center p-4 print:hidden">
+        <div className="fixed inset-0 z-[70] grid place-items-center p-2 print:hidden sm:p-4">
           <button
             type="button"
             aria-label="Close day details"
@@ -362,7 +422,7 @@ export function CalendarDayGrid({
             aria-labelledby="calendar-day-title"
             className="relative z-10 m-0 flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[22px] border border-white/40 bg-[#fffdf9] dark:bg-[#241e17] p-0 text-foreground shadow-[0_32px_90px_rgb(20_15_10_/.35)]"
           >
-            <div className="flex items-start justify-between border-b bg-[#fcfaf7] dark:bg-[#241e17] p-5">
+            <div className="flex items-start justify-between border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] sm:p-5">
               <div className="flex items-center gap-3">
                 <span className="grid size-11 place-items-center rounded-xl bg-[#181818] text-white">
                   <Calendar className="size-5" />

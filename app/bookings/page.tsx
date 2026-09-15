@@ -191,6 +191,7 @@ export default async function BookingsPage({ searchParams }: Props) {
           <ListFilterForm
             search={search}
             searchPlaceholder="Search ID, customer, event or location"
+            mobileSearchOnly
             filters={[
               {
                 name: 'status',

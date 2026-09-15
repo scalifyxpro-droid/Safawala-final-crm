@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   CalendarDays,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -64,12 +66,28 @@ type RecentBookingRow = {
 type EventJobStateRow = { state: unknown };
 type PaymentRow = { paid_amount: number | null; created_at: string | null };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const today = new Date().toISOString().slice(0, 10);
 
-  const calendarBase = new Date();
+  const requestedMonth = (await searchParams).month;
+  const requestedParts = requestedMonth?.match(/^(\d{4})-(\d{2})$/);
+  const requestedYear = requestedParts ? Number(requestedParts[1]) : null;
+  const requestedMonthIndex = requestedParts ? Number(requestedParts[2]) - 1 : null;
+  const calendarBase =
+    requestedYear !== null &&
+    requestedMonthIndex !== null &&
+    requestedYear >= 2000 &&
+    requestedYear <= 2100 &&
+    requestedMonthIndex >= 0 &&
+    requestedMonthIndex <= 11
+      ? new Date(requestedYear, requestedMonthIndex, 1)
+      : new Date();
   const calendarYear = calendarBase.getFullYear();
   const calendarMonth = calendarBase.getMonth();
   const calendarFirst = new Date(calendarYear, calendarMonth, 1);
@@ -77,6 +95,14 @@ export default async function DashboardPage() {
   const calendarPad = (value: number) => String(value).padStart(2, '0');
   const calendarStart = `${calendarYear}-${calendarPad(calendarMonth + 1)}-01`;
   const calendarEnd = `${calendarYear}-${calendarPad(calendarMonth + 1)}-${calendarPad(calendarLast.getDate())}`;
+  const calendarMove = (amount: number) => {
+    const target = new Date(calendarYear, calendarMonth + amount, 1);
+    return `/dashboard?month=${target.getFullYear()}-${calendarPad(target.getMonth() + 1)}`;
+  };
+  const calendarLabel = calendarBase.toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   let total = 0;
   let quoteTotal = 0;
@@ -377,7 +403,7 @@ export default async function DashboardPage() {
   ];
   return (
     <BookingPortalShell email={user.email ?? 'Safawala user'}>
-      <div className="mx-auto max-w-[1440px] space-y-6">
+      <div className="mx-auto w-full max-w-[1440px] space-y-4 sm:space-y-5">
         <DashboardHeader
           title="Booking Dashboard"
           subtitle="Bookings, quotations and jobs waiting for closure"
@@ -398,88 +424,104 @@ export default async function DashboardPage() {
             </div>
           }
         />
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="h-full border-border shadow-level-1 ring-0">
-            <CardHeader className="flex-row items-start justify-between pb-3">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Link href="/ledger" className="group min-w-0">
+          <Card className="h-full min-h-[132px] gap-0 border-border py-0 shadow-level-1 ring-0 transition group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-level-2">
+            <CardHeader className="flex-row items-start justify-between p-4 pb-2">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">
                   Total Revenue
                 </p>
-                <p className="mt-2 text-sm font-semibold text-primary">
-                  Live collections
+                <p className="mt-1 text-[11px] font-medium text-primary">
+                  Live collections · Till now
                 </p>
               </div>
-              <CircleDollarSign className="size-5 text-emerald-600" />
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                <CircleDollarSign className="size-4.5" />
+              </span>
             </CardHeader>
-            <CardContent className="space-y-2 pt-0 text-sm">
-              <div className="flex items-center justify-between border-b border-border/70 pb-2">
-                <span className="text-muted-foreground">This Month</span>
-                <span className="font-semibold">{money(revenueThisMonth)}</span>
+            <CardContent className="grid grid-cols-3 gap-2 p-4 pt-1">
+              <div className="min-w-0 border-r border-border/70 pr-2">
+                <p className="truncate text-[10px] text-muted-foreground">This month</p>
+                <p className="mt-1 truncate text-xs font-semibold sm:text-sm">{money(revenueThisMonth)}</p>
               </div>
-              <div className="flex items-center justify-between border-b border-border/70 pb-2">
-                <span className="text-muted-foreground">This Year</span>
-                <span className="font-semibold">{money(revenueThisYear)}</span>
+              <div className="min-w-0 border-r border-border/70 px-1">
+                <p className="truncate text-[10px] text-muted-foreground">This year</p>
+                <p className="mt-1 truncate text-xs font-semibold sm:text-sm">{money(revenueThisYear)}</p>
               </div>
-              <div className="flex items-center justify-between pt-1">
-                <span className="font-semibold">Till Now</span>
-                <span className="font-semibold text-emerald-600">
+              <div className="min-w-0 pl-1">
+                <p className="truncate text-[10px] text-muted-foreground">Total</p>
+                <p className="mt-1 truncate text-xs font-semibold text-emerald-600 sm:text-sm">
                   {money(revenueTillNow)}
-                </span>
+                </p>
               </div>
-              <Link
-                href="/ledger"
-                className="inline-flex pt-1 text-xs font-medium text-primary hover:underline"
-              >
-                View revenue <ArrowRight className="ml-1 size-3.5" />
-              </Link>
             </CardContent>
           </Card>
+          </Link>
           {cards.map(({ label, value, note, href, icon: Icon, tone }) => (
-            <Link key={label} href={href} className="group">
-              <Card className="h-full border-border shadow-level-1 ring-0 transition group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-level-2">
-                <CardHeader className="flex-row items-center justify-between">
+            <Link key={label} href={href} className="group min-w-0">
+              <Card className="h-full min-h-[132px] gap-0 border-border py-0 shadow-level-1 ring-0 transition group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-level-2">
+                <CardHeader className="flex-row items-start justify-between p-4 pb-2">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">
                       {label}
                     </p>
-                    <CardTitle className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
+                    <CardTitle className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
                       {value}
                     </CardTitle>
                   </div>
                   <span
-                    className={`grid size-11 place-items-center rounded-xl ${tone}`}
+                    className={`grid size-9 shrink-0 place-items-center rounded-xl ${tone}`}
                   >
-                    <Icon className="size-5" />
+                    <Icon className="size-4.5" />
                   </span>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">{note}</p>
+                <CardContent className="flex min-w-0 items-end justify-between gap-2 px-4 pb-4 pt-0">
+                  <p className="min-w-0 truncate text-[11px] text-muted-foreground sm:text-xs">{note}</p>
+                  <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
                 </CardContent>
               </Card>
             </Link>
           ))}
         </section>
         <div className="space-y-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-              <CalendarDays className="size-5 text-primary" /> Booking calendar
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Live sales and rental bookings for this month.
-            </p>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight sm:text-lg">
+                <CalendarDays className="size-4.5 shrink-0 text-primary sm:size-5" />
+                <span className="truncate">Booking calendar</span>
+              </h2>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
+                {calendarLabel} · Live sales and rental bookings
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                render={<Link href={calendarMove(-1)} aria-label="Previous month" />}
+                title="Previous month"
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                render={<Link href={calendarMove(1)} aria-label="Next month" />}
+                title="Next month"
+              >
+                <ChevronRight />
+              </Button>
+            </div>
           </div>
-          <Card className="border-border shadow-level-1 ring-0">
-            <CardContent className="p-4">
-              <CalendarDayGrid
-                year={calendarYear}
-                month={calendarMonth}
-                cells={calendarCells}
-                bookings={(calendarRows ?? []) as unknown as CalendarBooking[]}
-                modificationBookings={[]}
-                lockedDates={calendarLockedDates}
-              />
-            </CardContent>
-          </Card>
+          <CalendarDayGrid
+            year={calendarYear}
+            month={calendarMonth}
+            cells={calendarCells}
+            bookings={(calendarRows ?? []) as unknown as CalendarBooking[]}
+            modificationBookings={[]}
+            lockedDates={calendarLockedDates}
+          />
         </div>
         {false && (
           <>
