@@ -66,6 +66,7 @@ function SidebarNavigation({
     bookings: ReceiptText,
     create_booking: Plus,
     customers: UsersRound,
+    vendors: UserRound,
     event_jobs: ClipboardList,
     calendar: CalendarDays,
     performance: CircleGauge,
@@ -105,7 +106,16 @@ function SidebarNavigation({
     (grant) => grant.active && grant.department === 'modification',
   );
   const seen = new Set<string>();
-  const links = isBookingPortal
+  const links = portalKind === 'accounts' || portalKind === 'manager'
+    ? [
+        { href: '/staff-portal', label: 'Home', icon: LayoutDashboard },
+        ...modules.map((module) => ({
+          href: ACCESS_MODULE_META[module].href,
+          label: ACCESS_MODULE_META[module].label,
+          icon: moduleIcons[module] ?? LayoutDashboard,
+        })),
+      ]
+    : isBookingPortal
     ? [
         {
           href: '/staff-portal/booking',
@@ -238,7 +248,9 @@ function SidebarNavigation({
                     ];
                   }),
                 ];
-  const navigationLinks = links.some((link) => link.href === '/staff-portal/event-tracking')
+  const navigationLinks = portalKind === 'accounts' || portalKind === 'manager'
+    ? links
+    : links.some((link) => link.href === '/staff-portal/event-tracking')
     ? links
     : [...links, { href: '/staff-portal/event-tracking', label: 'Job Tracker', icon: ClipboardList }];
   return (

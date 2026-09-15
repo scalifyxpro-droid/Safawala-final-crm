@@ -125,12 +125,15 @@ export async function createStaffLoginAction(input: {
           : effectiveAccessType === 'staff'
             ? (['quotations', 'create_booking'] as AccessModule[])
             : input.modules;
+    const effectiveDepartments = input.portalKind === 'accounts'
+      ? []
+      : input.departments;
     const result = await createAccount(await requireAdmin(), {
       staffMemberId: input.staffMemberId,
       name: input.name,
       loginId: input.loginId,
       password: input.password,
-      departments: input.departments,
+      departments: effectiveDepartments,
       accessType: effectiveAccessType,
       staffType: effectiveStaffType,
       portalKind: input.portalKind,
@@ -153,7 +156,9 @@ export async function setStaffPortalKindAction(
   try {
     const departments: StaffDepartment[] = portalKind === 'manager'
       ? ['booking', 'warehouse', 'qc', 'stylist', 'collection', 'modification']
-      : ['booking'];
+      : portalKind === 'accounts'
+        ? []
+        : ['booking'];
     const modules = portalKind === 'accounts'
       ? ACCOUNTS_PORTAL_MODULES
       : portalKind === 'manager'

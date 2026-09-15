@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BOOKING_TERMS, friendlyDate, friendlyTime } from '@/lib/bookings';
+import type { PublicBankDetails } from '@/lib/settings/types';
 
 export type PdfBooking = {
   booking_number: string;
@@ -35,14 +36,28 @@ export type PdfBooking = {
 };
 
 // Safawala's own bank details, printed on every generated invoice/quote.
-const BANK_DETAILS = {
+const FALLBACK_BANK_DETAILS: PublicBankDetails = {
   bank: 'ICICI Bank',
   accountHolder: 'Mr. Ronak Dave',
   accountNumber: '187501504458',
   ifsc: 'ICIC0001396',
   branch: 'Vadodara',
   upi: '7020926385@okbizaxis',
+  qrCodeImage: null,
 };
+
+async function loadPaymentDetails(): Promise<PublicBankDetails> {
+  try {
+    const response = await fetch('/api/settings/payment-details', { cache: 'no-store' });
+    if (!response.ok) return FALLBACK_BANK_DETAILS;
+    const payload = await response.json() as { data?: PublicBankDetails | null };
+    return payload.data ?? FALLBACK_BANK_DETAILS;
+  } catch {
+    // PDF generation must remain available during a temporary settings lookup
+    // failure. The last known business account remains the safe fallback.
+    return FALLBACK_BANK_DETAILS;
+  }
+}
 
 const BRAND_DARK: [number, number, number] = [24, 24, 24];
 const BRAND_MID: [number, number, number] = [52, 52, 52];
@@ -128,6 +143,7 @@ async function recolorLogo(
 }
 
 async function toDataUrl(src: string): Promise<string | null> {
+  if (src.startsWith('data:image/')) return src;
   try {
     const response = await fetch(src);
     if (!response.ok) return null;
@@ -185,6 +201,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         import('jspdf'),
         import('qrcode'),
       ]);
+      const bankDetails = await loadPaymentDetails();
       const isQuote = Boolean(booking.is_quote && booking.status === 'draft');
       const docLabel = isQuote
         ? 'QUOTATION'
@@ -202,10 +219,14 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       const [logo, signature, qrDataUrl, ...rawProductImages] = await Promise.all([
         recolorLogo('/safawala-crown-dark.png', BRAND_DARK),
         recolorLogo('/ronak-dave-signature.png', BRAND_DARK),
-        QRCode.toDataURL(
-          `upi://pay?pa=${BANK_DETAILS.upi}&pn=${encodeURIComponent('Safawala')}&am=${Math.max(booking.balance_amount, 0).toFixed(2)}&cu=INR`,
-          { margin: 0, scale: 6 },
-        ).catch(() => null),
+        bankDetails.qrCodeImage
+          ? toDataUrl(bankDetails.qrCodeImage)
+          : bankDetails.upi
+            ? QRCode.toDataURL(
+                `upi://pay?pa=${bankDetails.upi}&pn=${encodeURIComponent(bankDetails.accountHolder || 'Safawala')}&am=${Math.max(booking.balance_amount, 0).toFixed(2)}&cu=INR`,
+                { margin: 0, scale: 6 },
+              ).catch(() => null)
+            : Promise.resolve(null),
         ...uniqueImageUrls.map((url) => toDataUrl(url)),
       ]);
       const roundedProductImages = await Promise.all(
@@ -528,13 +549,13 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       const paymentRows: [string, string][] = [
-        ['Bank', BANK_DETAILS.bank],
-        ['A/C Holder', BANK_DETAILS.accountHolder],
-        ['A/C No.', BANK_DETAILS.accountNumber],
-        ['IFSC', BANK_DETAILS.ifsc],
-        ['Branch', BANK_DETAILS.branch],
-        ['UPI', BANK_DETAILS.upi],
-      ];
+        ['Bank', bankDetails.bank],
+        ['A/C Holder', bankDetails.accountHolder],
+        ['A/C No.', bankDetails.accountNumber],
+        ['IFSC', bankDetails.ifsc],
+        ['Branch', bankDetails.branch],
+        ['UPI', bankDetails.upi],
+      ].filter((row): row is [string, string] => Boolean(row[1]));
       for (const [label, value] of paymentRows) {
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...BRAND_DARK);
@@ -548,7 +569,12 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         const qrSize = 22;
         const qrX = right - qrSize - 5;
         const qrY = y + (payBoxH - qrSize - 5) / 2;
-        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+        const qrFormat = qrDataUrl.startsWith('data:image/jpeg')
+          ? 'JPEG'
+          : qrDataUrl.startsWith('data:image/webp')
+            ? 'WEBP'
+            : 'PNG';
+        doc.addImage(qrDataUrl, qrFormat, qrX, qrY, qrSize, qrSize);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(...BRAND_MID);

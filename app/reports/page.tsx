@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { ReportsDashboard, type ReportBooking, type ReportProduct } from '@/components/reports/reports-dashboard';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
@@ -59,5 +59,5 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   }));
   const expenseTotal = expenseRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
-  return <DashboardShell email={user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount, expenseTotal, staffCount, start: safeStart, end: safeEnd }} /></DashboardShell>;
+  return <BookingPortalShell email={user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount, expenseTotal, staffCount, start: safeStart, end: safeEnd }} /></BookingPortalShell>;
 }

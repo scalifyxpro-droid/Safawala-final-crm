@@ -13,6 +13,7 @@ export const ACCESS_MODULES = [
   'inventory',
   'packages',
   'customers',
+  'vendors',
   'ledger',
   'challans',
   'vouchers',
@@ -24,13 +25,24 @@ export type AccessModule = (typeof ACCESS_MODULES)[number];
 
 export const ACCOUNTS_PORTAL_MODULES: AccessModule[] = [
   'bookings',
-  'quotations',
   'customers',
+  'vendors',
   'ledger',
   'challans',
   'vouchers',
   'expenses',
+  'reports',
 ];
+
+export const ACCOUNTS_PORTAL_READ_ONLY_MODULES: AccessModule[] = [
+  'bookings',
+  'customers',
+  'vendors',
+];
+
+export function isAccountsPortalReadOnlyModule(module: AccessModule) {
+  return ACCOUNTS_PORTAL_READ_ONLY_MODULES.includes(module);
+}
 
 // The role-specific portal home is the manager dashboard; the admin dashboard
 // remains excluded because it contains owner-only configuration widgets.
@@ -43,7 +55,7 @@ export const ACCESS_MODULE_META: Record<
   { label: string; description: string; href: string }
 > = {
   dashboard: { label: 'Dashboard', description: 'Business overview', href: '/dashboard' },
-  bookings: { label: 'All bookings', description: 'View and manage bookings', href: '/bookings' },
+  bookings: { label: 'All bookings', description: 'View sales and rental bookings', href: '/bookings' },
   quotations: { label: 'Quotes', description: 'Create and manage quotations', href: '/quotes' },
   create_booking: { label: 'Create booking', description: 'Create an order or quotation', href: '/bookings/new' },
   calendar: { label: 'Calendar', description: 'View the booking calendar', href: '/bookings/calendar' },
@@ -55,7 +67,8 @@ export const ACCESS_MODULE_META: Record<
   inventory: { label: 'Inventory', description: 'View and manage products', href: '/inventory' },
   packages: { label: 'Package Manager', description: 'View and manage packages', href: '/packages' },
   customers: { label: 'Customers', description: 'View customer information', href: '/customers' },
-  ledger: { label: 'Customer ledger', description: 'View customer accounts', href: '/ledger' },
+  vendors: { label: 'Vendors', description: 'View supplier information', href: '/vendors' },
+  ledger: { label: 'Customer ledger', description: 'Manage customer accounts and statements', href: '/ledger' },
   challans: { label: 'Challans', description: 'Manage delivery and account challans', href: '/challans' },
   vouchers: { label: 'Vouchers', description: 'Record receipts and payments', href: '/vouchers' },
   expenses: { label: 'Expenses', description: 'Record and review business expenses', href: '/expenses' },
@@ -76,6 +89,7 @@ export function accessModuleForPath(path: string): AccessModule | null {
   if (path.startsWith('/inventory')) return 'inventory';
   if (path.startsWith('/packages')) return 'packages';
   if (path.startsWith('/customers')) return 'customers';
+  if (path.startsWith('/vendors')) return 'vendors';
   if (path.startsWith('/ledger')) return 'ledger';
   if (path.startsWith('/challans')) return 'challans';
   if (path.startsWith('/vouchers')) return 'vouchers';

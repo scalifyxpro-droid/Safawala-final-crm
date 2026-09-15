@@ -57,10 +57,12 @@ export function CustomerDirectory({
   initialCustomers,
   bookings,
   loadError,
+  readOnly = false,
 }: {
   initialCustomers: CustomerRecord[];
   bookings: CustomerBooking[];
   loadError: string;
+  readOnly?: boolean;
 }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [search, setSearch] = useState('');
@@ -129,12 +131,12 @@ export function CustomerDirectory({
         title="Customers"
         subtitle="Customer details, booking history and outstanding balances"
         backHref="/dashboard"
-        actions={
+        actions={!readOnly ? (
           <Button type="button" size="sm" onClick={() => setEditing(null)}>
             <Plus />
             <span className="hidden sm:inline">Add customer</span>
           </Button>
-        }
+        ) : null}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -231,6 +233,7 @@ export function CustomerDirectory({
                       bookings={bookingsByCustomer.get(customer.id) ?? []}
                       onView={() => setViewing(customer)}
                       onEdit={() => setEditing(customer)}
+                      readOnly={readOnly}
                     />
                   ))}
                 </tbody>
@@ -246,14 +249,14 @@ export function CustomerDirectory({
                 <p className="mt-1 text-sm text-muted-foreground">
                   Adjust your search or add the first customer.
                 </p>
-                <Button
+                {!readOnly ? <Button
                   type="button"
                   className="mt-5"
                   onClick={() => setEditing(null)}
                 >
                   <Plus />
                   Add customer
-                </Button>
+                </Button> : null}
               </div>
             </div>
           )}
@@ -314,11 +317,13 @@ function CustomerRow({
   bookings,
   onView,
   onEdit,
+  readOnly,
 }: {
   customer: CustomerRecord;
   bookings: CustomerBooking[];
   onView: () => void;
   onEdit: () => void;
+  readOnly: boolean;
 }) {
   const total = bookings.reduce(
     (sum, booking) => sum + Number(booking.total),
@@ -385,7 +390,7 @@ function CustomerRow({
       </td>
       <td className="px-5 py-4">
         <div className="flex justify-end gap-2">
-          <Button
+          {!readOnly ? <Button
             type="button"
             variant="outline"
             size="sm"
@@ -394,7 +399,7 @@ function CustomerRow({
           >
             <Pencil />
             Edit
-          </Button>
+          </Button> : null}
           <Button
             type="button"
             variant="ghost"

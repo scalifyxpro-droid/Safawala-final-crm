@@ -127,9 +127,10 @@
   #customer-ledger-print .ledger-print-heading,
   #customer-ledger-print [data-slot='card'] { box-shadow: none !important; break-inside: avoid; }
   #customer-ledger-print .ledger-controls { display: none !important; }
-  #customer-ledger-print .ledger-table { min-width: 100% !important; font-size: 9px !important; color: #211d18 !important; border-collapse: collapse !important; }
-  #customer-ledger-print .ledger-table th { background: #eee7dc !important; color: #211d18 !important; border: 1px solid #9f9384 !important; font-weight: 700 !important; }
-  #customer-ledger-print .ledger-table td { color: #211d18 !important; border: 1px solid #c9c0b5 !important; }
+  #customer-ledger-print .ledger-table { min-width: 100% !important; font-size: 9.5px !important; line-height: 1.35 !important; color: #211d18 !important; border-collapse: collapse !important; }
+  #customer-ledger-print .ledger-table th { background: #f3eee7 !important; color: #211d18 !important; border-top: 0.5px solid #cdbfae !important; border-bottom: 0.5px solid #cdbfae !important; border-left: 0 !important; border-right: 0 !important; font-size: 9px !important; font-weight: 600 !important; }
+  #customer-ledger-print .ledger-table td { color: #211d18 !important; border: 0 !important; border-bottom: 0.5px solid #e4ddd4 !important; }
+  #customer-ledger-print .ledger-table tbody tr:nth-child(even) { background: #fbfaf8 !important; }
   #customer-ledger-print .ledger-table thead { display: table-header-group; }
   #customer-ledger-print .ledger-table tr { break-inside: avoid; }
 }

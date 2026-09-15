@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext, type Tx } from '@/lib/db/client';
+import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 
 export type FinanceMode = 'challans' | 'vouchers' | 'expenses';
 export type FinanceRecord = Record<string, unknown> & { id: number };
@@ -107,6 +108,7 @@ async function deleteRecord(tx: Tx, ownerId: string, mode: FinanceMode, id: numb
 }
 
 export async function createFinanceRecordAction(mode: FinanceMode, payload: Record<string, unknown>): Promise<FinanceRecord> {
+  await assertStaffPortalWriteAccess(mode);
   const user = await requireUser();
   const record = await withUserContext(user.id, async (tx) => insertRecord(tx, await financeOwnerId(tx, user.id, mode), mode, payload));
   if (!record) throw new Error('Unable to save record.');
@@ -115,6 +117,7 @@ export async function createFinanceRecordAction(mode: FinanceMode, payload: Reco
 }
 
 export async function updateFinanceRecordAction(mode: FinanceMode, id: number, payload: Record<string, unknown>): Promise<FinanceRecord> {
+  await assertStaffPortalWriteAccess(mode);
   const user = await requireUser();
   const record = await withUserContext(user.id, async (tx) => updateRecord(tx, await financeOwnerId(tx, user.id, mode), mode, id, payload));
   if (!record) throw new Error('Unable to update record — it may belong to a different account.');
@@ -123,6 +126,7 @@ export async function updateFinanceRecordAction(mode: FinanceMode, id: number, p
 }
 
 export async function deleteFinanceRecordAction(mode: FinanceMode, id: number): Promise<void> {
+  await assertStaffPortalWriteAccess(mode);
   const user = await requireUser();
   await withUserContext(user.id, async (tx) => deleteRecord(tx, await financeOwnerId(tx, user.id, mode), mode, id));
   revalidatePath(`/${mode}`);

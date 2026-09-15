@@ -4,6 +4,7 @@ import { syncEventJobs } from '@/lib/event-jobs/store';
 import type { ConfirmedBookingSummary } from '@/lib/event-jobs/types';
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 
 type BookingForEventJob = {
   id: number;
@@ -88,6 +89,7 @@ async function initializeEventJob(userId: string, bookingId: number) {
 
 export async function initializeBookingEventJobAction(bookingId: number) {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await initializeEventJob(user.id, bookingId);
     return { error: '' };
@@ -97,6 +99,7 @@ export async function initializeBookingEventJobAction(bookingId: number) {
 }
 
 export async function convertQuoteToBookingAction(quoteId: number) {
+  await assertStaffPortalWriteAccess('bookings');
   const user = await requireUser();
   let bookingId: number;
   try {
@@ -131,6 +134,7 @@ export async function convertQuoteToBookingAction(quoteId: number) {
 
 export async function changeBookingStatusAction(bookingId: number, nextStatus: string) {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       tx.unsafe(`select * from public.change_booking_status($1, $2)`, [bookingId, nextStatus]),

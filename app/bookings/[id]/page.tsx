@@ -71,6 +71,7 @@ export default async function BookingDetailsPage({
   if (!user) redirect('/login');
   const staffSession = await getStaffSession();
   const quoteOnly = staffSession?.accessType === 'staff';
+  const readOnly = staffSession?.portalKind === 'accounts';
 
   const numericId = Number(id);
   if (!Number.isFinite(numericId)) notFound();
@@ -164,7 +165,7 @@ export default async function BookingDetailsPage({
             </>
           }
         />
-        {!quoteOnly ? <BookingActions
+        {!quoteOnly && !readOnly ? <BookingActions
           booking={{
             id: booking.id,
             booking_type: booking.booking_type,

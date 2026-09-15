@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { FinanceManager, type FinanceRecord } from '@/components/finance/finance-manager';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
@@ -14,5 +14,5 @@ export default async function ChallansPage() {
   } catch (err) {
     error = err instanceof Error ? err.message : 'Unable to load challans.';
   }
-  return <DashboardShell email={user.email ?? 'Safawala user'}><FinanceManager mode="challans" initialRecords={data} loadError={error} email={user.email ?? ''} /></DashboardShell>;
+  return <BookingPortalShell email={user.email ?? 'Safawala user'}><FinanceManager mode="challans" initialRecords={data} loadError={error} email={user.email ?? ''} /></BookingPortalShell>;
 }

@@ -2,6 +2,7 @@
 
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 
 export type CustomerRecord = {
   id: number;
@@ -28,6 +29,7 @@ export async function saveCustomerAction(
 ): Promise<{ data: CustomerRecord | null; error: string }> {
   const user = await requireUser();
   try {
+    await assertStaffPortalWriteAccess('customers');
     const record = await withUserContext(user.id, async (tx) => {
       if (input.id) {
         const [row] = await tx<CustomerRecord[]>`

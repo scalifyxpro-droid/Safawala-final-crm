@@ -30,6 +30,7 @@ import {
 } from '@/lib/bookings';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext, type DbParameter } from '@/lib/db/client';
+import { getStaffSession } from '@/lib/staff-portal/session';
 
 export const dynamic = 'force-dynamic';
 const PAGE_SIZES = [10, 25, 50, 100] as const;
@@ -55,6 +56,8 @@ export default async function BookingsPage({ searchParams }: Props) {
   const created = typeof params.created === 'string' ? params.created : '';
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  const staffSession = await getStaffSession();
+  const readOnly = staffSession?.portalKind === 'accounts';
 
   const from = (page - 1) * pageSize;
 
@@ -163,12 +166,12 @@ export default async function BookingsPage({ searchParams }: Props) {
           title="All bookings"
           subtitle="Sales, rentals, payments and events"
           backHref="/dashboard"
-          actions={
+          actions={!readOnly ? (
             <Button size="sm" render={<Link href="/bookings/new" />}>
               <Plus />
               <span className="hidden sm:inline">Create booking</span>
             </Button>
-          }
+          ) : null}
         />
 
         {created ? (
@@ -229,7 +232,7 @@ export default async function BookingsPage({ searchParams }: Props) {
               <State
                 title="No bookings found"
                 description={`No ${type} bookings match the current filters.`}
-                action
+                action={!readOnly}
               />
             ) : (
               <div className="overflow-x-auto">
@@ -322,7 +325,7 @@ export default async function BookingsPage({ searchParams }: Props) {
                               <Eye />
                               <span>Open</span>
                             </Button>
-                            <Button
+                            {!readOnly ? <Button
                               variant="outline"
                               size="sm"
                               render={
@@ -335,7 +338,7 @@ export default async function BookingsPage({ searchParams }: Props) {
                             >
                               <Pencil />
                               <span>Edit</span>
-                            </Button>
+                            </Button> : null}
                             <BookingPdfButton booking={booking} />
                           </div>
                         </td>

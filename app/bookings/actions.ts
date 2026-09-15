@@ -2,6 +2,7 @@
 
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 
 type UpdateBookingDetailsPayload = {
   customer_id: number;
@@ -33,6 +34,7 @@ export async function updateBookingDetailsAction(
   payload: UpdateBookingDetailsPayload,
 ): Promise<{ error: string }> {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       tx`select * from public.update_booking_details(
@@ -88,6 +90,7 @@ export async function createBookingAction(
   let user: { id: string };
   try {
     user = await requireUser();
+    await assertStaffPortalWriteAccess('bookings');
   } catch {
     return {
       id: null,
@@ -206,6 +209,7 @@ export async function createBookingCustomerAction(
   input: { name: string; phone: string; address: string },
 ): Promise<{ data: { id: number; name: string; phone: string; email: string | null; address: string | null } | null; error: string }> {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     const [customer] = await withUserContext(user.id, (tx) => tx<
       { id: number; name: string; phone: string; email: string | null; address: string | null }[]
@@ -227,6 +231,7 @@ export async function recordBookingPaymentAction(
   input: { amount: number; method: string; reference: string | null },
 ): Promise<{ error: string }> {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       tx.unsafe(`select * from public.record_booking_payment($1, $2, $3, $4)`, [
@@ -247,6 +252,7 @@ export async function processRentalReturnAction(
   input: { damage: number; late: number; condition: string | null },
 ): Promise<{ error: string }> {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       tx.unsafe(`select * from public.process_rental_return($1, $2, $3, $4)`, [
@@ -267,6 +273,7 @@ export async function updateBookingFieldsAction(
   fields: UpdateBookingFieldsPayload,
 ): Promise<{ error: string }> {
   try {
+    await assertStaffPortalWriteAccess('bookings');
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       tx`

@@ -186,7 +186,7 @@ export function CalendarDayGrid({
 
   return (
     <>
-      <div className="flex flex-col gap-2 rounded-xl border border-[#e4d2b6] bg-[#fffaf1] px-3 py-3 dark:bg-[#241e17] sm:flex-row sm:items-center sm:justify-between sm:px-4">
+      <div className="flex flex-col gap-2 rounded-xl border border-[#dfc49b] bg-white/70 px-3 py-3 shadow-sm backdrop-blur-sm dark:border-[#493822] dark:bg-white/[0.035] sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div className="flex items-center gap-2 text-sm">
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#a86f2d] text-white">
             <Sparkles className="size-4" />
@@ -228,8 +228,8 @@ export function CalendarDayGrid({
           ) : null}
         </div>
       </div>
-      <Card className="gap-0 overflow-hidden border-border py-0 shadow-level-1 ring-0 sm:hidden">
-        <div className="grid grid-cols-7 border-b bg-[#fcfaf7] dark:bg-[#241e17]">
+      <Card className="gap-0 overflow-hidden border-[#dfc7a4] bg-white/90 py-0 shadow-level-1 ring-0 dark:border-[#493822] dark:bg-card sm:hidden">
+        <div className="grid grid-cols-7 border-b border-[#dfc7a4] bg-[#f3e4ce] dark:border-[#493822] dark:bg-[#302519]">
           {WEEKDAYS.map((day) => (
             <div
               key={day}
@@ -288,8 +288,8 @@ export function CalendarDayGrid({
           })}
         </div>
       </Card>
-      <Card className="hidden gap-0 overflow-x-auto border-border py-0 shadow-level-1 ring-0 sm:block">
-        <div className="grid min-w-[840px] grid-cols-7 border-b bg-[#fcfaf7] dark:bg-[#241e17]">
+      <Card className="hidden gap-0 overflow-x-auto border-[#dfc7a4] bg-white/90 py-0 shadow-level-1 ring-0 dark:border-[#493822] dark:bg-card sm:block">
+        <div className="grid min-w-[840px] grid-cols-7 border-b border-[#dfc7a4] bg-[#f3e4ce] dark:border-[#493822] dark:bg-[#302519]">
           {WEEKDAYS.map((day) => (
             <div
               key={day}

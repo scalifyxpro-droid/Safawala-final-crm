@@ -41,10 +41,10 @@ export function StylistAssignmentPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-xs font-semibold">Interested stylists</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
             {approved.length} of {requiredCount} selected
           </p>
         </div>
@@ -79,7 +79,7 @@ export function StylistAssignmentPanel({
       {!complete && interested.length ? (
         <form action={action} className="space-y-3">
           <input type="hidden" name="jobId" value={jobId} />
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             {interested.map((applicant) => {
               const checked = selected.includes(applicant.id);
               const limitReached = selected.length >= remaining;
@@ -107,7 +107,7 @@ export function StylistAssignmentPanel({
               );
             })}
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2">
             <p className="text-xs text-muted-foreground">
               Select exactly {remaining}. Other applicants close automatically
               after assignment.
@@ -115,6 +115,7 @@ export function StylistAssignmentPanel({
             <Button
               type="submit"
               size="sm"
+              className="w-full"
               disabled={pending || selected.length !== remaining}
             >
               {pending ? <LoaderCircle className="animate-spin" /> : <Check />}

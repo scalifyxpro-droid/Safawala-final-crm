@@ -32,8 +32,8 @@ export async function proxy(request: NextRequest) {
   // checks in their own server-side guards (see lib/staff-portal/guard.ts).
   // This is only a routing shortcut so a signed-out visit to a staff-portal
   // page bounces straight to its login page without rendering first.
-  if (path.startsWith('/staff-portal') && path !== '/staff-portal/login') {
-    return claims ? response : NextResponse.redirect(new URL('/staff-portal/login', request.url));
+  if (path.startsWith('/staff-portal') && path !== '/staff-portal/login' && !claims) {
+    return NextResponse.redirect(new URL('/staff-portal/login', request.url));
   }
 
   if (!claims) {
@@ -42,11 +42,11 @@ export async function proxy(request: NextRequest) {
   }
 
   const requestedModule = accessModuleForPath(path);
-  const { role, staffAccountActive, canAccessModule } = await withUserContext(claims.sub, async (tx) => {
+  const { role, staffAccountActive, staffPortalKind, canAccessModule } = await withUserContext(claims.sub, async (tx) => {
     const [profileRows, staffRows, accessRows] = await Promise.all([
       tx<{ role: string }[]>`select role from public.profiles where id = ${claims.sub}`,
-      tx<{ portal_active: boolean; is_active: boolean }[]>`
-        select portal_active, is_active from public.staff_members where user_id = ${claims.sub}
+      tx<{ portal_active: boolean; is_active: boolean; portal_kind: string }[]>`
+        select portal_active, is_active, portal_kind from public.staff_members where user_id = ${claims.sub}
       `,
       requestedModule
         ? tx<{ staff_can_access: boolean }[]>`select public.staff_can_access(${requestedModule})`
@@ -61,6 +61,7 @@ export async function proxy(request: NextRequest) {
     return {
       role: profileRole,
       staffAccountActive: profileRole === 'staff' ? Boolean(staff?.portal_active && staff.is_active) : true,
+      staffPortalKind: staff?.portal_kind ?? 'staff',
       canAccessModule: Boolean(accessRows[0]?.staff_can_access),
     };
   });
@@ -83,6 +84,15 @@ export async function proxy(request: NextRequest) {
 
   if (role === 'staff' && staffAccountActive && !path.startsWith('/staff-portal')) {
     if (requestedModule && canAccessModule) return response;
+    return NextResponse.redirect(new URL('/staff-portal', request.url));
+  }
+  if (
+    role === 'staff' &&
+    staffAccountActive &&
+    (staffPortalKind === 'accounts' || staffPortalKind === 'manager') &&
+    path.startsWith('/staff-portal/') &&
+    path !== '/staff-portal/notifications'
+  ) {
     return NextResponse.redirect(new URL('/staff-portal', request.url));
   }
   if (role === 'admin' && path.startsWith('/staff-portal')) {

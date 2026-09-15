@@ -82,12 +82,13 @@ export function LedgerPdfButton({
 
       const tableHeader = () => {
         doc.setFillColor(...ROW_TINT);
+        doc.rect(left, y, right - left, 8, 'F');
         doc.setDrawColor(...BORDER_SOFT);
-        doc.setLineWidth(0.3);
-        doc.rect(left, y, right - left, 8, 'FD');
-        columns.forEach((column) => doc.rect(column.x, y, column.w, 8, 'S'));
+        doc.setLineWidth(0.16);
+        doc.line(left, y, right, y);
+        doc.line(left, y + 8, right, y + 8);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.4);
+        doc.setFontSize(7.2);
         doc.setTextColor(...BRAND_DARK);
         columns.forEach((column) =>
           doc.text(
@@ -149,8 +150,9 @@ export function LedgerPdfButton({
       };
 
       firstHeader();
-      for (const transaction of transactions) {
-        if (y + 9 > height - 10) {
+      for (const [rowIndex, transaction] of transactions.entries()) {
+        const rowHeight = 9.4;
+        if (y + rowHeight > height - 10) {
           doc.addPage('a4', 'landscape');
           y = 11;
           doc.setFont('helvetica', 'bold');
@@ -177,22 +179,26 @@ export function LedgerPdfButton({
           rupees(transaction.balance),
           transaction.status === 'completed' ? 'Paid' : 'Due',
         ];
+        if (rowIndex % 2 === 1) {
+          doc.setFillColor(251, 250, 248);
+          doc.rect(left, y, right - left, rowHeight, 'F');
+        }
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.2);
+        doc.setFontSize(7.4);
         doc.setTextColor(...BRAND_DARK);
         columns.forEach((column, index) => {
           const clipped = doc.splitTextToSize(values[index], column.w - 3)[0] || '-';
           doc.text(
             clipped,
             column.align === 'right' ? column.x + column.w - 1.5 : column.x + 1.5,
-            y + 6,
+            y + 6.2,
             { align: column.align },
           );
-          doc.setDrawColor(...LINE_FAINT);
-          doc.setLineWidth(0.18);
-          doc.rect(column.x, y, column.w, 9, 'S');
         });
-        y += 9;
+        doc.setDrawColor(...LINE_FAINT);
+        doc.setLineWidth(0.1);
+        doc.line(left, y + rowHeight, right, y + rowHeight);
+        y += rowHeight;
       }
       if (!transactions.length) {
         doc.setFont('helvetica', 'normal');

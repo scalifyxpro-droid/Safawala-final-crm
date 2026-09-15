@@ -756,7 +756,7 @@ function StaffDialog({
               </label> : null}
               {portalKind === 'accounts' ? (
                 <div className="rounded-lg border border-[#e4d2b6] bg-[#f5ead8] p-3 text-xs text-[#70481c] dark:bg-[#33291c]">
-                  Accounts Portal includes bookings, quotations, customers, ledgers, challans, vouchers and expenses.
+                  Accounts Portal includes view-only bookings, customers and vendors, plus full ledger, challan, voucher, expense and report access.
                 </div>
               ) : portalKind === 'manager' ? (
                 <div className="rounded-lg border border-[#e4d2b6] bg-[#f5ead8] p-3 text-xs text-[#70481c] dark:bg-[#33291c]">
@@ -1182,7 +1182,7 @@ function CreateLoginForm({
       {portalKind === 'accounts' ? (
         <div className="rounded-xl border border-[#e4d2b6] bg-[#f5ead8] p-4 text-sm text-[#70481c] dark:bg-[#33291c]">
           <strong>Accounts Portal preset</strong>
-          <p className="mt-1">Bookings, quotations, customers, ledgers, challans, vouchers and expenses.</p>
+          <p className="mt-1">View-only bookings, customers and vendors, plus full ledgers, challans, vouchers, expenses and reports.</p>
         </div>
       ) : portalKind === 'manager' ? (
         <div className="rounded-xl border border-[#e4d2b6] bg-[#f5ead8] p-4 text-sm text-[#70481c] dark:bg-[#33291c]">

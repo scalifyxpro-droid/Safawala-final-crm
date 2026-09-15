@@ -22,6 +22,7 @@ export async function BookingPortalShell({
         accessModules={staffSession.accessModules}
         permissions={staffSession.permissions}
         isMainId={staffSession.isMainId}
+        portalKind={staffSession.portalKind}
       >
         {children}
       </StaffPortalShell>

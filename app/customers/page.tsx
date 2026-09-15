@@ -3,12 +3,14 @@ import { CustomerDirectory, type CustomerBooking, type CustomerRecord } from '@/
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { getStaffSession } from '@/lib/staff-portal/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  const staffSession = await getStaffSession();
 
   let customers: CustomerRecord[] = [];
   let bookings: CustomerBooking[] = [];
@@ -34,7 +36,12 @@ export default async function CustomersPage() {
 
   return (
     <BookingPortalShell email={user.email ?? 'Safawala user'}>
-      <CustomerDirectory initialCustomers={customers} bookings={bookings} loadError={loadError} />
+      <CustomerDirectory
+        initialCustomers={customers}
+        bookings={bookings}
+        loadError={loadError}
+        readOnly={staffSession?.portalKind === 'accounts'}
+      />
     </BookingPortalShell>
   );
 }

@@ -55,32 +55,34 @@ export default async function StylistApprovalsPage() {
           subtitle="Assign interested stylists to rental events"
           backHref="/dashboard"
         />
-        <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
-          <CardContent className="grid divide-y p-0 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <section className="grid gap-3 sm:grid-cols-3">
             <Summary
               icon={<CalendarClock />}
               label="Rental events"
               value={jobs.length}
+              tone="primary"
             />
-            <Summary icon={<UsersRound />} label="Awaiting" value={awaiting} />
-            <Summary icon={<UserCheck />} label="Assigned" value={assigned} />
-          </CardContent>
-        </Card>
+            <Summary icon={<UsersRound />} label="Awaiting" value={awaiting} tone="warning" />
+            <Summary icon={<UserCheck />} label="Assigned" value={assigned} tone="success" />
+        </section>
 
         {jobs.length ? (
-          <Card className="gap-0 overflow-hidden border-border py-0 shadow-level-1 ring-0">
-            <PaginatedList itemLabel="rental events">
+          <Card className="gap-0 overflow-hidden border-[#e2cfb5] bg-[radial-gradient(circle_at_top_left,#fbf4e9_0%,#f6efe5_38%,#f3ede5_100%)] py-0 shadow-level-1 ring-0 dark:border-[#493822] dark:bg-[radial-gradient(circle_at_top_left,#2d2419_0%,#211c16_55%)]">
+            <PaginatedList
+              itemLabel="rental events"
+              contentClassName="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3"
+            >
               {jobs.map((job) => (
-                <div
+                <article
                   key={job.id}
-                  className="border-b border-border p-4 last:border-b-0 sm:p-5"
+                  className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-[#e4d2b6] bg-white shadow-level-1 transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-level-2 dark:border-[#493822] dark:bg-card"
                 >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex flex-1 flex-col p-4">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <Link
                           href={`/event-jobs/${job.id}`}
-                          className="text-xs font-semibold text-primary hover:underline"
+                          className="min-w-0 truncate text-xs font-semibold text-primary hover:underline"
                         >
                           {job.id}
                         </Link>
@@ -91,33 +93,33 @@ export default async function StylistApprovalsPage() {
                           Rental
                         </Badge>
                       </div>
-                      <h2 className="mt-1 text-base font-semibold">
+                      <h2 className="mt-2 truncate text-base font-semibold">
                         {job.eventSummary.customerName || 'Customer not added'}
                       </h2>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {job.eventSummary.eventName} · {job.bookingNumber}
                       </p>
-                      <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1.5">
+                      <div className="mt-3 grid gap-1.5 rounded-lg bg-[#fcfaf7] px-3 py-2.5 text-xs text-muted-foreground dark:bg-[#241e17]">
+                        <span className="flex min-w-0 items-center gap-1.5">
                           <CalendarClock className="size-3.5" />
                           {friendlyDate(job.eventSummary.eventDate)} ·{' '}
                           {friendlyTime(job.eventSummary.eventTime)}
                         </span>
                         {job.eventSummary.venue ? (
-                          <span className="flex items-center gap-1.5">
-                            <MapPin className="size-3.5" />
-                            {job.eventSummary.venue}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <MapPin className="size-3.5 shrink-0" />
+                            <span className="truncate">{job.eventSummary.venue}</span>
                           </span>
                         ) : null}
-                      </p>
+                      </div>
                     </div>
                     <form
                       action={setStylistsRequiredAction}
-                      className="flex w-full items-end gap-2 lg:w-auto"
+                      className="mt-3 flex items-end gap-2"
                     >
                       <input type="hidden" name="jobId" value={job.id} />
-                      <label className="flex-1 text-[11px] font-medium text-muted-foreground lg:w-28">
-                        Required
+                      <label className="flex-1 text-[11px] font-medium text-muted-foreground">
+                        Stylists required
                         <input
                           name="count"
                           type="number"
@@ -131,7 +133,7 @@ export default async function StylistApprovalsPage() {
                       </Button>
                     </form>
                   </div>
-                  <div className="mt-4 border-t border-border pt-3">
+                  <div className="border-t border-[#eadcc8] bg-[#fffdf9] p-4 dark:border-[#493822] dark:bg-[#1f1a15]">
                     <StylistAssignmentPanel
                       jobId={job.id}
                       requiredCount={job.stylistsRequiredCount}
@@ -142,7 +144,7 @@ export default async function StylistApprovalsPage() {
                       }))}
                     />
                   </div>
-                </div>
+                </article>
               ))}
             </PaginatedList>
           </Card>
@@ -172,20 +174,27 @@ function Summary({
   icon,
   label,
   value,
+  tone,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
+  tone: 'primary' | 'warning' | 'success';
 }) {
+  const iconTone = tone === 'success'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40'
+    : tone === 'warning'
+      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40'
+      : 'border-[#e4d2b6] bg-[#f5ead8] text-primary dark:border-[#493822] dark:bg-[#33291c]';
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span className="grid size-8 place-items-center rounded-lg bg-[#f5ead8] dark:bg-[#33291c] text-primary [&_svg]:size-4">
+    <div className="flex min-h-[96px] items-center justify-between gap-4 rounded-xl border border-border bg-white px-4 py-4 shadow-level-1 dark:bg-card sm:px-5">
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+        <strong className="mt-1 block text-2xl font-semibold tracking-[-0.03em] tabular-nums">{value}</strong>
+      </div>
+      <span className={`grid size-10 shrink-0 place-items-center rounded-xl border [&_svg]:size-4.5 ${iconTone}`}>
         {icon}
       </span>
-      <div className="flex items-baseline gap-2">
-        <strong className="text-lg tabular-nums">{value}</strong>
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </div>
     </div>
   );
 }

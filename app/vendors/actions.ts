@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 
 async function owner() {
   const user = await requireUser().catch(() => null);
@@ -42,6 +43,7 @@ function parseVendor(form: FormData) {
 }
 
 export async function createVendorAction(form: FormData) {
+  await assertStaffPortalWriteAccess('vendors');
   const { ownerId } = await owner();
   const v = parseVendor(form);
   try {
@@ -56,6 +58,7 @@ export async function createVendorAction(form: FormData) {
 }
 
 export async function updateVendorAction(form: FormData) {
+  await assertStaffPortalWriteAccess('vendors');
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
   const { ownerId } = await owner();
@@ -74,6 +77,7 @@ export async function updateVendorAction(form: FormData) {
 }
 
 export async function toggleVendorStatusAction(form: FormData) {
+  await assertStaffPortalWriteAccess('vendors');
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
   const active = text(form, 'is_active') === 'true';
@@ -91,6 +95,7 @@ export async function toggleVendorStatusAction(form: FormData) {
 }
 
 export async function deleteVendorAction(form: FormData) {
+  await assertStaffPortalWriteAccess('vendors');
   const id = Number(text(form, 'id'));
   if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid vendor.');
   const { ownerId } = await owner();

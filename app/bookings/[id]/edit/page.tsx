@@ -74,7 +74,9 @@ export default async function EditBookingPage({
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const staffSession = await getStaffSession();
-  if (staffSession?.accessType === 'staff') redirect(`/bookings/${id}`);
+  if (staffSession?.accessType === 'staff' || staffSession?.portalKind === 'accounts') {
+    redirect(`/bookings/${id}`);
+  }
 
   const numericId = Number(id);
   if (!Number.isFinite(numericId)) notFound();

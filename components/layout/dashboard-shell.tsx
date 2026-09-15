@@ -1,6 +1,7 @@
 'use client';
 
-import { useLayoutEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandMark } from '@/components/brand-mark';
@@ -156,7 +157,26 @@ function SidebarNavigation() {
 
 function AccountPanel({ email }: { email: string }) {
   const [open, setOpen] = useState(false);
-  const initials = email.slice(0, 2).toUpperCase();
+  const [profile, setProfile] = useState<{ name: string; avatarUrl: string | null; designation: string | null }>({
+    name: 'Safawala Admin', avatarUrl: null, designation: null,
+  });
+  useEffect(() => {
+    let active = true;
+    async function loadProfile() {
+      try {
+        const response = await fetch('/api/settings/profile-summary', { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json() as { data?: typeof profile | null };
+        if (active && payload.data) setProfile(payload.data);
+      } catch {
+        // Keep the stable account fallback if the optional profile lookup is unavailable.
+      }
+    }
+    void loadProfile();
+    window.addEventListener('profile-settings-updated', loadProfile);
+    return () => { active = false; window.removeEventListener('profile-settings-updated', loadProfile); };
+  }, []);
+  const initials = profile.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || email.slice(0, 2).toUpperCase();
 
   return (
     <div className="rounded-xl border border-[#e4d2b6] bg-[#fcfaf7] dark:bg-[#241e17] p-1.5 shadow-level-1 dark:border-[#3a2f22] dark:bg-[#241e17]">
@@ -168,13 +188,13 @@ function AccountPanel({ email }: { email: string }) {
       >
         <span
           aria-hidden="true"
-          className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-[11px] font-semibold text-white shadow-sm"
+          className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary text-[11px] font-semibold text-white shadow-sm"
         >
-          {initials}
+          {profile.avatarUrl ? <Image src={profile.avatarUrl} alt="" fill unoptimized className="object-cover" /> : initials}
         </span>
         <span className="min-w-0 flex-1">
           <strong className="block truncate text-xs font-semibold">
-            Safawala Admin
+            {profile.name}
           </strong>
           <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
             {email}

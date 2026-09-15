@@ -1,14 +1,16 @@
 import { redirect } from 'next/navigation';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
+import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { VendorManager, type Vendor } from '@/components/vendors/vendor-manager';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { getStaffSession } from '@/lib/staff-portal/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function VendorsPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  const staffSession = await getStaffSession();
 
   let vendors: Vendor[] = [];
   let loadError = '';
@@ -23,8 +25,12 @@ export default async function VendorsPage() {
   }
 
   return (
-    <DashboardShell email={user.email ?? 'Safawala user'}>
-      <VendorManager vendors={vendors} loadError={loadError} />
-    </DashboardShell>
+    <BookingPortalShell email={user.email ?? 'Safawala user'}>
+      <VendorManager
+        vendors={vendors}
+        loadError={loadError}
+        readOnly={staffSession?.portalKind === 'accounts'}
+      />
+    </BookingPortalShell>
   );
 }

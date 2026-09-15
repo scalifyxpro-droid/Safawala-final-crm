@@ -3,7 +3,7 @@
 import { Children, useMemo, useState, type ReactNode } from 'react';
 import { ListPagination } from '@/components/ui/list-pagination';
 
-export function PaginatedList({ children, itemLabel = 'items', pageSize: initialPageSize = 10 }: { children: ReactNode; itemLabel?: string; pageSize?: number }) {
+export function PaginatedList({ children, itemLabel = 'items', pageSize: initialPageSize = 10, contentClassName }: { children: ReactNode; itemLabel?: string; pageSize?: number; contentClassName?: string }) {
   const items = useMemo(() => Children.toArray(children), [children]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
@@ -14,7 +14,7 @@ export function PaginatedList({ children, itemLabel = 'items', pageSize: initial
   return (
     <>
       <ListPagination total={items.length} page={safePage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} itemLabel={itemLabel} />
-      {visible}
+      {contentClassName ? <div className={contentClassName}>{visible}</div> : visible}
     </>
   );
 }

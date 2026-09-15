@@ -63,9 +63,11 @@ function initialsOf(name: string) {
 export function VendorManager({
   vendors,
   loadError = '',
+  readOnly = false,
 }: {
   vendors: Vendor[];
   loadError?: string;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -199,10 +201,10 @@ export function VendorManager({
               />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-            <Button type="button" size="sm" onClick={openCreate}>
+            {!readOnly ? <Button type="button" size="sm" onClick={openCreate}>
               <Plus className="size-4" />
               <span className="hidden sm:inline">Add Vendor</span>
-            </Button>
+            </Button> : null}
           </>
         }
       />
@@ -342,7 +344,7 @@ export function VendorManager({
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <button
+                        {!readOnly ? <button
                           type="button"
                           onClick={() => toggleStatus(vendor)}
                           aria-label={`${vendor.is_active ? 'Deactivate' : 'Activate'} ${vendor.name}`}
@@ -358,7 +360,18 @@ export function VendorManager({
                           >
                             {vendor.is_active ? 'Active' : 'Inactive'}
                           </Badge>
-                        </button>
+                        </button> : (
+                          <Badge
+                            variant="outline"
+                            className={
+                              vendor.is_active
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-red-200 bg-red-50 text-red-700'
+                            }
+                          >
+                            {vendor.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-1">
@@ -370,22 +383,22 @@ export function VendorManager({
                           >
                             <Eye className="size-4" />
                           </Button>
-                          <Button
+                          {!readOnly ? <Button
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => openEdit(vendor)}
                             aria-label={`Edit ${vendor.name}`}
                           >
                             <Pencil className="size-4" />
-                          </Button>
-                          <Button
+                          </Button> : null}
+                          {!readOnly ? <Button
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => remove(vendor)}
                             aria-label={`Delete ${vendor.name}`}
                           >
                             <Trash2 className="size-4 text-destructive" />
-                          </Button>
+                          </Button> : null}
                         </div>
                       </td>
                     </tr>
@@ -401,12 +414,14 @@ export function VendorManager({
                 </span>
                 <h3 className="mt-4 font-semibold">No vendors found</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Adjust your search or add the first vendor.
+                  {readOnly
+                    ? 'No vendor records match the current filters.'
+                    : 'Adjust your search or add the first vendor.'}
                 </p>
-                <Button type="button" className="mt-5" onClick={openCreate}>
+                {!readOnly ? <Button type="button" className="mt-5" onClick={openCreate}>
                   <Plus className="size-4" />
                   Add Vendor
-                </Button>
+                </Button> : null}
               </div>
             </div>
           )}

@@ -62,7 +62,12 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
         { key: 'create-booking', ...ACCESS_MODULE_META.create_booking },
         { key: 'quotations', ...ACCESS_MODULE_META.quotations },
       ]
-    : [
+    : isSpecialPortal
+      ? session.accessModules.map((module) => ({
+          key: `access-${module}`,
+          ...ACCESS_MODULE_META[module],
+        }))
+      : [
         ...session.accessModules.map((module) => ({
           key: `access-${module}`,
           ...ACCESS_MODULE_META[module],
@@ -71,7 +76,7 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
           key: `staff-${module}`,
           ...STAFF_MODULE_META[module],
         })),
-      ];
+        ];
   const seenModuleHrefs = new Set<string>();
   const moduleCards = rawModuleCards.flatMap((module) => {
     if (!module.href || seenModuleHrefs.has(module.href)) return [];
