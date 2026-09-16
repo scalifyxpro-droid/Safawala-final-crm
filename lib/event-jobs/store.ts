@@ -32,6 +32,7 @@ import type {
   StylistTravelLeg,
   WarehouseItemPrep,
 } from './types';
+import { sortJobsByEventSchedule } from './sorting';
 
 function normalizeJob(job: EventJob): EventJob {
   // PostgreSQL `bigint` values are returned as strings by the postgres driver.
@@ -128,7 +129,7 @@ async function readAllRaw(id?: string): Promise<EventJob[]> {
     .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
     .map(normalizeJob);
-  return jobs;
+  return sortJobsByEventSchedule(jobs);
 }
 
 // Self-healing pass: an `event_jobs` row is created the instant a booking is
@@ -323,7 +324,7 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
     interestsByJob.set(jobIdKey, [...(interestsByJob.get(jobIdKey) ?? []), interest]);
   }
 
-  return jobRows
+  return sortJobsByEventSchedule(jobRows
     .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
     .map((job) =>
@@ -332,7 +333,7 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
         stylistInterests:
           interestsByJob.get(job.id) ?? job.stylistInterests ?? [],
       }),
-    );
+    ));
 }
 
 async function writeAll(jobs: EventJob[]) {
@@ -590,10 +591,10 @@ export const listActiveJobs = cache(async (): Promise<EventJob[]> => {
   const rows = await withServiceRole((tx) => tx<{ state: EventJob }[]>`
     select state from public.event_jobs where status = 'active' order by created_at desc
   `);
-  return rows
+  return sortJobsByEventSchedule(rows
     .map((row) => row.state)
     .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
-    .map(normalizeJob);
+    .map(normalizeJob));
 });
 
 export const getJob = cache(async (id: string): Promise<EventJob | null> => {
@@ -810,7 +811,7 @@ export async function syncEventJobs(
       }
     }
   }
-  return jobs;
+  return sortJobsByEventSchedule(jobs);
 }
 
 export function currentStageSummary(job: EventJob): string {

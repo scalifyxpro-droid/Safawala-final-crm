@@ -19,6 +19,7 @@ import { PaginatedList } from '@/components/ui/paginated-list';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { listJobs } from '@/lib/event-jobs/store';
 import { getCurrentUser } from '@/lib/auth/session';
+import { compareJobsByEventSchedule } from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,9 +39,7 @@ export default async function TravelPage() {
           ),
         })),
     )
-    .sort((a, b) =>
-      a.job.eventSummary.eventDate.localeCompare(b.job.eventSummary.eventDate),
-    );
+    .sort((a, b) => compareJobsByEventSchedule(a.job, b.job));
   const sentCount = rows.filter(({ plan }) => plan?.ticketConfirmedAt).length;
 
   return (
@@ -52,7 +51,7 @@ export default async function TravelPage() {
           backHref="/dashboard"
         />
 
-        <section className="grid gap-3 sm:grid-cols-3">
+        <section className="grid gap-3 md:grid-cols-3">
           <Summary
             icon={<UserRound />}
             label="Selected staff"

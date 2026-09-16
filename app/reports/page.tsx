@@ -58,6 +58,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     reorder_level: Number(product.reorder_level) || 0,
   }));
   const expenseTotal = expenseRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const expenseCount = expenseRows.length;
 
-  return <BookingPortalShell email={user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount, expenseTotal, staffCount, start: safeStart, end: safeEnd }} /></BookingPortalShell>;
+  return <BookingPortalShell email={user.email ?? 'Safawala user'}><ReportsDashboard data={{ bookings, products, customerCount, expenseTotal, expenseCount, staffCount, start: safeStart, end: safeEnd }} /></BookingPortalShell>;
 }

@@ -90,7 +90,7 @@ export default async function EventJobsPage() {
         left join public.customers c on c.id = b.customer_id
         where b.is_quote = false
           and b.status not in ('draft', 'cancelled')
-        order by b.event_date desc
+        order by b.event_date asc, b.event_time asc nulls last, b.id asc
       `;
       const bookingIds = bookingRows.map((booking) => booking.id);
       const itemRows = bookingIds.length
@@ -145,7 +145,14 @@ export default async function EventJobsPage() {
     .filter((row): row is { job: (typeof jobs)[number]; booking: NonNullable<typeof row.booking> } =>
       Boolean(row.booking),
     )
-    .sort((a, b) => (a.booking.event_date < b.booking.event_date ? 1 : -1));
+    .sort((a, b) => {
+      const dateOrder = a.booking.event_date.localeCompare(b.booking.event_date);
+      if (dateOrder !== 0) return dateOrder;
+      const timeOrder = (a.booking.event_time ?? '99:99:99').localeCompare(
+        b.booking.event_time ?? '99:99:99',
+      );
+      return timeOrder !== 0 ? timeOrder : a.booking.id - b.booking.id;
+    });
 
   return (
     <BookingPortalShell email={user.email || 'Safawala user'}>

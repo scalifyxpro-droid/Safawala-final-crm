@@ -18,6 +18,10 @@ import { ListPagination } from '@/components/ui/list-pagination';
 import { friendlyDate } from '@/lib/bookings';
 import { trackingTimeline, TRACKING_STAGE_LABEL } from '@/lib/event-jobs/constants';
 import type { EventJob } from '@/lib/event-jobs/types';
+import {
+  compareJobsByBookingDate,
+  compareJobsByEventSchedule,
+} from '@/lib/event-jobs/sorting';
 
 function currentStage(job: EventJob) {
   if (job.status === 'closed') return 'Completed';
@@ -33,13 +37,13 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
   const [selected, setSelected] = useState<EventJob | null>(null);
   const [search, setSearch] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [sortBy, setSortBy] = useState<'event' | 'booking'>('booking');
+  const [sortBy, setSortBy] = useState<'event' | 'booking'>('event');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const filteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
     return [...jobs]
-      .sort((a, b) => sortBy === 'booking' ? b.createdAt.localeCompare(a.createdAt) : b.eventSummary.eventDate.localeCompare(a.eventSummary.eventDate))
+      .sort(sortBy === 'booking' ? compareJobsByBookingDate : compareJobsByEventSchedule)
       .filter((job) => (!query || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName} ${job.eventSummary.venue ?? ''}`.toLowerCase().includes(query)) && (!eventDate || job.eventSummary.eventDate === eventDate));
   }, [jobs, search, eventDate, sortBy]);
   const pageCount = Math.max(1, Math.ceil(filteredJobs.length / pageSize));
@@ -65,7 +69,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
   return (
     <>
       <Card className="gap-0 overflow-hidden border-border py-0 shadow-level-1">
-        <div className="grid gap-2 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] sm:grid-cols-[minmax(0,1fr)_180px_180px]"><label className="relative block"><Search className="absolute left-3 top-3 size-4 text-muted-foreground" /><input aria-label="Search jobs" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search customer, booking, event, or location…" className="h-10 w-full rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none focus:border-primary dark:bg-card" /></label><label className="text-xs font-medium text-muted-foreground"><span className="sr-only">Filter event date</span><input type="date" aria-label="Filter event date" value={eventDate} onChange={(event) => { setEventDate(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm font-normal text-foreground outline-none focus:border-primary dark:bg-card" /></label><select aria-label="Sort jobs by" value={sortBy} onChange={(event) => { setSortBy(event.target.value as 'event' | 'booking'); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card"><option value="booking">Sort by Booking date</option><option value="event">Sort by Event date</option></select></div>
+        <div className="grid gap-2 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] sm:grid-cols-[minmax(0,1fr)_180px_180px]"><label className="relative block"><Search className="absolute left-3 top-3 size-4 text-muted-foreground" /><input aria-label="Search jobs" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search customer, booking, event, or location…" className="h-10 w-full rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none focus:border-primary dark:bg-card" /></label><label className="text-xs font-medium text-muted-foreground"><span className="sr-only">Filter event date</span><input type="date" aria-label="Filter event date" value={eventDate} onChange={(event) => { setEventDate(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm font-normal text-foreground outline-none focus:border-primary dark:bg-card" /></label><select aria-label="Sort jobs by" value={sortBy} onChange={(event) => { setSortBy(event.target.value as 'event' | 'booking'); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card"><option value="event">Sort by Event date</option><option value="booking">Sort by Booking date</option></select></div>
         <ListPagination total={filteredJobs.length} page={safePage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} itemLabel="jobs" />
         <div className="divide-y divide-border">
           {visibleJobs.map((job) => (

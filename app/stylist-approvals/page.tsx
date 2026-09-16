@@ -13,6 +13,7 @@ import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { stylistJobsForAdmin } from '@/lib/event-jobs/store';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
+import { compareJobsByEventSchedule } from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +29,7 @@ export default async function StylistApprovalsPage() {
   if (profile?.role !== 'admin') redirect('/staff-portal');
   const jobs = (await stylistJobsForAdmin())
     .filter((job) => job.status === 'active')
-    .sort((a, b) =>
-      a.eventSummary.eventDate.localeCompare(b.eventSummary.eventDate),
-    );
+    .sort(compareJobsByEventSchedule);
   const awaiting = jobs.reduce(
     (sum, job) =>
       sum +
@@ -55,7 +54,7 @@ export default async function StylistApprovalsPage() {
           subtitle="Assign interested stylists to rental events"
           backHref="/dashboard"
         />
-        <section className="grid gap-3 sm:grid-cols-3">
+        <section className="grid gap-3 md:grid-cols-3">
             <Summary
               icon={<CalendarClock />}
               label="Rental events"

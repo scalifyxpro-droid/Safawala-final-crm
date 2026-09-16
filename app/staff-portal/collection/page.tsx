@@ -15,6 +15,10 @@ import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { listJobs } from '@/lib/event-jobs/store';
 import { withServiceRole } from '@/lib/db/client';
 import { QueueFilterBar } from '@/components/staff-portal/queue-filter-bar';
+import {
+  compareJobsByBookingDate,
+  compareJobsByEventSchedule,
+} from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +34,7 @@ export default async function StaffCollectionPage({
     searchParams,
     listJobs(),
   ]);
-  const { view: requestedView, q = '', sort = 'booking', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
+  const { view: requestedView, q = '', sort = 'event', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
   const rentalJobs = allJobs.filter((job) => job.bookingType === 'rental');
   const collectionIsOpen = (job: (typeof rentalJobs)[number]) =>
@@ -43,7 +47,7 @@ export default async function StaffCollectionPage({
     (job) => job.status === 'active' && collectionIsOpen(job),
   );
   const closedJobs = rentalJobs.filter((job) => Boolean(job.collectionCheck));
-  const jobs = (view === 'open' ? openJobs : closedJobs).filter((job) => (!q || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName}`.toLowerCase().includes(q.toLowerCase())) && (!eventDate || job.eventSummary.eventDate === eventDate) && (!bookingDate || job.createdAt.slice(0, 10) === bookingDate)).sort((a, b) => sort === 'event' ? b.eventSummary.eventDate.localeCompare(a.eventSummary.eventDate) : b.createdAt.localeCompare(a.createdAt));
+  const jobs = (view === 'open' ? openJobs : closedJobs).filter((job) => (!q || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName}`.toLowerCase().includes(q.toLowerCase())) && (!eventDate || job.eventSummary.eventDate === eventDate) && (!bookingDate || job.createdAt.slice(0, 10) === bookingDate)).sort(sort === 'booking' ? compareJobsByBookingDate : compareJobsByEventSchedule);
   const groupedJobs = Array.from(
     jobs.reduce((groups, job) => {
       const key = job.eventSummary.eventDate || 'unscheduled';
@@ -52,7 +56,7 @@ export default async function StaffCollectionPage({
       groups.set(key, group);
       return groups;
     }, new Map<string, typeof jobs>()),
-  ).sort(([, firstJobs], [, secondJobs]) => (secondJobs[0]?.createdAt ?? '').localeCompare(firstJobs[0]?.createdAt ?? ''));
+  ).sort(([firstDate], [secondDate]) => (firstDate === 'unscheduled' ? '9999-12-31' : firstDate).localeCompare(secondDate === 'unscheduled' ? '9999-12-31' : secondDate));
 
   const bookingIds = rentalJobs.map((job) => job.bookingId);
   const bookings = bookingIds.length
@@ -87,7 +91,7 @@ export default async function StaffCollectionPage({
           subtitle="Collect rental products and hand them over safely"
         />
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Link
             href="/staff-portal/collection"
             className={`rounded-xl border p-4 transition ${view === 'open' ? 'border-[#d6b98d] bg-[#f5ead8] text-[#70481c] shadow-sm' : 'bg-white dark:bg-card hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]'}`}

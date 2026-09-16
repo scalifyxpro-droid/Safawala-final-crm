@@ -20,7 +20,14 @@ export async function requireDepartment(department: StaffDepartment): Promise<St
 
 export async function requireStylistSession(): Promise<StaffSession> {
   const session = await requireDepartment('stylist');
-  if (session.staffType !== 'stylist') redirect('/staff-portal?denied=stylist');
+  // A Stylist Main ID is intentionally a regular staff record with main
+  // access and the Stylist department. Personal stylist IDs use the dedicated
+  // `stylist` staff type. Both are valid; rejecting the main ID here made the
+  // Stylist dashboard redirect back with `?denied=stylist` even though the
+  // account held the correct active department grant.
+  if (!session.isMainId && session.staffType !== 'stylist') {
+    redirect('/staff-portal?denied=stylist');
+  }
   return session;
 }
 

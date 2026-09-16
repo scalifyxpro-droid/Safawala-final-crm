@@ -487,14 +487,14 @@ function Metric({
         >
           {icon}
         </span>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="mt-1 text-2xl font-semibold tracking-[-0.03em]">
+          <p className="mt-1 truncate text-2xl font-semibold tracking-[-0.03em] tabular-nums">
             {value}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{note}</p>
         </div>
       </CardContent>
     </Card>
