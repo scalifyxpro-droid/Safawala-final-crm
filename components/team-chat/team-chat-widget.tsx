@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   ArrowLeft,
   LoaderCircle,
@@ -79,7 +80,11 @@ function directChannelKey(memberKey: string) {
 }
 
 export function TeamChatWidget() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(false);
+  const [edgeExpanded, setEdgeExpanded] = useState(false);
+  const [edgeTop, setEdgeTop] = useState<number | null>(null);
   const [view, setView] = useState<View>('list');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [data, setData] = useState<ChatData>(EMPTY_DATA);
@@ -100,6 +105,49 @@ export function TeamChatWidget() {
     lastPosition: LauncherPosition;
   } | null>(null);
   const suppressLauncherClickRef = useRef(false);
+
+  useEffect(() => {
+    const isEditPage = /(?:^|\/)edit(?:\/|$)/i.test(pathname);
+    const positionBesideControls = () => {
+      const height = window.innerHeight;
+      const width = window.innerWidth;
+      const controls = Array.from(document.querySelectorAll('button, input, textarea, select, a[href], [role="button"]'))
+        .filter((element) => !element.closest('[aria-label="Safawala CRM team chat"]') && element.getAttribute('aria-label') !== 'Open team chat')
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0 && rect.height < 120 && rect.right > width - 52 && rect.left < width);
+      let best = Math.round(height / 2);
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (let top = 60; top <= height - 60; top += 8) {
+        const overlap = controls.filter((rect) => rect.top < top + 22 && rect.bottom > top - 22).length;
+        const score = overlap * 10000 + Math.abs(top - height / 2);
+        if (score < bestScore) { bestScore = score; best = top; }
+      }
+      setEdgeTop(best);
+    };
+    const checkEditing = () => {
+      const editDialog = Array.from(document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], .fixed.inset-0'))
+        .some((container) => {
+          if (!container.querySelector('form')) return false;
+          const heading = container.querySelector('h1, h2, h3, [role="heading"]')?.textContent?.trim() ?? '';
+          return /^(edit|correct|update)\b/i.test(heading);
+        });
+      const isEditing = isEditPage || editDialog;
+      setEditingRecord(isEditing);
+      if (isEditing) positionBesideControls();
+    };
+    checkEditing();
+    const observer = new MutationObserver(checkEditing);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', checkEditing);
+    window.addEventListener('scroll', checkEditing, true);
+    return () => { observer.disconnect(); window.removeEventListener('resize', checkEditing); window.removeEventListener('scroll', checkEditing, true); };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!editingRecord) return;
+    setOpen(false);
+    setEdgeExpanded(false);
+  }, [editingRecord]);
 
   const clampLauncherPosition = useCallback((x: number, y: number): LauncherPosition => {
     const margin = 12;
@@ -569,26 +617,34 @@ export function TeamChatWidget() {
 
       <button
         type="button"
-        onPointerDown={startLauncherDrag}
-        onPointerMove={moveLauncher}
-        onPointerUp={finishLauncherDrag}
-        onPointerCancel={cancelLauncherDrag}
+        onPointerDown={editingRecord ? undefined : startLauncherDrag}
+        onPointerMove={editingRecord ? undefined : moveLauncher}
+        onPointerUp={editingRecord ? undefined : finishLauncherDrag}
+        onPointerCancel={editingRecord ? undefined : cancelLauncherDrag}
+        onMouseEnter={editingRecord ? () => setEdgeExpanded(true) : undefined}
+        onMouseLeave={editingRecord ? () => setEdgeExpanded(false) : undefined}
         onClick={() => {
           if (suppressLauncherClickRef.current) {
             suppressLauncherClickRef.current = false;
             return;
           }
+          if (editingRecord && !edgeExpanded && window.matchMedia('(hover: none)').matches) {
+            setEdgeExpanded(true);
+            return;
+          }
           setOpen((current) => !current);
         }}
-        style={launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
-        className="fixed bottom-4 right-4 z-[71] grid size-14 touch-none cursor-grab place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing max-sm:bottom-3 max-sm:right-3"
+        style={editingRecord ? { top: edgeTop ?? '50%' } : launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
+        className={editingRecord
+          ? `fixed right-0 z-[71] grid h-9 -translate-y-1/2 place-items-center rounded-l-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition-[width,background-color] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 ${edgeExpanded ? 'w-12' : 'w-5'}`
+          : 'fixed bottom-4 right-4 z-[71] grid size-14 touch-none cursor-grab place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing max-sm:bottom-3 max-sm:right-3'}
         aria-label={open ? 'Close team chat' : 'Open team chat'}
         aria-expanded={open}
-        title="Drag to move · Click to open team chat"
+        title={editingRecord ? 'Open team chat' : 'Drag to move · Click to open team chat'}
       >
-        {open ? <X className="size-5" /> : <UsersRound className="size-5" />}
+        {open ? <X className={editingRecord ? 'size-4' : 'size-5'} /> : <UsersRound className={editingRecord ? 'size-4' : 'size-5'} />}
         {!open && totalUnread > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 grid min-h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-bold text-white dark:border-card">
+          <span className={`absolute -right-0.5 -top-0.5 grid place-items-center rounded-full border-2 border-white bg-red-500 font-bold text-white dark:border-card ${editingRecord ? 'min-h-4 min-w-4 px-0.5 text-[8px]' : 'min-h-5 min-w-5 px-1 text-[10px]'}`}>
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         ) : null}
