@@ -335,7 +335,7 @@ export function DashboardShell({
 
   return (
     <DashboardHeaderContext.Provider value={setPageHeader}>
-      <div className="min-h-dvh bg-surface text-foreground">
+      <div className="min-h-dvh w-full min-w-0 max-w-full overflow-x-clip bg-surface text-foreground">
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-white dark:bg-card px-4 py-6 dark:bg-card lg:flex">
           <BrandMark className="px-2" />
           <BrandDivider />
@@ -350,7 +350,7 @@ export function DashboardShell({
           </div>
         </aside>
 
-        <div className="lg:pl-64">
+        <div className="w-full min-w-0 max-w-full lg:pl-64">
           <header className="pointer-events-none fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-border bg-white/95 px-3 shadow-[0_1px_0_rgba(98,68,38,0.04)] backdrop-blur supports-[backdrop-filter]:bg-white/90 dark:bg-card/95 sm:px-6 lg:left-64 lg:px-8">
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
               <Sheet>
@@ -419,7 +419,7 @@ export function DashboardShell({
               </div>
             </div>
           </header>
-          <main className="min-w-0 bg-surface px-4 pb-4 pt-20 sm:px-6 sm:pb-6 sm:pt-[5.5rem] lg:px-8">
+          <main className="w-full min-w-0 max-w-full overflow-x-clip bg-surface px-4 pb-4 pt-20 sm:px-6 sm:pb-6 sm:pt-[5.5rem] lg:px-8">
             {children}
           </main>
         </div>
