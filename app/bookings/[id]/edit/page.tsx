@@ -43,8 +43,10 @@ type BookingEditRow = {
 const BOOKING_EDIT_QUERY = `
   select
     b.id, b.booking_number, b.booking_type, b.status, b.is_quote, b.customer_id, b.assigned_staff_id,
-    b.event_name, b.event_date, b.event_time, b.event_location, b.contact_name, b.alternate_mobile,
-    b.pickup_date, b.due_date, b.notes, b.discount, b.tax, b.paid_amount,
+    b.event_name, b.event_date::text as event_date, b.event_time::text as event_time,
+    b.event_location, b.contact_name, b.alternate_mobile,
+    b.pickup_date::text as pickup_date, b.due_date::text as due_date,
+    b.notes, b.discount, b.tax, b.paid_amount,
     coalesce(items.rows, '[]'::json) as booking_items
   from public.bookings b
   left join lateral (

@@ -93,6 +93,20 @@ type Item = {
 const fieldClass =
   'mt-1.5 h-10 w-full rounded-lg border border-input bg-white dark:bg-card px-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20';
 const uid = () => Math.random().toString(36).slice(2);
+const dateInputValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const match = /\d{4}-\d{2}-\d{2}/.exec(String(value));
+  if (match) return match[0];
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+};
+const timeInputValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const match = /(?:T|^)(\d{2}):(\d{2})/.exec(String(value));
+  return match ? `${match[1]}:${match[2]}` : '';
+};
 
 export function BookingEditForm({
   booking,
@@ -119,8 +133,8 @@ export function BookingEditForm({
     ? displayQuoteNumber(booking.booking_number, booking.booking_type)
     : booking.booking_number;
 
-  const [pickupDate, setPickupDate] = useState(booking.pickup_date ?? '');
-  const [dueDate, setDueDate] = useState(booking.due_date ?? '');
+  const [pickupDate, setPickupDate] = useState(() => dateInputValue(booking.pickup_date));
+  const [dueDate, setDueDate] = useState(() => dateInputValue(booking.due_date));
   const [availabilityByProduct, setAvailabilityByProduct] = useState<
     Record<number, { totalStock: number; reserved: number; available: number }>
   >({});
@@ -421,6 +435,24 @@ export function BookingEditForm({
       const value = form.get(key);
       return typeof value === 'string' ? value.trim() : '';
     };
+    const eventDate = text('event_date');
+    const submittedPickupDate = text('pickup_date');
+    const submittedDueDate = text('due_date');
+    if (!eventDate) {
+      setError(`${isSale ? 'Delivery' : 'Event'} date is required.`);
+      setBusy(false);
+      return;
+    }
+    if (!isSale && (!submittedPickupDate || !submittedDueDate)) {
+      setError('Pickup date and return due date are required for rental bookings.');
+      setBusy(false);
+      return;
+    }
+    if (!isSale && submittedDueDate < submittedPickupDate) {
+      setError('Return due date cannot be before the pickup date.');
+      setBusy(false);
+      return;
+    }
 
     if (editableItems) {
       if (
@@ -437,7 +469,7 @@ export function BookingEditForm({
         customer_id: Number(form.get('customer_id')),
         assigned_staff_id: text('assigned_staff_id'),
         event_name: text('event_name'),
-        event_date: text('event_date'),
+        event_date: eventDate,
         event_time: text('event_time'),
         event_location: text('event_location'),
         contact_name:
@@ -445,8 +477,8 @@ export function BookingEditForm({
         alternate_mobile:
           booking.booking_type === 'rental' ? text('alternate_mobile') : '',
         pickup_date:
-          booking.booking_type === 'rental' ? text('pickup_date') : '',
-        due_date: booking.booking_type === 'rental' ? text('due_date') : '',
+          booking.booking_type === 'rental' ? submittedPickupDate : '',
+        due_date: booking.booking_type === 'rental' ? submittedDueDate : '',
         notes: text('notes'),
         items: items.map(({ key: _key, ...item }) => item),
         discount,
@@ -470,7 +502,7 @@ export function BookingEditForm({
             ? Number(form.get('assigned_staff_id'))
             : null,
           event_name: text('event_name'),
-          event_date: text('event_date'),
+          event_date: eventDate,
           event_time: text('event_time') || null,
           event_location: text('event_location') || null,
           contact_name:
@@ -483,10 +515,10 @@ export function BookingEditForm({
               : null,
           pickup_date:
             booking.booking_type === 'rental'
-              ? text('pickup_date') || null
+              ? submittedPickupDate || null
               : null,
           due_date:
-            booking.booking_type === 'rental' ? text('due_date') || null : null,
+            booking.booking_type === 'rental' ? submittedDueDate || null : null,
           notes: text('notes') || null,
         },
       );
@@ -569,16 +601,16 @@ export function BookingEditForm({
               }
               name="event_date"
               type="date"
-              defaultValue={booking.event_date}
+              defaultValue={dateInputValue(booking.event_date)}
               required
             />
             <TimeField
-              label="Delivery time"
+              label={isSale ? 'Delivery time' : 'Event time'}
               name="event_time"
-              defaultValue={booking.event_time?.slice(0, 5)}
+              defaultValue={timeInputValue(booking.event_time)}
             />
             <Input
-              label="Delivery location"
+              label={isSale ? 'Delivery location' : 'Event location'}
               name="event_location"
               defaultValue={booking.event_location ?? ''}
             />
