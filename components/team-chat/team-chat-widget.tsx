@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   ArrowLeft,
   LoaderCircle,
@@ -39,6 +39,7 @@ type ChatData = {
 };
 
 type View = 'list' | 'new' | 'chat';
+type LauncherPosition = { x: number; y: number };
 
 const EMPTY_DATA: ChatData = {
   actor: { key: '', name: '' },
@@ -87,7 +88,111 @@ export function TeamChatWidget() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [launcherPosition, setLauncherPosition] = useState<LauncherPosition | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const launcherDragRef = useRef<{
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    lastPosition: LauncherPosition;
+  } | null>(null);
+  const suppressLauncherClickRef = useRef(false);
+
+  const clampLauncherPosition = useCallback((x: number, y: number): LauncherPosition => {
+    const margin = 12;
+    const size = 56;
+    return {
+      x: Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - size - margin)),
+      y: Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - size - margin)),
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('safawala-team-chat-launcher-position');
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Partial<LauncherPosition>;
+      if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+        setLauncherPosition(clampLauncherPosition(parsed.x, parsed.y));
+      }
+    } catch {
+      // Keep the default bottom-right position when storage is unavailable.
+    }
+  }, [clampLauncherPosition]);
+
+  useEffect(() => {
+    function keepLauncherOnScreen() {
+      setLauncherPosition((current) =>
+        current ? clampLauncherPosition(current.x, current.y) : current,
+      );
+    }
+    window.addEventListener('resize', keepLauncherOnScreen);
+    return () => window.removeEventListener('resize', keepLauncherOnScreen);
+  }, [clampLauncherPosition]);
+
+  function startLauncherDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    launcherDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      lastPosition: { x: rect.left, y: rect.top },
+    };
+  }
+
+  function moveLauncher(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = launcherDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 5) {
+      drag.moved = true;
+    }
+    if (!drag.moved) return;
+    event.preventDefault();
+    const next = clampLauncherPosition(
+      event.clientX - drag.offsetX,
+      event.clientY - drag.offsetY,
+    );
+    drag.lastPosition = next;
+    setLauncherPosition(next);
+  }
+
+  function finishLauncherDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = launcherDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (drag.moved) {
+      suppressLauncherClickRef.current = true;
+      try {
+        window.localStorage.setItem(
+          'safawala-team-chat-launcher-position',
+          JSON.stringify(drag.lastPosition),
+        );
+      } catch {
+        // Position persistence is optional; dragging still works.
+      }
+    }
+    launcherDragRef.current = null;
+  }
+
+  function cancelLauncherDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = launcherDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    launcherDragRef.current = null;
+    suppressLauncherClickRef.current = false;
+  }
 
   const loadChat = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -464,10 +569,22 @@ export function TeamChatWidget() {
 
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="fixed bottom-4 right-4 z-[71] grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 max-sm:bottom-3 max-sm:right-3"
+        onPointerDown={startLauncherDrag}
+        onPointerMove={moveLauncher}
+        onPointerUp={finishLauncherDrag}
+        onPointerCancel={cancelLauncherDrag}
+        onClick={() => {
+          if (suppressLauncherClickRef.current) {
+            suppressLauncherClickRef.current = false;
+            return;
+          }
+          setOpen((current) => !current);
+        }}
+        style={launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
+        className="fixed bottom-4 right-4 z-[71] grid size-14 touch-none cursor-grab place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing max-sm:bottom-3 max-sm:right-3"
         aria-label={open ? 'Close team chat' : 'Open team chat'}
         aria-expanded={open}
+        title="Drag to move · Click to open team chat"
       >
         {open ? <X className="size-5" /> : <UsersRound className="size-5" />}
         {!open && totalUnread > 0 ? (
