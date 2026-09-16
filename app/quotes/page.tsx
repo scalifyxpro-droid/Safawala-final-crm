@@ -141,9 +141,11 @@ export default async function QuotesPage({ searchParams }: Props) {
       const listQuery = `
         select
           b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.is_quote,
-          b.converted_booking_id, b.created_by_staff_id, b.event_name, b.event_date, b.event_time,
-          b.event_location, b.pickup_date, b.due_date, b.subtotal, b.discount, b.tax, b.total,
-          b.paid_amount, b.balance_amount, b.security_deposit, b.created_at,
+          b.converted_booking_id, b.created_by_staff_id, b.event_name,
+          b.event_date::text as event_date, b.event_time::text as event_time,
+          b.event_location, b.pickup_date::text as pickup_date, b.due_date::text as due_date,
+          b.subtotal, b.discount, b.tax, b.total, b.paid_amount, b.balance_amount,
+          b.security_deposit, b.created_at::text as created_at,
           case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone, 'address', c.address) end as customers,
           case when s.id is null then null else json_build_object('name', s.name) end as staff_members,
           coalesce(items.rows, '[]'::json) as booking_items

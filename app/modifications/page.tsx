@@ -10,9 +10,11 @@ export const dynamic = 'force-dynamic';
 // `bookings(...customers(...),staff_members!bookings_assigned_staff_id_fkey(name),
 //   booking_items(...products(...)),booking_activity(...))`.
 const BOOKINGS_QUERY = `
-  select b.id, b.booking_number, b.booking_type, b.is_quote, b.status, b.event_name, b.event_date, b.event_time,
-    b.event_location, b.pickup_date, b.due_date, b.subtotal, b.discount, b.tax, b.security_deposit, b.total,
-    b.paid_amount, b.balance_amount, b.notes, b.created_at,
+  select b.id, b.booking_number, b.booking_type, b.is_quote, b.status, b.event_name,
+    b.event_date::text as event_date, b.event_time::text as event_time,
+    b.event_location, b.pickup_date::text as pickup_date, b.due_date::text as due_date,
+    b.subtotal, b.discount, b.tax, b.security_deposit, b.total,
+    b.paid_amount, b.balance_amount, b.notes, b.created_at::text as created_at,
     case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone, 'address', c.address) end as customers,
     case when sm.id is null then null else json_build_object('name', sm.name) end as staff_members,
     coalesce(items.rows, '[]'::json) as booking_items,

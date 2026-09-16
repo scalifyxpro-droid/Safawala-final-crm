@@ -1,10 +1,12 @@
 import { notFound, redirect } from 'next/navigation';
-import { MapPin, Phone } from 'lucide-react';
+import Link from 'next/link';
+import { MapPin, Pencil, Phone } from 'lucide-react';
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { BookingActions } from '@/components/bookings/booking-actions';
 import { BookingPdfButton, type PdfBooking } from '@/components/bookings/booking-pdf-button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BOOKING_TERMS,
@@ -25,6 +27,9 @@ export const dynamic = 'force-dynamic';
 const BOOKING_DETAIL_QUERY = `
   select
     b.*,
+    b.event_date::text as event_date, b.event_time::text as event_time,
+    b.pickup_date::text as pickup_date, b.due_date::text as due_date,
+    b.created_at::text as created_at,
     case when c.id is null then null else to_jsonb(c.*) end as customers,
     case when s.id is null then null else json_build_object('name', s.name) end as staff_members,
     coalesce(items.rows, '[]'::json) as booking_items,
@@ -162,6 +167,15 @@ export default async function BookingDetailsPage({
                 {statusLabel(booking.payment_status)}
               </Badge>
               {!quoteOnly ? <BookingPdfButton booking={booking as unknown as PdfBooking} label="Print booking" /> : null}
+              {!quoteOnly && !readOnly ? (
+                <Button
+                  variant="outline"
+                  render={<Link href={`/bookings/${booking.id}/edit`} />}
+                >
+                  <Pencil />
+                  Edit booking
+                </Button>
+              ) : null}
             </>
           }
         />
