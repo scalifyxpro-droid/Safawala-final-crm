@@ -17,11 +17,11 @@ export default async function LeadsPage() {
     [leads, lockedDates, staff] = await withUserContext(user.id, (tx) =>
       Promise.all([
         tx`
-          select id, full_name, phone, email, event_date, location, package_interest, source, status, requirements, assigned_staff_id
+          select id, full_name, phone, email, event_date::text as event_date, location, package_interest, source, status, requirements, assigned_staff_id
           from public.leads order by created_at desc
         `,
         tx`
-          select id, locked_date, label, notes from public.lead_locked_dates
+          select id, locked_date::text as locked_date, label, notes from public.lead_locked_dates
           where locked_date >= ${new Date().toISOString().slice(0, 10)} order by locked_date
         `,
         tx`select id, name from public.staff_members where is_active = true order by name`,
