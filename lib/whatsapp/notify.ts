@@ -1,5 +1,6 @@
 import { withServiceRole } from '@/lib/db/client';
-import { sendWhatsAppText } from './session';
+import { sendWhatsAppText, sendWhatsAppDocument } from './session';
+import { generateInvoicePdf } from './invoice-pdf';
 import * as templates from './templates';
 
 /**
@@ -14,6 +15,7 @@ import * as templates from './templates';
 type BookingForNotify = {
   id: number;
   booking_number: string;
+  booking_type: string;
   status: string;
   payment_status: string;
   event_name: string;
@@ -31,7 +33,7 @@ async function fetchBooking(bookingId: number): Promise<BookingForNotify | null>
   const [row] = await withServiceRole((tx) =>
     tx.unsafe(
       `
-        select b.id, b.booking_number, b.status, b.payment_status, b.event_name, b.event_date,
+        select b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date,
           b.event_location, b.total, b.paid_amount, b.balance_amount, b.customer_id,
           c.name as customer_name, c.phone as customer_phone
         from public.bookings b
@@ -113,6 +115,50 @@ async function safeSend(
   }
 }
 
+/** Same log-then-send contract as safeSend, but for a document (the invoice PDF). */
+async function safeSendDocument(
+  booking: BookingForNotify,
+  type: MessageType,
+  caption: string,
+  document: Buffer,
+  fileName: string,
+): Promise<void> {
+  let logId: number | null = null;
+  try {
+    const [inserted] = await withServiceRole((tx) =>
+      tx.unsafe(
+        `
+          insert into public.whatsapp_messages (booking_id, customer_id, message_type, to_number, body, status)
+          values ($1, $2, $3, $4, $5, 'pending')
+          returning id
+        `,
+        [booking.id, booking.customer_id, type, booking.customer_phone, caption],
+      ),
+    );
+    logId = (inserted as { id?: number } | undefined)?.id ?? null;
+  } catch (err) {
+    console.error(`[whatsapp] failed to log ${type} for booking ${booking.id}`, err);
+    return;
+  }
+
+  try {
+    await sendWhatsAppDocument(booking.customer_phone, document, fileName, caption);
+    if (logId) {
+      await withServiceRole(
+        (tx) => tx`update public.whatsapp_messages set status = 'sent', sent_at = now() where id = ${logId}`,
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`[whatsapp] send failed (${type}, booking ${booking.id})`, err);
+    if (logId) {
+      await withServiceRole(
+        (tx) => tx`update public.whatsapp_messages set status = 'failed', error = ${message} where id = ${logId}`,
+      ).catch(() => {});
+    }
+  }
+}
+
 /** Trigger 1 (+ bundled invoice send): booking status becomes 'confirmed'. */
 export async function notifyBookingConfirmed(bookingId: number): Promise<void> {
   try {
@@ -128,17 +174,28 @@ export async function notifyBookingConfirmed(bookingId: number): Promise<void> {
         eventLocation: booking.event_location,
         packageName,
         bookingId: booking.id,
+        bookingType: booking.booking_type,
       });
       await safeSend(booking, 'booking_confirmed', body);
     }
 
     if (!(await alreadySent(bookingId, 'invoice'))) {
-      const body = templates.invoiceMessage({
+      const caption = templates.invoiceMessage({
         customerName: booking.customer_name,
         bookingNumber: booking.booking_number,
         bookingId: booking.id,
       });
-      await safeSend(booking, 'invoice', body);
+      const pdf = await generateInvoicePdf(bookingId).catch((err) => {
+        console.error(`[whatsapp] invoice PDF generation threw for booking ${bookingId}`, err);
+        return null;
+      });
+      if (pdf) {
+        await safeSendDocument(booking, 'invoice', caption, pdf.buffer, pdf.fileName);
+      } else {
+        // PDF generation failed — still let the customer know rather than
+        // silently sending nothing.
+        await safeSend(booking, 'invoice', caption);
+      }
     }
   } catch (err) {
     console.error(`[whatsapp] notifyBookingConfirmed failed for booking ${bookingId}`, err);
