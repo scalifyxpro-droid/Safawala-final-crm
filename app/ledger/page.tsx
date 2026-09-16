@@ -35,7 +35,7 @@ export default async function CustomerLedgerPage() {
       const customers = await tx<LedgerCustomer[]>`
         select id, name, phone, email, address, created_at from public.customers order by name
       `;
-      const bookings = await tx.unsafe(`${BOOKINGS_QUERY} order by b.created_at desc`);
+      const bookings = await tx.unsafe(`${BOOKINGS_QUERY} order by b.created_at asc, b.id asc`);
       return [customers, bookings as unknown as LedgerBooking[]];
     });
   } catch (error) {

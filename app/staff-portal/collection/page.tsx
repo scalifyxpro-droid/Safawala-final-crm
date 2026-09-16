@@ -34,7 +34,7 @@ export default async function StaffCollectionPage({
     searchParams,
     listJobs(),
   ]);
-  const { view: requestedView, q = '', sort = 'event', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
+  const { view: requestedView, q = '', sort = 'booking', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
   const rentalJobs = allJobs.filter((job) => job.bookingType === 'rental');
   const collectionIsOpen = (job: (typeof rentalJobs)[number]) =>
@@ -50,7 +50,7 @@ export default async function StaffCollectionPage({
   const jobs = (view === 'open' ? openJobs : closedJobs).filter((job) => (!q || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName}`.toLowerCase().includes(q.toLowerCase())) && (!eventDate || job.eventSummary.eventDate === eventDate) && (!bookingDate || job.createdAt.slice(0, 10) === bookingDate)).sort(sort === 'booking' ? compareJobsByBookingDate : compareJobsByEventSchedule);
   const groupedJobs = Array.from(
     jobs.reduce((groups, job) => {
-      const key = job.eventSummary.eventDate || 'unscheduled';
+      const key = sort === 'event' ? (job.eventSummary.eventDate || 'unscheduled') : (job.createdAt.slice(0, 10) || 'unscheduled');
       const group = groups.get(key) ?? [];
       group.push(job);
       groups.set(key, group);

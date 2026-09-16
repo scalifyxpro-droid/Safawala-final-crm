@@ -36,7 +36,7 @@ const BOOKINGS_QUERY = `
   where b.booking_type = 'sale'
     and (b.is_quote = false or (b.is_quote = true and b.status not in ('draft', 'cancelled')))
     and b.notes ilike '%SALE MODIFICATION REQUIRED%'
-  order by b.event_date
+  order by b.created_at asc, b.id asc
 `;
 
 export default async function ModificationsPage() {

@@ -10,6 +10,7 @@ import {
   type PageHeader,
 } from '@/components/layout/dashboard-header-context';
 import { AdminNotificationPopover } from '@/components/layout/admin-notification-popover';
+import { TeamChatWidget } from '@/components/team-chat/team-chat-widget';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -423,6 +424,7 @@ export function DashboardShell({
           </main>
         </div>
       </div>
+      <TeamChatWidget />
     </DashboardHeaderContext.Provider>
   );
 }

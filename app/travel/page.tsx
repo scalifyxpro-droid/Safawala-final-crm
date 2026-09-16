@@ -17,16 +17,24 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PaginatedList } from '@/components/ui/paginated-list';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
-import { listJobs } from '@/lib/event-jobs/store';
+import { stylistJobsForAdmin } from '@/lib/event-jobs/store';
 import { getCurrentUser } from '@/lib/auth/session';
-import { compareJobsByEventSchedule } from '@/lib/event-jobs/sorting';
+import { compareJobsByBookingDate } from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
-export default async function TravelPage() {
+export default async function TravelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
-  const rows = (await listJobs())
+  const requestedStatus = (await searchParams).status;
+  const status = requestedStatus === 'sent' || requestedStatus === 'pending'
+    ? requestedStatus
+    : 'all';
+  const allRows = (await stylistJobsForAdmin())
     .filter((job) => job.status === 'active' && job.bookingType === 'rental')
     .flatMap((job) =>
       job.stylistInterests
@@ -39,8 +47,15 @@ export default async function TravelPage() {
           ),
         })),
     )
-    .sort((a, b) => compareJobsByEventSchedule(a.job, b.job));
-  const sentCount = rows.filter(({ plan }) => plan?.ticketConfirmedAt).length;
+    .sort((a, b) => compareJobsByBookingDate(a.job, b.job));
+  const sentCount = allRows.filter(({ plan }) => plan?.ticketConfirmedAt).length;
+  const rows = allRows.filter(({ plan }) =>
+    status === 'sent'
+      ? Boolean(plan?.ticketConfirmedAt)
+      : status === 'pending'
+        ? !plan?.ticketConfirmedAt
+        : true,
+  );
 
   return (
     <BookingPortalShell email={user.email ?? 'Safawala user'}>
@@ -55,20 +70,26 @@ export default async function TravelPage() {
           <Summary
             icon={<UserRound />}
             label="Selected staff"
-            value={rows.length}
+            value={allRows.length}
             tone="primary"
+            href="/travel"
+            active={status === 'all'}
           />
           <Summary
             icon={<CheckCircle2 />}
             label="Tickets sent"
             value={sentCount}
             tone="success"
+            href="/travel?status=sent"
+            active={status === 'sent'}
           />
           <Summary
             icon={<Clock3 />}
             label="Pending"
-            value={rows.length - sentCount}
+            value={allRows.length - sentCount}
             tone="warning"
+            href="/travel?status=pending"
+            active={status === 'pending'}
           />
         </section>
 
@@ -202,11 +223,15 @@ function Summary({
   label,
   value,
   tone,
+  href,
+  active,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   tone: 'primary' | 'warning' | 'success';
+  href: string;
+  active: boolean;
 }) {
   const iconTone = tone === 'success'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
@@ -215,7 +240,11 @@ function Summary({
       : 'border-[#e4d2b6] bg-[#f5ead8] text-primary dark:border-[#493822] dark:bg-[#33291c]';
 
   return (
-    <div className="flex min-h-[96px] items-center justify-between gap-4 rounded-xl border border-border bg-white px-4 py-4 shadow-level-1 dark:bg-card sm:px-5">
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={`flex min-h-[96px] items-center justify-between gap-4 rounded-xl border bg-white px-4 py-4 shadow-level-1 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-level-2 dark:bg-card sm:px-5 ${active ? 'border-primary/45 ring-2 ring-primary/10' : 'border-border'}`}
+    >
       <div className="min-w-0">
         <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           {label}
@@ -227,6 +256,6 @@ function Summary({
       <span className={`grid size-10 shrink-0 place-items-center rounded-xl border [&_svg]:size-4.5 ${iconTone}`}>
         {icon}
       </span>
-    </div>
+    </Link>
   );
 }

@@ -25,7 +25,7 @@ export default async function CustomersPage() {
         tx<CustomerBooking[]>`
           select id, booking_number, booking_type, status, event_name, event_date, total, balance_amount, customer_id, created_at
           from public.bookings
-          where (is_quote = false or (is_quote = true and status not in ('draft', 'cancelled')))
+          where status not in ('draft', 'cancelled')
           order by created_at desc
         `,
       ])

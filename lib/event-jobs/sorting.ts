@@ -12,10 +12,7 @@ function compareText(first: string, second: string) {
   return first.localeCompare(second);
 }
 
-/**
- * Standard booking order used by every operational portal:
- * event date, event time, database booking ID, then booking number.
- */
+/** Optional event-schedule order used only when a user explicitly selects it. */
 export function compareJobsByEventSchedule(
   first: SortableEventJob,
   second: SortableEventJob,
@@ -45,13 +42,19 @@ export function compareJobsByBookingDate(
   second: SortableEventJob,
 ) {
   const createdOrder = compareText(first.createdAt, second.createdAt);
-  return createdOrder !== 0
-    ? createdOrder
-    : compareJobsByEventSchedule(first, second);
+  if (createdOrder !== 0) return createdOrder;
+
+  const idOrder = Number(first.bookingId) - Number(second.bookingId);
+  if (idOrder !== 0) return idOrder;
+
+  return first.bookingNumber.localeCompare(second.bookingNumber, undefined, {
+    numeric: true,
+  });
 }
 
-export function sortJobsByEventSchedule<T extends SortableEventJob>(
+/** Standard order for every booking/job portal: booking creation, then booking ID. */
+export function sortJobsByBookingDate<T extends SortableEventJob>(
   jobs: readonly T[],
 ) {
-  return [...jobs].sort(compareJobsByEventSchedule);
+  return [...jobs].sort(compareJobsByBookingDate);
 }

@@ -37,7 +37,7 @@ const MODIFICATION_QUERY = `
     where ba.booking_id = b.id
   ) activity on true
   where b.booking_type = 'sale' and b.notes ilike $1
-  order by b.event_date asc, b.id asc
+  order by b.created_at asc, b.id asc
 `;
 
 export default async function StaffModificationPage() {

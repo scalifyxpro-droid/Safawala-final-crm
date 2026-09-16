@@ -35,7 +35,7 @@ export default async function StaffWarehousePage({
     searchParams,
     listJobs(),
   ]);
-  const { completed, view: requestedView, job: selectedJobId, q = '', sort = 'event', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
+  const { completed, view: requestedView, job: selectedJobId, q = '', sort = 'booking', eventDate = '', bookingDate = '' } = params as typeof params & { q?: string; sort?: string; eventDate?: string; bookingDate?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
   const departmentJobs = allJobs;
   const hasOpenWarehouseStage = (job: (typeof departmentJobs)[number]) =>
@@ -55,7 +55,7 @@ export default async function StaffWarehousePage({
   const jobs = (view === 'open' ? openJobs : closedJobs).filter((job) => (!q || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName} ${job.eventSummary.venue ?? ''}`.toLowerCase().includes(q.toLowerCase())) && (!eventDate || job.eventSummary.eventDate === eventDate) && (!bookingDate || job.createdAt.slice(0, 10) === bookingDate)).sort(sort === 'booking' ? compareJobsByBookingDate : compareJobsByEventSchedule);
   const groupedJobs = Array.from(
     jobs.reduce((groups, job) => {
-      const key = job.eventSummary.eventDate || 'unscheduled';
+      const key = sort === 'event' ? (job.eventSummary.eventDate || 'unscheduled') : (job.createdAt.slice(0, 10) || 'unscheduled');
       const group = groups.get(key) ?? [];
       group.push(job);
       groups.set(key, group);

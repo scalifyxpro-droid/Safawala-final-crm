@@ -13,7 +13,7 @@ import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { stylistJobsForAdmin } from '@/lib/event-jobs/store';
 import { getCurrentUser } from '@/lib/auth/session';
 import { withUserContext } from '@/lib/db/client';
-import { compareJobsByEventSchedule } from '@/lib/event-jobs/sorting';
+import { compareJobsByBookingDate } from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +29,7 @@ export default async function StylistApprovalsPage() {
   if (profile?.role !== 'admin') redirect('/staff-portal');
   const jobs = (await stylistJobsForAdmin())
     .filter((job) => job.status === 'active')
-    .sort(compareJobsByEventSchedule);
+    .sort(compareJobsByBookingDate);
   const awaiting = jobs.reduce(
     (sum, job) =>
       sum +

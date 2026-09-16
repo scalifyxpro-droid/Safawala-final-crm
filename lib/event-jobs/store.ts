@@ -32,9 +32,9 @@ import type {
   StylistTravelLeg,
   WarehouseItemPrep,
 } from './types';
-import { sortJobsByEventSchedule } from './sorting';
+import { sortJobsByBookingDate } from './sorting';
 
-function normalizeJob(job: EventJob): EventJob {
+function normalizeJob(job: EventJob, bookingCreatedAt?: string | Date | null): EventJob {
   // PostgreSQL `bigint` values are returned as strings by the postgres driver.
   // Keep the application boundary numeric because the rest of the booking and
   // event-job domain models use `number` IDs. Without this normalization a
@@ -69,6 +69,11 @@ function normalizeJob(job: EventJob): EventJob {
       : job.stages;
   return {
     ...job,
+    createdAt: bookingCreatedAt
+      ? bookingCreatedAt instanceof Date
+        ? bookingCreatedAt.toISOString()
+        : new Date(bookingCreatedAt).toISOString()
+      : job.createdAt,
     bookingId,
     bookingType,
     stylistsRequired: bookingType === 'rental' ? job.stylistsRequired : false,
@@ -122,14 +127,22 @@ function databaseDate(value: unknown): string {
 async function readAllRaw(id?: string): Promise<EventJob[]> {
   const rows = await withServiceRole((tx) =>
     id
-      ? tx<{ state: EventJob }[]>`select state from public.event_jobs where id = ${id}`
-      : tx<{ state: EventJob }[]>`select state from public.event_jobs order by created_at desc`
+      ? tx<{ state: EventJob; booking_created_at: string | null }[]>`
+          select ej.state, b.created_at as booking_created_at
+          from public.event_jobs ej
+          left join public.bookings b on b.id = ej.booking_id
+          where ej.id = ${id}
+        `
+      : tx<{ state: EventJob; booking_created_at: string | null }[]>`
+          select ej.state, b.created_at as booking_created_at
+          from public.event_jobs ej
+          left join public.bookings b on b.id = ej.booking_id
+        `
   );
   const jobs = rows
-    .map((row) => row.state)
-    .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
-    .map(normalizeJob);
-  return sortJobsByEventSchedule(jobs);
+    .filter((row) => Boolean(row.state?.id && Array.isArray(row.state.stages)))
+    .map((row) => normalizeJob(row.state, row.booking_created_at));
+  return sortJobsByBookingDate(jobs);
 }
 
 // Self-healing pass: an `event_jobs` row is created the instant a booking is
@@ -206,13 +219,14 @@ async function syncMissingJobs(): Promise<void> {
     balance_amount: number;
     security_deposit: number;
     payment_status: string;
+    created_at: string;
   };
 
   const { bookings, itemsRaw } = await withServiceRole(async (tx) => {
     const bookings = await tx<MissingBookingRow[]>`
       select b.id, b.booking_number, b.booking_type, b.status, b.event_name, b.event_date, b.event_time, b.event_location,
         c.name as customer_name, c.phone as customer_phone,
-        b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status
+        b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status, b.created_at::text as created_at
       from public.bookings b
       left join public.customers c on c.id = b.customer_id
       where b.id = any(${tx.array(missingBookingIds)}::bigint[])
@@ -242,6 +256,7 @@ async function syncMissingJobs(): Promise<void> {
   const summaries: ConfirmedBookingSummary[] = bookings.map((booking) => ({
     bookingId: Number(booking.id),
     bookingNumber: booking.booking_number,
+    bookingCreatedAt: booking.created_at,
     bookingType: booking.booking_type,
     status: booking.status,
     customerName: booking.customer_name ?? null,
@@ -282,8 +297,17 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
   await syncMissingJobs();
   const { jobRows, interestRows } = await withServiceRole(async (tx) => {
     const jobRows = jobId
-      ? await tx<{ state: EventJob }[]>`select state from public.event_jobs where id = ${jobId}`
-      : await tx<{ state: EventJob }[]>`select state from public.event_jobs order by created_at desc`;
+      ? await tx<{ state: EventJob; booking_created_at: string | null }[]>`
+          select ej.state, b.created_at as booking_created_at
+          from public.event_jobs ej
+          left join public.bookings b on b.id = ej.booking_id
+          where ej.id = ${jobId}
+        `
+      : await tx<{ state: EventJob; booking_created_at: string | null }[]>`
+          select ej.state, b.created_at as booking_created_at
+          from public.event_jobs ej
+          left join public.bookings b on b.id = ej.booking_id
+        `;
     const interestRows = jobId
       ? await tx<StylistInterestRow[]>`
           select id, event_job_id, staff_id, status, expressed_at, decided_at, decided_by
@@ -324,15 +348,14 @@ async function readAllForStylistWorkflow(jobId?: string): Promise<EventJob[]> {
     interestsByJob.set(jobIdKey, [...(interestsByJob.get(jobIdKey) ?? []), interest]);
   }
 
-  return sortJobsByEventSchedule(jobRows
-    .map((row) => row.state)
-    .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
-    .map((job) =>
+  return sortJobsByBookingDate(jobRows
+    .filter((row) => Boolean(row.state?.id && Array.isArray(row.state.stages)))
+    .map((row) =>
       normalizeJob({
-        ...job,
+        ...row.state,
         stylistInterests:
-          interestsByJob.get(job.id) ?? job.stylistInterests ?? [],
-      }),
+          interestsByJob.get(row.state.id) ?? row.state.stylistInterests ?? [],
+      }, row.booking_created_at),
     ));
 }
 
@@ -588,13 +611,15 @@ export const listJobs = cache(async (): Promise<EventJob[]> => {
 
 export const listActiveJobs = cache(async (): Promise<EventJob[]> => {
   await syncMissingJobs();
-  const rows = await withServiceRole((tx) => tx<{ state: EventJob }[]>`
-    select state from public.event_jobs where status = 'active' order by created_at desc
+  const rows = await withServiceRole((tx) => tx<{ state: EventJob; booking_created_at: string | null }[]>`
+    select ej.state, b.created_at as booking_created_at
+    from public.event_jobs ej
+    left join public.bookings b on b.id = ej.booking_id
+    where ej.status = 'active'
   `);
-  return sortJobsByEventSchedule(rows
-    .map((row) => row.state)
-    .filter((job) => Boolean(job?.id && Array.isArray(job.stages)))
-    .map(normalizeJob));
+  return sortJobsByBookingDate(rows
+    .filter((row) => Boolean(row.state?.id && Array.isArray(row.state.stages)))
+    .map((row) => normalizeJob(row.state, row.booking_created_at)));
 });
 
 export const getJob = cache(async (id: string): Promise<EventJob | null> => {
@@ -663,6 +688,7 @@ export async function syncEventJobs(
       const bookingType = booking.bookingType === 'sale' ? 'sale' : 'rental';
       const stylistsRequired = bookingType === 'rental';
       const snapshotChanged =
+        existing.createdAt !== booking.bookingCreatedAt ||
         existing.bookingType !== bookingType ||
         existing.stylistsRequired !== stylistsRequired ||
         JSON.stringify(existing.eventSummary) !==
@@ -675,6 +701,7 @@ export async function syncEventJobs(
         const index = jobs.findIndex((job) => job.id === existing.id);
         jobs[index] = {
           ...jobs[index],
+          createdAt: booking.bookingCreatedAt,
           bookingType,
           stylistsRequired,
           stylistsRequiredCount: stylistsRequired
@@ -779,7 +806,7 @@ export async function syncEventJobs(
           `Central Event Job created from confirmed booking ${booking.bookingNumber} (status: ${booking.status}).`,
         ),
       ],
-      createdAt: now,
+      createdAt: booking.bookingCreatedAt,
       updatedAt: now,
       closedAt: null,
     };
@@ -811,7 +838,7 @@ export async function syncEventJobs(
       }
     }
   }
-  return sortJobsByEventSchedule(jobs);
+  return sortJobsByBookingDate(jobs);
 }
 
 export function currentStageSummary(job: EventJob): string {

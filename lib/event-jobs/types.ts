@@ -300,6 +300,7 @@ export type EventJob = {
 export type ConfirmedBookingSummary = {
   bookingId: number;
   bookingNumber: string;
+  bookingCreatedAt: string;
   bookingType: string;
   customerName?: string | null;
   customerPhone?: string | null;

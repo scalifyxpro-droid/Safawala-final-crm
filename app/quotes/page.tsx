@@ -161,7 +161,7 @@ export default async function QuotesPage({ searchParams }: Props) {
           where bi.booking_id = b.id
         ) items on true
         where ${whereClause}
-        order by b.created_at desc
+        order by b.created_at asc, b.id asc
         limit $${listParams.length + 1} offset $${listParams.length + 2}
       `;
 

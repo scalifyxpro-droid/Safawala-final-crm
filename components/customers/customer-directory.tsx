@@ -25,6 +25,7 @@ import { ListPagination } from '@/components/ui/list-pagination';
 import { friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
 import { saveCustomerAction } from '@/app/customers/actions';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
+import Link from 'next/link';
 
 export type CustomerRecord = {
   id: number;
@@ -66,6 +67,7 @@ export function CustomerDirectory({
 }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [search, setSearch] = useState('');
+  const [customerScope, setCustomerScope] = useState<'all' | 'returning'>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [editing, setEditing] = useState<CustomerRecord | null | undefined>(
@@ -86,13 +88,15 @@ export function CustomerDirectory({
 
   const visibleCustomers = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return customers;
-    return customers.filter((customer) =>
-      [customer.name, customer.phone, customer.address, customer.email].some(
+    return customers.filter((customer) => {
+      const matchesScope = customerScope === 'all'
+        || (bookingsByCustomer.get(customer.id)?.length ?? 0) > 1;
+      const matchesSearch = !query || [customer.name, customer.phone, customer.address, customer.email].some(
         (value) => value?.toLowerCase().includes(query),
-      ),
-    );
-  }, [customers, search]);
+      );
+      return matchesScope && matchesSearch;
+    });
+  }, [bookingsByCustomer, customerScope, customers, search]);
   const customerPageCount = Math.max(
     1,
     Math.ceil(visibleCustomers.length / pageSize),
@@ -145,24 +149,30 @@ export function CustomerDirectory({
           label="Total customers"
           value={String(customers.length)}
           note="Saved in your database"
+          onClick={() => { setCustomerScope('all'); setPage(1); }}
+          active={customerScope === 'all'}
         />
         <Metric
           icon={<ShoppingBag />}
           label="Returning customers"
           value={String(returningCustomers)}
           note="More than one booking"
+          onClick={() => { setCustomerScope('returning'); setPage(1); }}
+          active={customerScope === 'returning'}
         />
         <Metric
           icon={<IndianRupee />}
           label="Total business"
           value={money(totalBusiness)}
           note="Across all bookings"
+          href="/bookings"
         />
         <Metric
           icon={<WalletCards />}
           label="Outstanding"
           value={money(totalOutstanding)}
           note="Pending collection"
+          href="/ledger"
         />
       </div>
 
@@ -286,14 +296,20 @@ function Metric({
   label,
   value,
   note,
+  onClick,
+  href,
+  active = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   note: string;
+  onClick?: () => void;
+  href?: string;
+  active?: boolean;
 }) {
-  return (
-    <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
+  const card = (
+    <Card className={`h-full gap-0 py-0 shadow-level-1 transition ring-0 ${active ? 'border-primary/45 ring-2 ring-primary/10' : 'border-border'}`}>
       <CardContent className="flex items-center gap-4 p-5">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-primary ring-1 ring-[#e4d2b6] [&_svg]:size-5">
           {icon}
@@ -310,6 +326,19 @@ function Metric({
       </CardContent>
     </Card>
   );
+  if (href) {
+    return <Link href={href} className="min-w-0 rounded-xl transition hover:-translate-y-0.5 hover:shadow-level-2">{card}</Link>;
+  }
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="min-w-0 rounded-xl text-left transition hover:-translate-y-0.5 hover:shadow-level-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {card}
+    </button>
+  ) : card;
 }
 
 function CustomerRow({

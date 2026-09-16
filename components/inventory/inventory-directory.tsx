@@ -308,6 +308,22 @@ export function InventoryDirectory({
     });
   }
 
+  function applyStockKpi(nextFilter: ProductFilter) {
+    setSearch('');
+    setCategory('all');
+    setSubcategory('all');
+    setShowArchived(false);
+    setFilter(nextFilter);
+    setPage(1);
+    setMessage('');
+    window.requestAnimationFrame(() => {
+      inventoryResultsRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }
+
   function openEditProduct(product: InventoryProduct, step: Step = 'details') {
     setEditingProduct(product);
     setDialogStep(step);
@@ -398,6 +414,8 @@ export function InventoryDirectory({
           label="Total products"
           value={activeCount.toLocaleString('en-IN')}
           note="Active catalog"
+          onClick={() => applyStockKpi('all')}
+          active={filter === 'all' && !showArchived}
         />
         <Metric
           icon={<PackageCheck />}
@@ -405,6 +423,8 @@ export function InventoryDirectory({
           value={inStock.toLocaleString('en-IN')}
           note="Above reorder level"
           tone="success"
+          onClick={() => applyStockKpi('in_stock')}
+          active={filter === 'in_stock' && !showArchived}
         />
         <Metric
           icon={<AlertTriangle />}
@@ -412,6 +432,8 @@ export function InventoryDirectory({
           value={lowStock.toLocaleString('en-IN')}
           note="Reorder soon"
           tone="warning"
+          onClick={() => applyStockKpi('low_stock')}
+          active={filter === 'low_stock' && !showArchived}
         />
         <Metric
           icon={<Archive />}
@@ -419,12 +441,16 @@ export function InventoryDirectory({
           value={outOfStock.toLocaleString('en-IN')}
           note="Needs restocking"
           tone="danger"
+          onClick={() => applyStockKpi('out_of_stock')}
+          active={filter === 'out_of_stock' && !showArchived}
         />
         <Metric
           icon={<IndianRupee />}
           label="Inventory value"
           value={money(inventoryValue)}
           note="Sale price × stock"
+          onClick={() => applyStockKpi('all')}
+          active={false}
         />
       </div>
 
@@ -593,12 +619,16 @@ function Metric({
   value,
   note,
   tone = 'default',
+  onClick,
+  active = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   note: string;
   tone?: 'default' | 'success' | 'warning' | 'danger';
+  onClick?: () => void;
+  active?: boolean;
 }) {
   const colors =
     tone === 'success'
@@ -608,8 +638,8 @@ function Metric({
         : tone === 'danger'
           ? 'bg-red-50 text-red-700 ring-red-200'
           : 'bg-accent text-primary ring-[#e4d2b6]';
-  return (
-    <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
+  const card = (
+    <Card className={`h-full gap-0 py-0 shadow-level-1 transition ring-0 ${active ? 'border-primary/45 ring-2 ring-primary/10' : 'border-border'}`}>
       <CardContent className="flex items-center justify-between gap-3 p-5">
         <div className="min-w-0">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -628,6 +658,16 @@ function Metric({
       </CardContent>
     </Card>
   );
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="min-w-0 rounded-xl text-left transition hover:-translate-y-0.5 hover:shadow-level-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {card}
+    </button>
+  ) : card;
 }
 
 function ProductCard({

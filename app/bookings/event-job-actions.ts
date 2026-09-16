@@ -10,6 +10,7 @@ import { notifyBookingConfirmed, maybeNotifyThankYou } from '@/lib/whatsapp/noti
 type BookingForEventJob = {
   id: number;
   booking_number: string;
+  created_at: string;
   booking_type: string;
   status: string;
   is_quote: boolean;
@@ -40,7 +41,7 @@ async function initializeEventJob(userId: string, bookingId: number) {
     const rows = await tx.unsafe(
       `
         select b.id, b.booking_number, b.booking_type, b.status, b.is_quote, b.event_name,
-          b.event_date, b.event_time, b.event_location, b.total, b.paid_amount, b.balance_amount,
+          b.created_at::text as created_at, b.event_date, b.event_time, b.event_location, b.total, b.paid_amount, b.balance_amount,
           b.security_deposit, b.payment_status, c.name as customer_name, c.phone as customer_phone,
           coalesce(items.rows, '[]'::json) as booking_items
         from public.bookings b
@@ -64,6 +65,7 @@ async function initializeEventJob(userId: string, bookingId: number) {
   const summary: ConfirmedBookingSummary = {
     bookingId: booking.id,
     bookingNumber: booking.booking_number,
+    bookingCreatedAt: booking.created_at,
     bookingType: booking.booking_type,
     status: booking.status,
     customerName: booking.customer_name,

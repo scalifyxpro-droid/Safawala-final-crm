@@ -5,6 +5,7 @@ import { DashboardHeaderContext, type PageHeader } from '@/components/layout/das
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandMark } from '@/components/brand-mark';
+import { TeamChatWidget } from '@/components/team-chat/team-chat-widget';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -460,6 +461,7 @@ export function StaffPortalShell({
           {children}
         </main>
       </div>
+      <TeamChatWidget />
     </div></DashboardHeaderContext.Provider>
   );
 }

@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 type JobListBookingRow = {
   id: number;
   booking_number: string;
+  created_at: string;
   booking_type: string;
   status: string;
   event_name: string;
@@ -82,7 +83,7 @@ export default async function EventJobsPage() {
     const result = await withUserContext(user.id, async (tx) => {
       const bookingRows = await tx<JobListBookingRow[]>`
         select
-          b.id, b.booking_number, b.booking_type, b.status, b.event_name,
+          b.id, b.booking_number, b.created_at::text as created_at, b.booking_type, b.status, b.event_name,
           b.event_date, b.event_time, b.event_location,
           case when c.id is null then null else json_build_object('name', c.name, 'phone', c.phone) end as customers,
           b.total, b.paid_amount, b.balance_amount, b.security_deposit, b.payment_status
@@ -90,7 +91,7 @@ export default async function EventJobsPage() {
         left join public.customers c on c.id = b.customer_id
         where b.is_quote = false
           and b.status not in ('draft', 'cancelled')
-        order by b.event_date asc, b.event_time asc nulls last, b.id asc
+        order by b.created_at asc, b.id asc
       `;
       const bookingIds = bookingRows.map((booking) => booking.id);
       const itemRows = bookingIds.length
@@ -117,6 +118,7 @@ export default async function EventJobsPage() {
   const summaries: ConfirmedBookingSummary[] = bookings.map((booking) => ({
     bookingId: booking.id,
     bookingNumber: booking.booking_number,
+    bookingCreatedAt: booking.created_at,
     bookingType: booking.booking_type,
     status: booking.status,
     customerName: booking.customers?.name ?? null,
