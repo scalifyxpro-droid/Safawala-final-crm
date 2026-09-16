@@ -19,6 +19,14 @@ export type SaveAttendanceInput = {
 
 export async function saveAttendanceAction(input: SaveAttendanceInput): Promise<{ error: string }> {
   try {
+    if (!Number.isInteger(input.staff_id) || input.staff_id <= 0)
+      return { error: 'Please select a valid employee.' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.attendance_date))
+      return { error: 'Please select a valid attendance date.' };
+    if (!['present', 'absent', 'late', 'half_day', 'on_leave'].includes(input.status))
+      return { error: 'Please select a valid attendance status.' };
+    if (![input.working_hours, input.overtime].every((value) => Number.isFinite(value) && value >= 0))
+      return { error: 'Attendance hours are invalid.' };
     const user = await requireUser();
     await withUserContext(user.id, (tx) =>
       input.id
@@ -27,11 +35,14 @@ export async function saveAttendanceAction(input: SaveAttendanceInput): Promise<
             set staff_id = ${input.staff_id}, attendance_date = ${input.attendance_date}, status = ${input.status},
               check_in = ${input.check_in}, check_out = ${input.check_out},
               working_hours = ${input.working_hours}, overtime = ${input.overtime}
-            where id = ${input.id}
+            where id = ${input.id} and owner_id = ${user.id}
           `
         : tx`
             insert into public.hr_attendance (owner_id, staff_id, attendance_date, status, check_in, check_out, working_hours, overtime)
             values (${user.id}, ${input.staff_id}, ${input.attendance_date}, ${input.status}, ${input.check_in}, ${input.check_out}, ${input.working_hours}, ${input.overtime})
+            on conflict (owner_id, staff_id, attendance_date) do update set
+              status = excluded.status, check_in = excluded.check_in, check_out = excluded.check_out,
+              working_hours = excluded.working_hours, overtime = excluded.overtime
           `,
     );
     return { error: '' };

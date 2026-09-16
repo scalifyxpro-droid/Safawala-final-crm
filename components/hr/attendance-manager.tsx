@@ -1,6 +1,6 @@
 'use client';
-import { useMemo, useState, useTransition } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { Clock3, Download, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { saveAttendanceAction } from '@/app/hr/actions';
@@ -18,6 +18,22 @@ type RecordRow = {
   staff_members?: { name?: string } | null;
 };
 const statuses = ['present', 'absent', 'late', 'half_day', 'on_leave'];
+const todayValue = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+const timeValue = (value: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
+const localDateTime = (date: string, time: string) => {
+  if (!time) return null;
+  const value = new Date(`${date}T${time}:00`);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
+};
 export function AttendanceManager({
   initialRecords,
   staff,
@@ -30,7 +46,21 @@ export function AttendanceManager({
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [editing, setEditing] = useState<RecordRow | null>(null);
+  const [formError, setFormError] = useState('');
   const [pending, start] = useTransition();
+  useEffect(() => {
+    if (!editing) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setEditing(null);
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [editing]);
   const filtered = useMemo(() => {
     const since = new Date();
     since.setDate(since.getDate() - Number(range) + 1);
@@ -49,24 +79,47 @@ export function AttendanceManager({
   };
   function save(form: HTMLFormElement) {
     const data = new FormData(form);
+    const attendanceDate = String(data.get('attendance_date') || '');
+    const checkInTime = String(data.get('check_in') || '');
+    const checkOutTime = String(data.get('check_out') || '');
+    const checkIn = localDateTime(attendanceDate, checkInTime);
+    const checkOut = localDateTime(attendanceDate, checkOutTime);
+    if (!Number(data.get('staff_id'))) {
+      setFormError('Please select an employee.');
+      return;
+    }
+    if (!attendanceDate) {
+      setFormError('Please select an attendance date.');
+      return;
+    }
+    if (checkIn && checkOut && new Date(checkOut) <= new Date(checkIn)) {
+      setFormError('Check-out time must be later than check-in time.');
+      return;
+    }
+    const workedMilliseconds = checkIn && checkOut
+      ? new Date(checkOut).getTime() - new Date(checkIn).getTime()
+      : 0;
+    const workingHours = Math.round((workedMilliseconds / 3_600_000) * 100) / 100;
     const payload = {
       staff_id: Number(data.get('staff_id')),
-      attendance_date: String(data.get('attendance_date')),
+      attendance_date: attendanceDate,
       status: String(data.get('status')),
-      check_in: data.get('check_in')
-        ? new Date(String(data.get('check_in'))).toISOString()
-        : null,
-      check_out: data.get('check_out')
-        ? new Date(String(data.get('check_out'))).toISOString()
-        : null,
-      working_hours: Number(data.get('working_hours') || 0),
-      overtime: Number(data.get('overtime') || 0),
+      check_in: checkIn,
+      check_out: checkOut,
+      working_hours: workingHours,
+      overtime: Math.max(0, Math.round((workingHours - 8) * 100) / 100),
     };
+    setFormError('');
     start(async () => {
       const result = await saveAttendanceAction(
         editing?.id ? { id: editing.id, ...payload } : payload,
       );
-      if (!result.error) window.location.reload();
+      if (result.error) {
+        setFormError(result.error);
+        return;
+      }
+      setEditing(null);
+      window.location.reload();
     });
   }
   function exportCsv() {
@@ -124,11 +177,11 @@ export function AttendanceManager({
         ))}
       </div>
       <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+        <CardContent className="grid gap-2 p-4 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
           <select
             value={range}
             onChange={(e) => setRange(e.target.value)}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="h-10 w-full rounded-lg border bg-white px-3 text-sm dark:bg-card sm:w-auto"
           >
             <option value="1">Today</option>
             <option value="7">Last 7 days</option>
@@ -137,7 +190,7 @@ export function AttendanceManager({
           <select
             value={staffFilter}
             onChange={(e) => setStaffFilter(e.target.value)}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="h-10 w-full rounded-lg border bg-white px-3 text-sm dark:bg-card sm:w-auto"
           >
             <option value="all">All employees</option>
             {staff.map((s) => (
@@ -149,7 +202,7 @@ export function AttendanceManager({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="h-10 w-full rounded-lg border bg-white px-3 text-sm dark:bg-card sm:w-auto"
           >
             <option value="all">All statuses</option>
             {statuses.map((s) => (
@@ -158,28 +211,31 @@ export function AttendanceManager({
               </option>
             ))}
           </select>
-          <span className="flex-1" />
+          <span className="hidden flex-1 sm:block" />
           <Button
-            onClick={() =>
+            className="w-full sm:w-auto"
+            disabled={!staff.length}
+            onClick={() => {
+              setFormError('');
               setEditing({
                 id: 0,
-                staff_id: staff[0]?.id ?? 0,
-                attendance_date: new Date().toISOString().slice(0, 10),
+                staff_id: 0,
+                attendance_date: todayValue(),
                 status: 'present',
                 check_in: null,
                 check_out: null,
                 working_hours: 0,
                 overtime: 0,
-              })
-            }
+              });
+            }}
           >
             Mark attendance
           </Button>
-          <Button variant="outline" onClick={exportCsv}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={exportCsv}>
             <Download />
             CSV
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => window.print()}>
             <FileText />
             PDF
           </Button>
@@ -187,7 +243,7 @@ export function AttendanceManager({
       </Card>
       <Card>
         <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b bg-[#faf8f4] dark:bg-[#241e17] text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-5 py-3">Employee</th>
@@ -214,7 +270,10 @@ export function AttendanceManager({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setEditing(r)}
+                      onClick={() => {
+                        setFormError('');
+                        setEditing(r);
+                      }}
                     >
                       Correct
                     </Button>
@@ -236,26 +295,61 @@ export function AttendanceManager({
         </CardContent>
       </Card>
       {editing && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4">
-          <Card className="w-full max-w-lg">
-            <CardContent className="space-y-4 p-6">
-              <h2 className="text-lg font-semibold">
-                {editing.id ? 'Correct attendance' : 'Mark attendance'}
-              </h2>
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-3 backdrop-blur-[2px] sm:p-5"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !pending) setEditing(null);
+          }}
+        >
+          <Card
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attendance-dialog-title"
+            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl gap-0 overflow-y-auto rounded-2xl border-border bg-white py-0 shadow-level-3 dark:bg-card sm:max-h-[calc(100dvh-2.5rem)]"
+          >
+            <CardContent className="p-0">
+              <div className="flex items-start gap-3 border-b px-4 py-4 sm:px-6 sm:py-5">
+                <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700 ring-1 ring-teal-100 dark:bg-teal-950/40 dark:text-teal-300 dark:ring-teal-900">
+                  <Clock3 className="size-4.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 id="attendance-dialog-title" className="text-xl font-semibold tracking-tight">
+                    {editing.id ? 'Correct Attendance' : 'Mark Attendance'}
+                  </h2>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    Confirm employee details, date, and check-in/out times.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close attendance form"
+                  disabled={pending}
+                  onClick={() => setEditing(null)}
+                  className="-mr-2 -mt-2 shrink-0"
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   save(e.currentTarget);
                 }}
-                className="grid gap-3 sm:grid-cols-2"
+                className="space-y-4 px-4 py-5 sm:px-6 sm:py-6"
               >
-                <label className="text-sm">
-                  Employee
+                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Employee *</span>
                   <select
                     name="staff_id"
-                    defaultValue={editing.staff_id}
-                    className="mt-1 h-10 w-full rounded border bg-white dark:bg-card px-2"
+                    defaultValue={editing.staff_id || ''}
+                    required
+                    autoFocus
+                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm font-medium outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
                   >
+                    <option value="" disabled>Select employee</option>
                     {staff.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -263,22 +357,23 @@ export function AttendanceManager({
                     ))}
                   </select>
                 </label>
-                <label className="text-sm">
-                  Date
+                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Date *</span>
                   <input
                     name="attendance_date"
                     type="date"
                     defaultValue={editing.attendance_date}
-                    className="mt-1 h-10 w-full rounded border bg-white dark:bg-card px-2"
+                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
                     required
                   />
                 </label>
-                <label className="text-sm">
-                  Status
+                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Status *</span>
                   <select
                     name="status"
                     defaultValue={editing.status}
-                    className="mt-1 h-10 w-full rounded border bg-white dark:bg-card px-2"
+                    required
+                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm font-medium capitalize outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
                   >
                     {statuses.map((s) => (
                       <option key={s} value={s}>
@@ -287,36 +382,43 @@ export function AttendanceManager({
                     ))}
                   </select>
                 </label>
-                <label className="text-sm">
-                  Working hours
+                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Check in</span>
                   <input
-                    name="working_hours"
-                    type="number"
-                    step="0.25"
-                    defaultValue={editing.working_hours}
-                    className="mt-1 h-10 w-full rounded border bg-white dark:bg-card px-2"
+                    name="check_in"
+                    type="time"
+                    defaultValue={timeValue(editing.check_in)}
+                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
                   />
                 </label>
-                <label className="text-sm">
-                  Overtime
+                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Check out</span>
                   <input
-                    name="overtime"
-                    type="number"
-                    step="0.25"
-                    defaultValue={editing.overtime}
-                    className="mt-1 h-10 w-full rounded border bg-white dark:bg-card px-2"
+                    name="check_out"
+                    type="time"
+                    defaultValue={timeValue(editing.check_out)}
+                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
                   />
                 </label>
-                <div className="col-span-full flex justify-end gap-2">
+                <p className="pl-0 text-xs leading-5 text-muted-foreground sm:pl-[124px]">
+                  Working and overtime hours are calculated automatically from these times.
+                </p>
+                {formError ? (
+                  <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                    {formError}
+                  </p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:justify-end">
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={pending}
                     onClick={() => setEditing(null)}
                   >
                     Cancel
                   </Button>
                   <Button type="submit" disabled={pending}>
-                    {pending ? 'Saving…' : 'Save'}
+                    {pending ? 'Saving…' : editing.id ? 'Save correction' : 'Mark Attendance'}
                   </Button>
                 </div>
               </form>
