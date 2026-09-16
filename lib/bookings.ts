@@ -75,12 +75,25 @@ export function displayQuoteNumber(
   return `SW-Q-${quoteType}-${match[1]}-${String(sequence).padStart(4, '0')}`;
 }
 
+function parseBookingDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = value.trim();
+  if (!text) return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
+  const normalized = dateOnly
+    ? `${text}T00:00:00`
+    : text
+        .replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:)/, '$1T$2')
+        .replace(/([+-]\d{2})(\d{2})$/, '$1:$2')
+        .replace(/([+-]\d{2})$/, '$1:00');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export const friendlyDate = (value: string | Date | null | undefined) => {
-  if (!value) return 'Not added';
-  const date =
-    value instanceof Date
-      ? value
-      : new Date(value.includes('T') ? value : `${value}T00:00:00`);
+  const date = parseBookingDate(value);
+  if (!date) return 'Not added';
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -88,15 +101,18 @@ export const friendlyDate = (value: string | Date | null | undefined) => {
   }).format(date);
 };
 
-export const friendlyDateTime = (value: string | Date) =>
-  new Intl.DateTimeFormat('en-GB', {
+export const friendlyDateTime = (value: string | Date) => {
+  const date = parseBookingDate(value);
+  if (!date) return 'Not added';
+  return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(value));
+  }).format(date);
+};
 
 export const friendlyTime = (value: string | null | undefined) => {
   if (!value) return 'Time not added';
