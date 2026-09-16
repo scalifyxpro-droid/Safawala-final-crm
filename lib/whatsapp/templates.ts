@@ -4,9 +4,8 @@
  * automatic, invisible automation wired straight into the booking/payment
  * flow, not as an admin-facing module.
  *
- * Formatting uses WhatsApp's own markdown (*bold text*) so labels stand
- * out in the chat, and every message ends with the same warm SafaWala
- * sign-off for a consistent, professional feel.
+ * Plain text on purpose (no WhatsApp bold markdown, no emoji) — this wording
+ * was reviewed and approved as-is.
  */
 
 function siteBaseUrl(): string {
@@ -44,23 +43,27 @@ export function bookingConfirmedMessage(params: {
   eventLocation: string | null;
   packageName: string;
   bookingId: number;
+  /** Rental bookings get a tracking link; sale bookings never do — there is nothing to track. */
+  bookingType: string;
 }): string {
-  return `*Booking Confirmed – SafaWala* ❤️
+  const isRental = params.bookingType === 'rental';
+  const trackingBlock = isRental
+    ? `\n\nTrack Your Booking:\n${trackingLink(params.bookingId)}`
+    : '';
+  return `Booking Confirmed – Safawala
 
 Dear ${params.customerName},
 
-Thank you for choosing SafaWala! Your booking has been successfully confirmed.
+Your booking with Safawala has been successfully confirmed.
 
-*Booking ID:* ${params.bookingNumber}
-*Event Date:* ${formatDate(params.eventDate)}
-*Event Location:* ${params.eventLocation || 'TBD'}
-*Package/Service:* ${params.packageName}
+Booking ID: ${params.bookingNumber}
+Event Date: ${formatDate(params.eventDate)}
+Event Location: ${params.eventLocation || 'TBD'}
+Package: ${params.packageName}${trackingBlock}
 
-You can track your event status anytime here:
-${trackingLink(params.bookingId)}
+We're delighted to be a part of your special occasion and look forward to making it memorable.
 
-We are excited to be a part of your special occasion.
-Thank you for choosing SafaWala. We look forward to serving you! 🙏`;
+Thank you for choosing Safawala.`;
 }
 
 /** Caption sent alongside the invoice PDF document (see lib/whatsapp/invoice-pdf.ts). */
@@ -69,11 +72,15 @@ export function invoiceMessage(params: {
   bookingNumber: string;
   bookingId: number;
 }): string {
-  return `*Invoice – SafaWala* 🧾
+  return `Invoice – Safawala
 
-Dear ${params.customerName}, please find your invoice for booking *${params.bookingNumber}* attached above.
+Dear ${params.customerName},
 
-Thank you for choosing SafaWala!`;
+Please find your invoice for Booking ${params.bookingNumber} attached with this message.
+
+For any assistance regarding your invoice, please feel free to contact us.
+
+Thank you for choosing Safawala.`;
 }
 
 export function paymentReceivedMessage(params: {
@@ -83,17 +90,16 @@ export function paymentReceivedMessage(params: {
   totalPaid: number;
   remainingAmount: number;
 }): string {
-  return `*Payment Received – SafaWala* ✅
+  return `Payment Received – Safawala
 
 Dear ${params.customerName},
 
-We have received your payment of *₹${formatMoney(params.paymentAmount)}* for booking *${params.bookingNumber}*.
+We're pleased to confirm that we have received your payment of ₹${formatMoney(params.paymentAmount)} for Booking ${params.bookingNumber}.
 
-*Total Paid:* ₹${formatMoney(params.totalPaid)}
-*Remaining Amount:* ₹${formatMoney(params.remainingAmount)}
+Total Paid: ₹${formatMoney(params.totalPaid)}
+Remaining Amount: ₹${formatMoney(params.remainingAmount)}
 
-Thank you,
-SafaWala`;
+Thank you for your payment and for choosing Safawala.`;
 }
 
 export function fullPaymentCompletedMessage(params: {
@@ -101,32 +107,34 @@ export function fullPaymentCompletedMessage(params: {
   bookingNumber: string;
   totalPaid: number;
 }): string {
-  return `*Payment Completed – SafaWala* 🎉
+  return `Payment Completed – Safawala
 
 Dear ${params.customerName},
 
-Your payment for booking *${params.bookingNumber}* is now fully completed.
+Your payment for Booking ${params.bookingNumber} has been completed successfully.
 
-*Total Paid:* ₹${formatMoney(params.totalPaid)}
+Total Amount Paid: ₹${formatMoney(params.totalPaid)}
+Balance: ₹0
 
-Thank you for your trust in SafaWala!`;
+Thank you for your trust in Safawala. We look forward to being a part of your special occasion.`;
 }
 
 export function thankYouFeedbackMessage(params: {
   customerName: string;
   bookingId: number;
 }): string {
-  return `*Thank You – SafaWala* ❤️
+  return `Thank You for Choosing Safawala
 
 Dear ${params.customerName},
 
-We truly appreciate your trust in us and hope you enjoyed our service.
+Thank you for trusting Safawala for your special occasion. We hope you had a wonderful experience with us.
 
-We would love to hear about your experience.
+We'd love to hear your feedback:
 
-⭐ Share your feedback:
+Share Your Experience:
 ${feedbackLink(params.bookingId)}
 
-Your feedback helps us improve and serve you better.
-Thank you once again, and we look forward to serving you again! 🙏`;
+Your feedback means a lot to us and helps us serve you even better.
+
+Thank you once again for choosing Safawala. We look forward to serving you again.`;
 }
