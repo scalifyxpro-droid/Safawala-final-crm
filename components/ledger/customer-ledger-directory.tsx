@@ -32,6 +32,7 @@ export function CustomerLedgerDirectory({
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'sale' | 'rental'>('all');
   const [balance, setBalance] = useState<'all' | 'due' | 'settled'>('all');
+  const [metric, setMetric] = useState<'billing' | 'received' | 'outstanding' | 'customers'>('billing');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -76,10 +77,23 @@ export function CustomerLedgerDirectory({
           (balance === 'all' ||
             (balance === 'due'
               ? row.totals.outstanding > 0
-              : row.totals.outstanding <= 0)),
+              : row.totals.outstanding <= 0)) &&
+          (metric === 'received'
+            ? row.totals.totalPaid > 0
+            : metric === 'outstanding'
+              ? row.totals.outstanding > 0
+              : true),
       )
-      .sort((a, b) => b.totals.outstanding - a.totals.outstanding);
-  }, [balance, bookingsByCustomer, customers, search]);
+      .sort((a, b) =>
+        metric === 'received'
+          ? b.totals.totalPaid - a.totals.totalPaid
+          : metric === 'billing'
+            ? b.totals.totalBilling - a.totals.totalBilling
+            : metric === 'customers'
+              ? a.customer.name.localeCompare(b.customer.name)
+              : b.totals.outstanding - a.totals.outstanding,
+      );
+  }, [balance, bookingsByCustomer, customers, metric, search]);
 
   const allTotals = useMemo(
     () =>
@@ -91,12 +105,30 @@ export function CustomerLedgerDirectory({
     [bookings, type],
   );
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const ledgerCustomerCount = useMemo(
+    () =>
+      customers.filter((customer) =>
+        bookings.some(
+          (booking) =>
+            booking.customer_id === customer.id &&
+            (type === 'all' || booking.booking_type === type),
+        ),
+      ).length,
+    [bookings, customers, type],
+  );
   const safePage = Math.min(page, pageCount);
   const pagedRows = rows.slice(
     (safePage - 1) * pageSize,
     safePage * pageSize,
   );
   const resetPage = () => setPage(1);
+  const selectMetric = (next: typeof metric) => {
+    setMetric(next);
+    setSearch('');
+    setType('all');
+    setBalance(next === 'outstanding' ? 'due' : 'all');
+    resetPage();
+  };
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6">
@@ -112,6 +144,8 @@ export function CustomerLedgerDirectory({
           label="Total billing"
           value={money(allTotals.totalBilling)}
           note={`${allTotals.totalBills} active bills`}
+          active={metric === 'billing'}
+          onClick={() => selectMetric('billing')}
         />
         <Metric
           icon={<ReceiptText />}
@@ -119,6 +153,8 @@ export function CustomerLedgerDirectory({
           value={money(allTotals.totalPaid)}
           note="Across all payment entries"
           tone="success"
+          active={metric === 'received'}
+          onClick={() => selectMetric('received')}
         />
         <Metric
           icon={<WalletCards />}
@@ -126,12 +162,16 @@ export function CustomerLedgerDirectory({
           value={money(allTotals.outstanding)}
           note="Pending collection"
           tone="warning"
+          active={metric === 'outstanding'}
+          onClick={() => selectMetric('outstanding')}
         />
         <Metric
           icon={<UsersRound />}
           label="Ledger customers"
-          value={String(rows.length)}
+          value={String(ledgerCustomerCount)}
           note="Customers with bills"
+          active={metric === 'customers'}
+          onClick={() => selectMetric('customers')}
         />
       </section>
 
@@ -169,6 +209,7 @@ export function CustomerLedgerDirectory({
                 value={type}
                 onChange={(event) => {
                   setType(event.target.value as typeof type);
+                  setMetric('billing');
                   resetPage();
                 }}
                 aria-label="Booking type"
@@ -182,6 +223,9 @@ export function CustomerLedgerDirectory({
                 value={balance}
                 onChange={(event) => {
                   setBalance(event.target.value as typeof balance);
+                  setMetric(
+                    event.target.value === 'due' ? 'outstanding' : 'billing',
+                  );
                   resetPage();
                 }}
                 aria-label="Balance status"
@@ -267,12 +311,16 @@ function Metric({
   value,
   note,
   tone = 'default',
+  active,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   note: string;
   tone?: 'default' | 'success' | 'warning';
+  active: boolean;
+  onClick: () => void;
 }) {
   const iconTone =
     tone === 'success'
@@ -281,15 +329,24 @@ function Metric({
         ? 'bg-amber-50 text-amber-700 ring-amber-200'
         : 'bg-accent text-primary ring-[#e4d2b6]';
   return (
-    <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
-      <CardContent className="flex items-center justify-between gap-3 p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={`Show ${label.toLowerCase()} accounts`}
+      className="rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
+      <Card className={`h-full gap-0 py-0 shadow-level-1 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-level-2 ${active ? 'border-primary/50 ring-2 ring-primary/10' : 'border-border ring-0'}`}>
+        <CardContent className="flex items-center justify-between gap-3 p-5">
         <div className="min-w-0">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
           <p className="mt-1 truncate text-xl font-semibold tracking-[-0.03em]">{value}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">{note}</p>
         </div>
         <span className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 [&_svg]:size-4 ${iconTone}`}>{icon}</span>
-      </CardContent>
-    </Card>
+          <span className="sr-only">Show {label.toLowerCase()} accounts</span>
+        </CardContent>
+      </Card>
+    </button>
   );
 }

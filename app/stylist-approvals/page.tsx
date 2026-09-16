@@ -17,9 +17,20 @@ import { compareJobsByBookingDate } from '@/lib/event-jobs/sorting';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StylistApprovalsPage() {
+type StylistView = 'all' | 'awaiting' | 'assigned';
+
+export default async function StylistApprovalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
+  const requestedView = (await searchParams).view;
+  const view: StylistView =
+    requestedView === 'awaiting' || requestedView === 'assigned'
+      ? requestedView
+      : 'all';
   const [profile] = await withUserContext(
     user.id,
     (tx) => tx<{ role: string }[]>`
@@ -27,10 +38,10 @@ export default async function StylistApprovalsPage() {
   `,
   );
   if (profile?.role !== 'admin') redirect('/staff-portal');
-  const jobs = (await stylistJobsForAdmin())
+  const allJobs = (await stylistJobsForAdmin())
     .filter((job) => job.status === 'active')
     .sort(compareJobsByBookingDate);
-  const awaiting = jobs.reduce(
+  const awaiting = allJobs.reduce(
     (sum, job) =>
       sum +
       job.stylistInterests.filter(
@@ -38,12 +49,19 @@ export default async function StylistApprovalsPage() {
       ).length,
     0,
   );
-  const assigned = jobs.reduce(
+  const assigned = allJobs.reduce(
     (sum, job) =>
       sum +
       job.stylistInterests.filter((interest) => interest.status === 'approved')
         .length,
     0,
+  );
+  const jobs = allJobs.filter((job) =>
+    view === 'awaiting'
+      ? job.stylistInterests.some((interest) => interest.status === 'interested')
+      : view === 'assigned'
+        ? job.stylistInterests.some((interest) => interest.status === 'approved')
+        : true,
   );
 
   return (
@@ -58,11 +76,13 @@ export default async function StylistApprovalsPage() {
             <Summary
               icon={<CalendarClock />}
               label="Rental events"
-              value={jobs.length}
+              value={allJobs.length}
               tone="primary"
+              href="/stylist-approvals"
+              active={view === 'all'}
             />
-            <Summary icon={<UsersRound />} label="Awaiting" value={awaiting} tone="warning" />
-            <Summary icon={<UserCheck />} label="Assigned" value={assigned} tone="success" />
+            <Summary icon={<UsersRound />} label="Awaiting" value={awaiting} tone="warning" href="/stylist-approvals?view=awaiting" active={view === 'awaiting'} />
+            <Summary icon={<UserCheck />} label="Assigned" value={assigned} tone="success" href="/stylist-approvals?view=assigned" active={view === 'assigned'} />
         </section>
 
         {jobs.length ? (
@@ -155,10 +175,16 @@ export default async function StylistApprovalsPage() {
                   <UserCheck />
                 </span>
                 <h3 className="mt-4 font-semibold">
-                  No rental events need stylist approval
+                  {view === 'awaiting'
+                    ? 'No events are awaiting stylist approval'
+                    : view === 'assigned'
+                      ? 'No events have assigned stylists'
+                      : 'No rental events need stylist approval'}
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Confirmed rental Event Jobs will appear here.
+                  {view === 'all'
+                    ? 'Confirmed rental Event Jobs will appear here.'
+                    : 'Choose another KPI card to view a different status.'}
                 </p>
               </div>
             </CardContent>
@@ -174,11 +200,15 @@ function Summary({
   label,
   value,
   tone,
+  href,
+  active,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   tone: 'primary' | 'warning' | 'success';
+  href: string;
+  active: boolean;
 }) {
   const iconTone = tone === 'success'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40'
@@ -186,7 +216,11 @@ function Summary({
       ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40'
       : 'border-[#e4d2b6] bg-[#f5ead8] text-primary dark:border-[#493822] dark:bg-[#33291c]';
   return (
-    <div className="flex min-h-[96px] items-center justify-between gap-4 rounded-xl border border-border bg-white px-4 py-4 shadow-level-1 dark:bg-card sm:px-5">
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={`flex min-h-[96px] items-center justify-between gap-4 rounded-xl border bg-white px-4 py-4 shadow-level-1 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-level-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:bg-card sm:px-5 ${active ? 'border-primary/50 ring-2 ring-primary/10' : 'border-border'}`}
+    >
       <div className="min-w-0">
         <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
         <strong className="mt-1 block text-2xl font-semibold tracking-[-0.03em] tabular-nums">{value}</strong>
@@ -194,6 +228,7 @@ function Summary({
       <span className={`grid size-10 shrink-0 place-items-center rounded-xl border [&_svg]:size-4.5 ${iconTone}`}>
         {icon}
       </span>
-    </div>
+      <span className="sr-only">Filter stylist approvals by {label}</span>
+    </Link>
   );
 }
