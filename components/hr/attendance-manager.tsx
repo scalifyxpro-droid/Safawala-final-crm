@@ -23,16 +23,36 @@ const todayValue = () => {
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
-const timeValue = (value: string | null) => {
-  if (!value) return '';
+const twelveHourTime = (value: string | null, fallbackPeriod: 'AM' | 'PM') => {
+  if (!value) return { time: '', period: fallbackPeriod };
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  if (Number.isNaN(date.getTime())) return { time: '', period: fallbackPeriod };
+  const hours = date.getHours();
+  return {
+    time: `${String(hours % 12 || 12).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+    period: hours >= 12 ? 'PM' as const : 'AM' as const,
+  };
 };
-const localDateTime = (date: string, time: string) => {
+const localDateTime = (date: string, time: string, period: string) => {
   if (!time) return null;
-  const value = new Date(`${date}T${time}:00`);
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(time.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  if (hours < 1 || hours > 12 || !['AM', 'PM'].includes(period)) return null;
+  const hour24 = (hours % 12) + (period === 'PM' ? 12 : 0);
+  const value = new Date(`${date}T${String(hour24).padStart(2, '0')}:${match[2]}:00`);
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
+};
+const dateOnlyValue = (value: string) => {
+  const match = /\d{4}-\d{2}-\d{2}/.exec(String(value));
+  return match?.[0] ?? '';
+};
+const displayTime = (value: string | null) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 };
 export function AttendanceManager({
   initialRecords,
@@ -41,7 +61,7 @@ export function AttendanceManager({
   initialRecords: RecordRow[];
   staff: Staff[];
 }) {
-  const [records] = useState(initialRecords);
+  const [records, setRecords] = useState(initialRecords);
   const [range, setRange] = useState('30');
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -63,12 +83,20 @@ export function AttendanceManager({
   }, [editing]);
   const filtered = useMemo(() => {
     const since = new Date();
-    since.setDate(since.getDate() - Number(range) + 1);
+    since.setHours(0, 0, 0, 0);
+    if (range !== 'all') since.setDate(since.getDate() - Number(range) + 1);
     return records.filter(
-      (r) =>
-        new Date(`${r.attendance_date}T00:00:00`) >= since &&
+      (r) => {
+        const attendanceDate = dateOnlyValue(r.attendance_date);
+        const recordDate = new Date(`${attendanceDate}T00:00:00`);
+        return (
+        attendanceDate !== '' &&
+        !Number.isNaN(recordDate.getTime()) &&
+        (range === 'all' || recordDate >= since) &&
         (staffFilter === 'all' || String(r.staff_id) === staffFilter) &&
-        (statusFilter === 'all' || r.status === statusFilter),
+        (statusFilter === 'all' || r.status === statusFilter)
+        );
+      },
     );
   }, [records, range, staffFilter, statusFilter]);
   const kpis = {
@@ -80,16 +108,24 @@ export function AttendanceManager({
   function save(form: HTMLFormElement) {
     const data = new FormData(form);
     const attendanceDate = String(data.get('attendance_date') || '');
-    const checkInTime = String(data.get('check_in') || '');
-    const checkOutTime = String(data.get('check_out') || '');
-    const checkIn = localDateTime(attendanceDate, checkInTime);
-    const checkOut = localDateTime(attendanceDate, checkOutTime);
+    const checkInTime = String(data.get('check_in_time') || '');
+    const checkOutTime = String(data.get('check_out_time') || '');
+    const checkIn = localDateTime(attendanceDate, checkInTime, String(data.get('check_in_period') || ''));
+    const checkOut = localDateTime(attendanceDate, checkOutTime, String(data.get('check_out_period') || ''));
     if (!Number(data.get('staff_id'))) {
       setFormError('Please select an employee.');
       return;
     }
     if (!attendanceDate) {
       setFormError('Please select an attendance date.');
+      return;
+    }
+    if (checkInTime && !checkIn) {
+      setFormError('Enter check-in time as HH:MM and select AM or PM.');
+      return;
+    }
+    if (checkOutTime && !checkOut) {
+      setFormError('Enter check-out time as HH:MM and select AM or PM.');
       return;
     }
     if (checkIn && checkOut && new Date(checkOut) <= new Date(checkIn)) {
@@ -118,8 +154,21 @@ export function AttendanceManager({
         setFormError(result.error);
         return;
       }
+      if (result.record) {
+        const employee = staff.find((person) => person.id === result.record?.staff_id);
+        const nextRecord: RecordRow = {
+          ...result.record,
+          staff_members: { name: employee?.name ?? 'Employee' },
+        };
+        setRecords((current) => [
+          nextRecord,
+          ...current.filter((record) => record.id !== nextRecord.id),
+        ]);
+      }
+      setRange('all');
+      setStaffFilter('all');
+      setStatusFilter('all');
       setEditing(null);
-      window.location.reload();
     });
   }
   function exportCsv() {
@@ -186,6 +235,7 @@ export function AttendanceManager({
             <option value="1">Today</option>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
+            <option value="all">All time</option>
           </select>
           <select
             value={staffFilter}
@@ -249,6 +299,7 @@ export function AttendanceManager({
                 <th className="px-5 py-3">Employee</th>
                 <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Timing</th>
                 <th className="px-5 py-3">Hours</th>
                 <th className="px-5 py-3">Overtime</th>
                 <th aria-label="Actions" className="px-5 py-3" />
@@ -263,6 +314,9 @@ export function AttendanceManager({
                   <td className="px-5 py-4">{r.attendance_date}</td>
                   <td className="px-5 py-4 capitalize">
                     {r.status.replace('_', ' ')}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-4 text-muted-foreground">
+                    {displayTime(r.check_in)} – {displayTime(r.check_out)}
                   </td>
                   <td className="px-5 py-4">{r.working_hours ?? 0}</td>
                   <td className="px-5 py-4">{r.overtime ?? 0}</td>
@@ -283,7 +337,7 @@ export function AttendanceManager({
               {!filtered.length && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-5 py-12 text-center text-muted-foreground"
                   >
                     No attendance records match these filters.
@@ -382,24 +436,14 @@ export function AttendanceManager({
                     ))}
                   </select>
                 </label>
-                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                <div className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
                   <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Check in</span>
-                  <input
-                    name="check_in"
-                    type="time"
-                    defaultValue={timeValue(editing.check_in)}
-                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
-                  />
-                </label>
-                <label className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
+                  <TimeWithPeriodField name="check_in" value={editing.check_in} fallbackPeriod="AM" />
+                </div>
+                <div className="grid gap-1.5 sm:grid-cols-[108px_minmax(0,1fr)] sm:items-center sm:gap-4">
                   <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-right">Check out</span>
-                  <input
-                    name="check_out"
-                    type="time"
-                    defaultValue={timeValue(editing.check_out)}
-                    className="h-11 min-w-0 w-full rounded-xl border border-input bg-white px-3 text-sm outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 dark:bg-card"
-                  />
-                </label>
+                  <TimeWithPeriodField name="check_out" value={editing.check_out} fallbackPeriod="PM" />
+                </div>
                 <p className="pl-0 text-xs leading-5 text-muted-foreground sm:pl-[124px]">
                   Working and overtime hours are calculated automatically from these times.
                 </p>
@@ -427,5 +471,43 @@ export function AttendanceManager({
         </div>
       )}
     </div>
+  );
+}
+
+function TimeWithPeriodField({
+  name,
+  value,
+  fallbackPeriod,
+}: {
+  name: 'check_in' | 'check_out';
+  value: string | null;
+  fallbackPeriod: 'AM' | 'PM';
+}) {
+  const initial = twelveHourTime(value, fallbackPeriod);
+  const label = name === 'check_in' ? 'Check-in' : 'Check-out';
+  return (
+    <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_82px] overflow-hidden rounded-xl border border-input bg-white transition focus-within:border-teal-500 focus-within:ring-4 focus-within:ring-teal-500/10 dark:bg-card">
+      <input
+        name={`${name}_time`}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        defaultValue={initial.time}
+        placeholder="--:--"
+        maxLength={5}
+        pattern="([1-9]|0[1-9]|1[0-2]):[0-5][0-9]"
+        aria-label={`${label} time in hours and minutes`}
+        className="h-11 min-w-0 border-0 bg-transparent px-3 text-sm outline-none"
+      />
+      <select
+        name={`${name}_period`}
+        defaultValue={initial.period}
+        aria-label={`${label} AM or PM`}
+        className="h-11 border-0 border-l border-input bg-[#faf8f4] px-2 text-sm font-semibold outline-none dark:bg-[#241e17]"
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </span>
   );
 }
