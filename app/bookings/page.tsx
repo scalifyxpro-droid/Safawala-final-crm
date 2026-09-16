@@ -128,7 +128,7 @@ export default async function BookingsPage({ searchParams }: Props) {
         where bi.booking_id = b.id
       ) items on true
       where ${whereClause}
-      order by b.created_at asc, b.id asc
+      order by b.created_at desc, b.id desc
       limit $${limitIndex} offset $${offsetIndex}
     `;
 

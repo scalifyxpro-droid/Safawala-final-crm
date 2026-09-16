@@ -41,18 +41,20 @@ export function compareJobsByBookingDate(
   first: SortableEventJob,
   second: SortableEventJob,
 ) {
-  const createdOrder = compareText(first.createdAt, second.createdAt);
+  // Newest booking first. A booking can be back-dated from the creation form,
+  // so the numeric booking ID is the stable newest-first tie-breaker.
+  const createdOrder = compareText(second.createdAt, first.createdAt);
   if (createdOrder !== 0) return createdOrder;
 
-  const idOrder = Number(first.bookingId) - Number(second.bookingId);
+  const idOrder = Number(second.bookingId) - Number(first.bookingId);
   if (idOrder !== 0) return idOrder;
 
-  return first.bookingNumber.localeCompare(second.bookingNumber, undefined, {
+  return second.bookingNumber.localeCompare(first.bookingNumber, undefined, {
     numeric: true,
   });
 }
 
-/** Standard order for every booking/job portal: booking creation, then booking ID. */
+/** Standard portal order: newest booking creation, then newest booking ID. */
 export function sortJobsByBookingDate<T extends SortableEventJob>(
   jobs: readonly T[],
 ) {

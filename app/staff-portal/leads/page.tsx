@@ -39,7 +39,7 @@ export default async function StaffLeadsPage() {
          from public.bookings b
          left join public.customers c on c.id = b.customer_id
          where ${conditions.join(' and ')}
-         order by b.created_at asc, b.id asc`,
+         order by b.created_at desc, b.id desc`,
         params,
       );
       return { leads: rows as unknown as LeadRow[], error: null as Error | null };

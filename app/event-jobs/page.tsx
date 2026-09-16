@@ -91,7 +91,7 @@ export default async function EventJobsPage() {
         left join public.customers c on c.id = b.customer_id
         where b.is_quote = false
           and b.status not in ('draft', 'cancelled')
-        order by b.created_at asc, b.id asc
+        order by b.created_at desc, b.id desc
       `;
       const bookingIds = bookingRows.map((booking) => booking.id);
       const itemRows = bookingIds.length
@@ -148,12 +148,8 @@ export default async function EventJobsPage() {
       Boolean(row.booking),
     )
     .sort((a, b) => {
-      const dateOrder = a.booking.event_date.localeCompare(b.booking.event_date);
-      if (dateOrder !== 0) return dateOrder;
-      const timeOrder = (a.booking.event_time ?? '99:99:99').localeCompare(
-        b.booking.event_time ?? '99:99:99',
-      );
-      return timeOrder !== 0 ? timeOrder : a.booking.id - b.booking.id;
+      const createdOrder = b.booking.created_at.localeCompare(a.booking.created_at);
+      return createdOrder !== 0 ? createdOrder : b.booking.id - a.booking.id;
     });
 
   return (

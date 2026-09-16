@@ -38,7 +38,7 @@ export default async function StaffBookingPage() {
           from public.bookings b
           left join public.customers c on c.id = b.customer_id
           where ${LIVE_BOOKING_FILTER_B}
-          order by b.created_at asc, b.id asc
+          order by b.created_at desc, b.id desc
           limit 6
         `),
       ]);

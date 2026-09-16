@@ -161,7 +161,7 @@ export default async function QuotesPage({ searchParams }: Props) {
           where bi.booking_id = b.id
         ) items on true
         where ${whereClause}
-        order by b.created_at asc, b.id asc
+        order by b.created_at desc, b.id desc
         limit $${listParams.length + 1} offset $${listParams.length + 2}
       `;
 
@@ -174,7 +174,7 @@ export default async function QuotesPage({ searchParams }: Props) {
       const summaryQuery = `
         select id, status, created_at, booking_number from public.bookings
         where ${summaryConditions.join(' and ')}
-        order by created_at asc
+        order by created_at desc, id desc
         limit 10000
       `;
 

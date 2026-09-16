@@ -39,7 +39,7 @@ export default async function InvoicesPage() {
         `select id, booking_number, event_name, event_date, total, payment_status
          from public.bookings
          where ${conditions.join(' and ')}
-         order by created_at asc, id asc
+         order by created_at desc, id desc
          limit 100`,
         params,
       );
