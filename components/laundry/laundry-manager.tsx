@@ -146,18 +146,9 @@ export function LaundryManager({
         subtitle="Manage laundry batches and vendor relationships"
         backHref="/dashboard"
         actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.refresh()}
-            >
-              <RefreshCw /> Refresh
-            </Button>
-            <Button size="sm" onClick={openCreate}>
-              <Plus /> Create Batch
-            </Button>
-          </>
+          <Button size="sm" onClick={openCreate}>
+            <Plus /> Create Batch
+          </Button>
         }
       />
       {error ? (

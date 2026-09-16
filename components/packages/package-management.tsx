@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 import Link from 'next/link';
 import {
   Boxes,
@@ -101,6 +101,9 @@ export function PackageManagement({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(loadError);
   const [notice, setNotice] = useState('');
+  const [responsivePageSize, setResponsivePageSize] = useState<5 | 10 | 15>(5);
+  const [categoryPage, setCategoryPage] = useState(1);
+  const [variantPage, setVariantPage] = useState(1);
 
   const activeCategories = useMemo(
     () => categories.filter((category) => category.is_active),
@@ -110,6 +113,25 @@ export function PackageManagement({
     activeCategories.find((category) => category.id === selectedId) ??
     activeCategories[0] ??
     null;
+  const categoryPageCount = Math.max(
+    1,
+    Math.ceil(activeCategories.length / responsivePageSize),
+  );
+  const safeCategoryPage = Math.min(categoryPage, categoryPageCount);
+  const variants = selectedCategory?.package_variants ?? [];
+  const variantPageCount = Math.max(
+    1,
+    Math.ceil(variants.length / responsivePageSize),
+  );
+  const safeVariantPage = Math.min(variantPage, variantPageCount);
+
+  useEffect(() => {
+    setVariantPage(1);
+  }, [selectedId, responsivePageSize]);
+
+  useEffect(() => {
+    setCategoryPage(1);
+  }, [responsivePageSize]);
 
   function flash(message: string) {
     setError('');
@@ -386,15 +408,19 @@ export function PackageManagement({
                 </div>
               </div>
             ) : (
-              activeCategories.map((category) => {
+              <>
+              {activeCategories.map((category, index) => {
                 const selected = category.id === selectedCategory?.id;
+                const visibleOnResponsive =
+                  index >= (safeCategoryPage - 1) * responsivePageSize &&
+                  index < safeCategoryPage * responsivePageSize;
                 return (
                   <button
                     key={category.id}
                     type="button"
                     onClick={() => setSelectedId(category.id)}
                     aria-pressed={selected}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'border-[#d9bd91] bg-accent shadow-sm' : 'border-border bg-white dark:bg-card hover:border-[#d9bd91] hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]'}`}
+                    className={`${visibleOnResponsive ? 'flex' : 'hidden xl:flex'} w-full items-center gap-3 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'border-[#d9bd91] bg-accent shadow-sm' : 'border-border bg-white dark:bg-card hover:border-[#d9bd91] hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]'}`}
                   >
                     <span
                       className={`grid size-10 shrink-0 place-items-center rounded-lg ${selected ? 'bg-primary text-white' : 'bg-[#f5ead8] dark:bg-[#33291c] text-primary'}`}
@@ -414,7 +440,17 @@ export function PackageManagement({
                     />
                   </button>
                 );
-              })
+              })}
+              <ResponsivePackagePagination
+                itemLabel="categories"
+                totalItems={activeCategories.length}
+                page={safeCategoryPage}
+                pageCount={categoryPageCount}
+                pageSize={responsivePageSize}
+                onPageChange={setCategoryPage}
+                onPageSizeChange={setResponsivePageSize}
+              />
+              </>
             )}
           </CardContent>
         </Card>
@@ -481,17 +517,34 @@ export function PackageManagement({
                 </Card>
               ) : (
                 <div className="grid gap-4 xl:grid-cols-2">
-                  {selectedCategory.package_variants.map((variant) => (
-                    <VariantCard
-                      key={variant.id}
-                      variant={variant}
-                      onEdit={() => openEditVariant(variant)}
-                      onDelete={() => {
-                        setError('');
-                        setDeletingVariant(variant);
-                      }}
+                  {selectedCategory.package_variants.map((variant, index) => {
+                    const visibleOnResponsive =
+                      index >= (safeVariantPage - 1) * responsivePageSize &&
+                      index < safeVariantPage * responsivePageSize;
+                    return (
+                      <div key={variant.id} className={visibleOnResponsive ? '' : 'hidden xl:block'}>
+                        <VariantCard
+                          variant={variant}
+                          onEdit={() => openEditVariant(variant)}
+                          onDelete={() => {
+                            setError('');
+                            setDeletingVariant(variant);
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                  <div className="xl:col-span-2">
+                    <ResponsivePackagePagination
+                      itemLabel="variants"
+                      totalItems={selectedCategory.package_variants.length}
+                      page={safeVariantPage}
+                      pageCount={variantPageCount}
+                      pageSize={responsivePageSize}
+                      onPageChange={setVariantPage}
+                      onPageSizeChange={setResponsivePageSize}
                     />
-                  ))}
+                  </div>
                 </div>
               )}
             </>
@@ -558,6 +611,58 @@ export function PackageManagement({
           onConfirm={deleteCategory}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ResponsivePackagePagination({
+  itemLabel,
+  totalItems,
+  page,
+  pageCount,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  itemLabel: string;
+  totalItems: number;
+  page: number;
+  pageCount: number;
+  pageSize: 5 | 10 | 15;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: 5 | 10 | 15) => void;
+}) {
+  const first = totalItems ? (page - 1) * pageSize + 1 : 0;
+  const last = Math.min(page * pageSize, totalItems);
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-[#fcfaf7] px-3 py-2 dark:bg-[#241e17] xl:hidden">
+      <span className="text-xs text-muted-foreground">
+        {first}–{last} of {totalItems} {itemLabel}
+      </span>
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="hidden min-[390px]:inline">Items per page</span>
+          <select
+            value={pageSize}
+            onChange={(event) =>
+              onPageSizeChange(Number(event.target.value) as 5 | 10 | 15)
+            }
+            aria-label={`${itemLabel} per page`}
+            className="h-8 rounded-md border border-input bg-white px-2 text-xs font-medium text-foreground dark:bg-card"
+          >
+            {[5, 10, 15].map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2.5 text-xs" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Previous
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2.5 text-xs" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

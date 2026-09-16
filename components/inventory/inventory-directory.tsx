@@ -377,7 +377,7 @@ export function InventoryDirectory({
           type="button"
           onClick={reviewStockItems}
           aria-label={`Review ${outOfStock > 0 ? 'out-of-stock' : 'low-stock'} products`}
-          className="flex w-full items-start justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-level-1 transition hover:border-amber-300"
+          className="flex w-full flex-col items-stretch justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-level-1 transition hover:border-amber-300 min-[420px]:flex-row min-[420px]:items-start"
         >
           <span className="flex gap-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
@@ -391,7 +391,7 @@ export function InventoryDirectory({
               </span>
             </span>
           </span>
-          <span className="hidden rounded-md bg-white dark:bg-card px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-200 sm:block">
+          <span className="self-end rounded-md bg-white dark:bg-card px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-200 min-[420px]:shrink-0 min-[420px]:self-auto">
             Review items
           </span>
         </button>

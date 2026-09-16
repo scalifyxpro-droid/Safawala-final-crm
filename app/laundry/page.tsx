@@ -12,8 +12,12 @@ export const dynamic = 'force-dynamic';
 // items/notes as arrays) that LaundryManager already expects.
 const BATCH_QUERY = `
   select
-    b.id, b.batch_number, b.vendor_id, b.status, b.sent_date, b.expected_return_date,
-    b.total_cost, b.notes, b.created_at, b.updated_at,
+    b.id, b.batch_number, b.vendor_id, b.status,
+    b.sent_date::text as sent_date,
+    b.expected_return_date::text as expected_return_date,
+    b.total_cost, b.notes,
+    b.created_at::text as created_at,
+    b.updated_at::text as updated_at,
     case when v.id is null then null else json_build_object('name', v.name, 'contact_person', v.contact_person, 'phone', v.phone, 'email', v.email) end as vendors,
     coalesce(items.items, '[]'::json) as laundry_batch_items,
     coalesce(notes.notes, '[]'::json) as laundry_batch_notes
@@ -27,7 +31,7 @@ const BATCH_QUERY = `
     from public.laundry_batch_items i where i.batch_id = b.id
   ) items on true
   left join lateral (
-    select json_agg(json_build_object('id', n.id, 'note', n.note, 'created_at', n.created_at) order by n.created_at desc) as notes
+    select json_agg(json_build_object('id', n.id, 'note', n.note, 'created_at', n.created_at::text) order by n.created_at desc) as notes
     from public.laundry_batch_notes n where n.batch_id = b.id
   ) notes on true
   order by b.sent_date desc
