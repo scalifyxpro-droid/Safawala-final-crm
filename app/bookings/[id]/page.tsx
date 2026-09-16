@@ -310,12 +310,12 @@ export default async function BookingDetailsPage({
                 )}
               </CardContent>
             </Card>
-            <Card className="border-border shadow-level-1 ring-0">
-              <CardHeader className="border-b">
+            <Card className="min-w-0 overflow-hidden border-border shadow-level-1 ring-0">
+              <CardHeader className="border-b bg-[#fcfaf7] px-4 py-4 dark:bg-[#241e17] sm:px-6">
                 <CardTitle>Terms & conditions</CardTitle>
               </CardHeader>
-              <CardContent>
-                <ol className="list-decimal space-y-1.5 pl-5 text-xs leading-5 text-muted-foreground">
+              <CardContent className="px-4 py-4 sm:px-6">
+                <ol className="list-decimal space-y-2 pl-4 text-xs leading-5 text-muted-foreground marker:font-semibold marker:text-primary sm:pl-5">
                   {BOOKING_TERMS.map((term) => (
                     <li key={term}>{term}</li>
                   ))}
@@ -324,11 +324,11 @@ export default async function BookingDetailsPage({
             </Card>
           </div>
           <aside className="space-y-6">
-            <Card className="border-[#dfc9a6] shadow-level-1 ring-0">
-              <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17]">
+            <Card className="min-w-0 overflow-hidden border-[#dfc9a6] shadow-level-1 ring-0">
+              <CardHeader className="border-b bg-[#fcfaf7] px-4 py-4 dark:bg-[#241e17] sm:px-6">
                 <CardTitle>Financial summary</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-3 px-4 py-4 sm:px-6">
                 <Amount label="Subtotal" value={booking.subtotal} />
                 <Amount label="Discount" value={-booking.discount} />
                 <Amount label="Tax / charges" value={booking.tax} />
@@ -409,10 +409,10 @@ function Amount({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <div className="flex min-w-0 items-start justify-between gap-3">
+      <span className="min-w-0 text-sm leading-5 text-muted-foreground">{label}</span>
       <span
-        className={strong ? 'text-lg font-semibold' : 'text-sm font-semibold'}
+        className={`shrink-0 text-right tabular-nums ${strong ? 'text-lg font-semibold' : 'text-sm font-semibold'}`}
       >
         {money(value)}
       </span>

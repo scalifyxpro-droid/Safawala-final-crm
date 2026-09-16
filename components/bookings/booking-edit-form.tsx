@@ -961,13 +961,13 @@ export function BookingEditForm({
                   </label>
                 </CardContent>
               </Card>
-              <Card className="gap-0 border-[#dfc9a6] py-0 shadow-none ring-0">
-                <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17] px-4 py-4">
+              <Card className="min-w-0 gap-0 overflow-hidden border-[#dfc9a6] py-0 shadow-none ring-0">
+                <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17] px-3 py-3 sm:px-4 sm:py-4">
                   <CardTitle className="text-sm font-semibold">
                     Summary
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3 p-4 text-sm">
+                <CardContent className="space-y-3 p-3 text-sm sm:p-4">
                   <Amount label="Subtotal" value={subtotal} />
                   <Amount label="Discount" value={-discount} />
                   {taxEnabled && <Amount label="GST (5%)" value={tax} />}
@@ -1093,11 +1093,11 @@ function Amount({
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className={strong ? 'font-semibold' : 'text-muted-foreground'}>
+    <div className="flex min-w-0 items-start justify-between gap-3">
+      <span className={`min-w-0 leading-5 ${strong ? 'font-semibold' : 'text-muted-foreground'}`}>
         {label}
       </span>
-      <span className={strong ? 'text-base font-semibold' : ''}>
+      <span className={`shrink-0 text-right tabular-nums ${strong ? 'text-base font-semibold' : ''}`}>
         {money(value)}
       </span>
     </div>

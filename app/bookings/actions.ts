@@ -218,12 +218,16 @@ export async function createBookingCustomerAction(
 ): Promise<{ data: { id: number; name: string; phone: string; email: string | null; address: string | null } | null; error: string }> {
   try {
     await assertStaffPortalWriteAccess('bookings');
+    const phone = input.phone.replace(/\D/g, '');
+    if (!/^\d{10}$/.test(phone)) {
+      return { data: null, error: 'Enter a valid 10-digit mobile number.' };
+    }
     const user = await requireUser();
     const [customer] = await withUserContext(user.id, (tx) => tx<
       { id: number; name: string; phone: string; email: string | null; address: string | null }[]
     >`
       insert into public.customers (owner_id, name, phone, email, address, notes)
-      values (${ownerId}, ${input.name}, ${input.phone}, null, ${input.address || null}, null)
+      values (${ownerId}, ${input.name}, ${phone}, null, ${input.address || null}, null)
       returning id, name, phone, email, address
     `);
     return { data: customer ?? null, error: '' };

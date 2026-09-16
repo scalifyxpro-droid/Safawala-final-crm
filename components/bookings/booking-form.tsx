@@ -148,6 +148,9 @@ export function BookingForm({
   const [productSearch, setProductSearch] = useState('');
   const [productCategory, setProductCategory] = useState('all');
   const [productSubcategory, setProductSubcategory] = useState('all');
+  const [catalogPageSize, setCatalogPageSize] = useState<5 | 10 | 15>(5);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [packageProductPage, setPackageProductPage] = useState(1);
   const [packageSearch, setPackageSearch] = useState('');
   const [additionalSafaPackage, setAdditionalSafaPackage] = useState('all');
   const [additionalSafaSearch, setAdditionalSafaSearch] = useState('');
@@ -324,6 +327,15 @@ export function BookingForm({
       sameInventoryValue(product.subcategory, productSubcategory);
     return matchesSearch && matchesCategory && matchesSubcategory;
   });
+  const catalogPageCount = Math.max(
+    1,
+    Math.ceil(visibleProducts.length / catalogPageSize),
+  );
+  const safeCatalogPage = Math.min(catalogPage, catalogPageCount);
+  const pagedVisibleProducts = visibleProducts.slice(
+    (safeCatalogPage - 1) * catalogPageSize,
+    safeCatalogPage * catalogPageSize,
+  );
   const rentalPackageCategories = [
     ...new Set(rentalPackages.map((pack) => pack.category_name)),
   ];
@@ -346,6 +358,26 @@ export function BookingForm({
       `Package ${selectedPackageNumber}`,
     );
   });
+  const packageProductPageCount = Math.max(
+    1,
+    Math.ceil(selectedPackageProducts.length / catalogPageSize),
+  );
+  const safePackageProductPage = Math.min(
+    packageProductPage,
+    packageProductPageCount,
+  );
+  const pagedPackageProducts = selectedPackageProducts.slice(
+    (safePackageProductPage - 1) * catalogPageSize,
+    safePackageProductPage * catalogPageSize,
+  );
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [productSearch, productCategory, productSubcategory, rentalSelectionMode, type, catalogPageSize]);
+
+  useEffect(() => {
+    setPackageProductPage(1);
+  }, [selectedRentalPackageId, catalogPageSize]);
   const packageSafaLimit = Number(
     selectedRentalPackage?.category_name.match(/\d+/)?.[0] ?? 0,
   );
@@ -1561,8 +1593,17 @@ export function BookingForm({
                         </label>
                       </div>
                       {visibleProducts.length ? (
-                        <div className="grid max-h-[640px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-4">
-                          {visibleProducts.map((product) => (
+                        <div className="space-y-3">
+                          <CatalogPagination
+                            totalItems={visibleProducts.length}
+                            page={safeCatalogPage}
+                            pageCount={catalogPageCount}
+                            pageSize={catalogPageSize}
+                            onPageChange={setCatalogPage}
+                            onPageSizeChange={setCatalogPageSize}
+                          />
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          {pagedVisibleProducts.map((product) => (
                             <div
                               key={product.id}
                               className="group overflow-hidden rounded-xl border bg-white p-1.5 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-level-1 dark:bg-card"
@@ -1684,6 +1725,16 @@ export function BookingForm({
                               </Button>
                             </div>
                           ))}
+                          </div>
+                          <CatalogPagination
+                            compact
+                            totalItems={visibleProducts.length}
+                            page={safeCatalogPage}
+                            pageCount={catalogPageCount}
+                            pageSize={catalogPageSize}
+                            onPageChange={setCatalogPage}
+                            onPageSizeChange={setCatalogPageSize}
+                          />
                         </div>
                       ) : (
                         <EmptyCatalog />
@@ -1848,8 +1899,17 @@ export function BookingForm({
                             </span>
                           </div>
                           {selectedPackageProducts.length ? (
-                            <div className="mt-4 grid max-h-[520px] gap-3 overflow-y-auto px-1 pb-1 pt-1 sm:grid-cols-2 xl:grid-cols-4">
-                              {selectedPackageProducts.map((product) => {
+                            <div className="mt-4 space-y-3">
+                              <CatalogPagination
+                                totalItems={selectedPackageProducts.length}
+                                page={safePackageProductPage}
+                                pageCount={packageProductPageCount}
+                                pageSize={catalogPageSize}
+                                onPageChange={setPackageProductPage}
+                                onPageSizeChange={setCatalogPageSize}
+                              />
+                              <div className="grid gap-3 px-1 pb-1 pt-1 sm:grid-cols-2 xl:grid-cols-4">
+                              {pagedPackageProducts.map((product) => {
                                 const quantity =
                                   catalogQuantities[product.id] ?? 1;
                                 return (
@@ -1976,6 +2036,16 @@ export function BookingForm({
                                   </div>
                                 );
                               })}
+                              </div>
+                              <CatalogPagination
+                                compact
+                                totalItems={selectedPackageProducts.length}
+                                page={safePackageProductPage}
+                                pageCount={packageProductPageCount}
+                                pageSize={catalogPageSize}
+                                onPageChange={setPackageProductPage}
+                                onPageSizeChange={setCatalogPageSize}
+                              />
                             </div>
                           ) : (
                             <p className="mt-4 rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
@@ -2811,13 +2881,13 @@ export function BookingForm({
                     )}
                   </CardContent>
                 </Card>
-                <Card className="gap-0 border-[#dfc9a6] py-0 shadow-none ring-0">
-                  <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17] px-4 py-4">
+                <Card className="min-w-0 gap-0 overflow-hidden border-[#dfc9a6] py-0 shadow-none ring-0">
+                  <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17] px-3 py-3 sm:px-4 sm:py-4">
                     <CardTitle className="text-sm font-semibold">
                       Summary
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4 p-4">
+                  <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-4">
                     <Amount label="Subtotal" value={subtotal} />
                     <Amount label="Discount" value={-discount} />
                     {taxEnabled && <Amount label="GST (5%)" value={tax} />}
@@ -3361,7 +3431,27 @@ function NewCustomerDialog({
         <form onSubmit={saveCustomer} className="space-y-4 p-5 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Customer name" name="name" required />
-            <Field label="Phone number" name="phone" type="tel" required />
+            <label className="block text-sm">
+              <span className="mb-1.5 block text-muted-foreground">Phone number</span>
+              <input
+                name="phone"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                pattern="[0-9]{10}"
+                minLength={10}
+                maxLength={10}
+                required
+                placeholder="10-digit mobile number"
+                onInput={(event) => {
+                  event.currentTarget.value = event.currentTarget.value
+                    .replace(/\D/g, '')
+                    .slice(0, 10);
+                }}
+                className={inputClass}
+              />
+              <span className="mt-1 block text-[11px] text-muted-foreground">Exactly 10 digits</span>
+            </label>
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1.5 block text-muted-foreground">
                 City / address
@@ -3608,10 +3698,81 @@ function Amount({
 }) {
   return (
     <div
-      className={`flex items-center justify-between ${tone === 'success' ? 'text-emerald-700' : tone === 'danger' ? 'text-red-600' : ''}`}
+      className={`flex min-w-0 items-start justify-between gap-3 ${tone === 'success' ? 'text-emerald-700' : tone === 'danger' ? 'text-red-600' : ''}`}
     >
-      <span className="text-sm">{label}</span>
-      <strong className={strong ? 'text-lg' : 'text-sm'}>{money(value)}</strong>
+      <span className="min-w-0 text-sm leading-5">{label}</span>
+      <strong className={`shrink-0 text-right tabular-nums ${strong ? 'text-lg' : 'text-sm'}`}>{money(value)}</strong>
+    </div>
+  );
+}
+function CatalogPagination({
+  totalItems,
+  page,
+  pageCount,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  compact = false,
+}: {
+  totalItems: number;
+  page: number;
+  pageCount: number;
+  pageSize: 5 | 10 | 15;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: 5 | 10 | 15) => void;
+  compact?: boolean;
+}) {
+  const first = totalItems ? (page - 1) * pageSize + 1 : 0;
+  const last = Math.min(page * pageSize, totalItems);
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-[#fcfaf7] px-3 py-2 dark:bg-[#241e17]">
+      <p className="text-xs text-muted-foreground">
+        Showing <strong className="text-foreground">{first}–{last}</strong> of{' '}
+        <strong className="text-foreground">{totalItems}</strong>
+      </p>
+      <div className="flex min-w-0 items-center gap-2">
+        {!compact ? (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="hidden min-[390px]:inline">Items per page</span>
+            <select
+              value={pageSize}
+              onChange={(event) =>
+                onPageSizeChange(Number(event.target.value) as 5 | 10 | 15)
+              }
+              aria-label="Products per page"
+              className="h-8 rounded-lg border border-input bg-white px-2 text-xs font-medium text-foreground outline-none focus:border-ring dark:bg-card"
+            >
+              {[5, 10, 15].map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          Page {page} of {pageCount}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 px-2.5 text-xs"
+          disabled={page <= 1}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+        >
+          Previous
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 px-2.5 text-xs"
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }
@@ -3630,15 +3791,15 @@ function EmptyCatalog() {
 }
 function Terms() {
   return (
-    <Card className="gap-0 border-border py-0 shadow-none ring-0">
-      <CardHeader className="border-b px-4 py-3">
+    <Card className="min-w-0 gap-0 overflow-hidden border-border py-0 shadow-none ring-0">
+      <CardHeader className="border-b bg-[#fcfaf7] dark:bg-[#241e17] px-3 py-3 sm:px-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <FileText className="size-4 text-primary" />
           Terms & conditions
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
-        <ol className="list-decimal space-y-1.5 pl-5 text-xs leading-5 text-muted-foreground">
+      <CardContent className="p-3 sm:p-4">
+        <ol className="list-decimal space-y-2 pl-4 text-xs leading-5 text-muted-foreground marker:font-semibold marker:text-primary sm:pl-5">
           {BOOKING_TERMS.map((item) => (
             <li key={item}>{item}</li>
           ))}
