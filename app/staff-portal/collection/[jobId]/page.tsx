@@ -37,7 +37,7 @@ export default async function CollectionJobDetailPage({ params }: { params: Prom
   const stage = job.stages.find((item) => item.key === 'collection');
   if (!stage) notFound();
   const isOpen = stage.status === 'open' || stage.status === 'in_progress';
-  if (!isOpen && !job.collectionCheck) redirect('/staff-portal/collection');
+  if ((!isOpen || !job.stylistExecutions.some((entry) => entry.status === 'work_completed')) && !job.collectionCheck) redirect('/staff-portal/collection');
 
   const bookingRows = await withServiceRole((tx) =>
     tx.unsafe(

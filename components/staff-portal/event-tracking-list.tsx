@@ -25,6 +25,7 @@ import {
 
 function currentStage(job: EventJob) {
   if (job.status === 'closed') return 'Completed';
+  if (job.stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started')) return 'Live event';
   const active = trackingTimeline(job.stages)
     .filter(
       (stage) => stage.status === 'open' || stage.status === 'in_progress',
@@ -123,10 +124,12 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
                     className={
                       job.status === 'closed'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : job.stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started')
+                          ? 'border-sky-200 bg-sky-50 text-sky-700'
                         : 'border-amber-200 bg-amber-50 text-amber-800'
                     }
                   >
-                    {job.status === 'closed' ? 'Closed' : 'Active'}
+                    {job.status === 'closed' ? 'Closed' : job.stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started') ? 'Live event' : 'Active'}
                   </Badge>
                 </div>
                 <p className="mt-1 truncate text-xs text-muted-foreground">

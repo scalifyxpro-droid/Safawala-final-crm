@@ -356,7 +356,7 @@ export function DashboardShell({
               <Sheet>
                 <SheetTrigger
                   aria-label="Open navigation"
-                  className="pointer-events-auto absolute left-3 top-1/2 z-40 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-lg border border-border bg-white text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-card sm:left-6 lg:hidden"
+                  className="pointer-events-auto inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-white text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-card lg:hidden"
                 >
                   <Menu aria-hidden="true" className="size-5" />
                 </SheetTrigger>
@@ -381,7 +381,7 @@ export function DashboardShell({
                 </SheetContent>
               </Sheet>
               {pageHeader ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2 pl-12 lg:pl-0">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                   <div className="flex min-w-0 flex-1 items-center">
                     {pageHeader.backHref ? (
                       <Link

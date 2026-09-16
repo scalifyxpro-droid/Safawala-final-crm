@@ -154,10 +154,10 @@ export default async function StaffStylistPage({
             : 'Available events — mark yourself as interested and available'}
         />
 
-        {session.isMainId ? <StylistMainDashboard session={session} jobs={jobs} page={page} pageSize={pageSize} /> : <Card className="border-border shadow-level-1">
+        {session.isMainId ? <StylistMainDashboard session={session} jobs={jobs} page={page} pageSize={pageSize} /> : <Card className="gap-0 overflow-hidden border-[#e2cfb5] bg-[radial-gradient(circle_at_top_left,#fbf4e9_0%,#f6efe5_38%,#f3ede5_100%)] py-0 shadow-level-1 dark:border-[#493822]">
           <CardContent className="p-0">
             {jobs.length ? (
-              <ul className="divide-y divide-border">
+              <ul className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
                 {jobs.map((job) => {
                   const myInterest = job.stylistInterests.find(
                     (interest) => interest.stylistAccountId === session.id,
@@ -175,16 +175,17 @@ export default async function StaffStylistPage({
                   return (
                     <li
                       key={job.id}
-                      className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-[#e4d2b6] bg-white p-4 shadow-level-1 transition hover:border-primary/35 hover:shadow-level-2 dark:border-[#493822] dark:bg-card"
                     >
-                      <div>
+                      <div className="min-w-0">
+                        <div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold text-primary">{job.id}</span><Badge variant="outline" className="border-[#dfc6a4] bg-[#f5ead8] text-[10px] text-[#70481c]">Rental</Badge></div>
                         <p className="font-semibold">
                           {job.eventSummary.customerName || 'Customer not added'}
                         </p>
                         <p className="mt-0.5 truncate text-xs font-medium text-[#70481c]">
                           {job.eventSummary.eventName} · {job.bookingNumber}
                         </p>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-[#fcfaf7] px-3 py-2.5 text-xs text-muted-foreground dark:bg-[#241e17]">
                           <span className="flex items-center gap-1.5">
                             <CalendarClock className="size-3.5" />{' '}
                             {friendlyDate(job.eventSummary.eventDate)} ·{' '}
@@ -203,7 +204,7 @@ export default async function StaffStylistPage({
                           </span>
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 border-t border-[#eadcc8] pt-3 dark:border-[#493822] [&_[data-slot=button]]:min-h-9">
                         <Button
                           variant="outline"
                           size="sm"

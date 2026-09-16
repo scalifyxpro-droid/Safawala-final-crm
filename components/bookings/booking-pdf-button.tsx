@@ -59,11 +59,21 @@ async function loadPaymentDetails(): Promise<PublicBankDetails> {
   }
 }
 
-const BRAND_DARK: [number, number, number] = [24, 24, 24];
-const BRAND_MID: [number, number, number] = [52, 52, 52];
-const BRAND_GOLD: [number, number, number] = [24, 24, 24];
+// Same warm cream / amber-gold palette used across the rest of the CRM
+// (dashboard cards, the public tracking page, etc.) so the invoice reads as
+// part of the same product rather than a generic black-and-white document.
+const INK: [number, number, number] = [35, 28, 20]; // near-black warm ink for body text
+const INK_SOFT: [number, number, number] = [90, 78, 62]; // secondary/muted text
+const GOLD: [number, number, number] = [154, 103, 40]; // #9a6728 — section labels, accents
+const GOLD_DEEP: [number, number, number] = [112, 72, 28]; // #70481c — headings on light fill
+const ESPRESSO: [number, number, number] = [58, 40, 24]; // dark filled bar (Balance due)
+const CREAM: [number, number, number] = [255, 253, 249]; // #fffdf9 — card fill
+const CREAM_SOFT: [number, number, number] = [252, 250, 247]; // #fcfaf7 — page/alt fill
+const SAND: [number, number, number] = [245, 234, 216]; // #f5ead8 — Total row fill / table header
+const BORDER: [number, number, number] = [231, 220, 200]; // #e7dcc8 — hairline borders
 const BORDER_SOFT: [number, number, number] = [92, 92, 92];
-const MUTED: [number, number, number] = [78, 78, 78];
+const MUTED = INK_SOFT;
+const BRAND_DARK = INK;
 
 const amount = (value: number) =>
   `Rs. ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -75,10 +85,15 @@ function drawBrandBanner(
   w: number,
   h: number,
 ) {
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(...BORDER_SOFT);
-  doc.setLineWidth(0.45);
-  doc.roundedRect(x, y, w, h, 3, 3, 'FD');
+  doc.setFillColor(...CREAM);
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.55);
+  doc.roundedRect(x, y, w, h, 3.5, 3.5, 'FD');
+  // A thin gold rule along the bottom edge of the header card — the one
+  // recurring "brand line" every section below echoes.
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.7);
+  doc.line(x + 6, y + h - 0.4, x + w - 6, y + h - 0.4);
 }
 function sectionBox(
   doc: import('jspdf').jsPDF,
@@ -87,10 +102,18 @@ function sectionBox(
   w: number,
   h: number,
 ) {
-  doc.setDrawColor(...BORDER_SOFT);
-  doc.setLineWidth(0.4);
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(x, y, w, h, 2.5, 2.5, 'FD');
+  doc.setDrawColor(...BORDER);
+  doc.setLineWidth(0.45);
+  doc.setFillColor(...CREAM);
+  doc.roundedRect(x, y, w, h, 3, 3, 'FD');
+}
+
+// Small filled circle used as a lightweight stand-in for an icon glyph next
+// to a section label (CUSTOMER, EVENT, PAYMENT DETAILS, TERMS) — keeps the
+// header row from reading as bare uppercase text.
+function sectionDot(doc: import('jspdf').jsPDF, x: number, y: number) {
+  doc.setFillColor(...GOLD);
+  doc.circle(x, y, 0.9, 'F');
 }
 
 function fitText(
@@ -217,14 +240,14 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         ),
       );
       const [logo, signature, qrDataUrl, ...rawProductImages] = await Promise.all([
-        recolorLogo('/safawala-crown-dark.png', BRAND_DARK),
+        recolorLogo('/safawala-crown-dark.png', GOLD_DEEP),
         recolorLogo('/ronak-dave-signature.png', BRAND_DARK),
         bankDetails.qrCodeImage
           ? toDataUrl(bankDetails.qrCodeImage)
           : bankDetails.upi
             ? QRCode.toDataURL(
                 `upi://pay?pa=${bankDetails.upi}&pn=${encodeURIComponent(bankDetails.accountHolder || 'Safawala')}&am=${Math.max(booking.balance_amount, 0).toFixed(2)}&cu=INR`,
-                { margin: 0, scale: 6 },
+                { margin: 0, scale: 6, color: { dark: '#3a2818', light: '#ffffff' } },
               ).catch(() => null)
             : Promise.resolve(null),
         ...uniqueImageUrls.map((url) => toDataUrl(url)),
@@ -251,13 +274,17 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           userPermissions: ['print', 'copy'],
         },
       });
+      // A faint page wash (instead of stark white) so the card-style sections
+      // read as "on paper" the same way the rest of the product does.
+      doc.setFillColor(...CREAM_SOFT);
+      doc.rect(0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), 'F');
       const width = doc.internal.pageSize.getWidth();
       const left = 16;
       const right = width - 16;
       const itemCount = booking.booking_items.length;
       const useItemColumns = itemCount > 5;
       const denseLayout = itemCount > 10;
-      const headerHeight = denseLayout ? 30 : 34;
+      const headerHeight = denseLayout ? 32 : 36;
       let y = 18;
       // The invoice is intentionally composed as a single A4 page. Sections
       // below use compact, content-aware spacing instead of page breaks.
@@ -266,38 +293,44 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       // ---- Header banner ----
       drawBrandBanner(doc, 10, 10, width - 20, headerHeight);
       if (logo) {
-        const logoH = denseLayout ? 11 : 13;
+        const logoH = denseLayout ? 12 : 14.5;
         const logoW = logoH * logo.ratio;
-        doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14 : 15, logoW, logoH);
+        doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14.5 : 16, logoW, logoH);
+        doc.setTextColor(...GOLD_DEEP);
+        doc.setFont('times', 'bold');
+        doc.setFontSize(denseLayout ? 13.5 : 15.5);
+        doc.text('SAFAWALA', left + logoW + 4, denseLayout ? 21 : 24);
       } else {
-        doc.setTextColor(...BRAND_DARK);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(18);
+        doc.setTextColor(...GOLD_DEEP);
+        doc.setFont('times', 'bold');
+        doc.setFontSize(19);
         doc.text('SAFAWALA', left, 24);
       }
-      doc.setTextColor(...MUTED);
+      doc.setTextColor(...GOLD);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.text('Premium Wedding Accessories', left, 10 + headerHeight - 4);
+      doc.setFontSize(7.6);
+      doc.text('P R E M I U M   W E D D I N G   A C C E S S O R I E S', left, 10 + headerHeight - 5);
 
       doc.setTextColor(...BRAND_DARK);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(14.5);
+      doc.text(booking.booking_number, right, denseLayout ? 20 : 22, { align: 'right' });
+      doc.setTextColor(...GOLD);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.text(booking.booking_number, right, denseLayout ? 19 : 21, { align: 'right' });
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(docLabel, right, denseLayout ? 25 : 28, { align: 'right' });
+      doc.text(docLabel, right, denseLayout ? 26.5 : 29.5, { align: 'right' });
       doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(...MUTED);
       doc.text(
         `Date: ${friendlyDate(new Date().toISOString().slice(0, 10))}`,
         right,
-        denseLayout ? 31 : 34,
+        denseLayout ? 32.5 : 35.5,
         { align: 'right' },
       );
 
       // ---- Customer / event (boxed, aligned to the same margins) ----
-      y = 10 + headerHeight + 5;
+      y = 10 + headerHeight + 6;
       const addressLines = doc.splitTextToSize(
         booking.customers?.address || 'Address not added',
         74,
@@ -308,59 +341,68 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       );
       const infoLines = Math.max(addressLines.length, locationLines.length);
       const isRental = booking.booking_type === 'rental';
-      const boxH = 25 + (infoLines - 1) * 3.9 + (isRental ? 8 : 0);
+      const boxH = 26 + (infoLines - 1) * 3.9 + (isRental ? 8 : 0);
       sectionBox(doc, left, y, right - left, boxH);
       const columnGap = 6;
       const columnWidth = (right - left - columnGap) / 2;
       const eventX = left + columnWidth + columnGap;
-      doc.setDrawColor(190, 190, 190);
-      doc.setLineWidth(0.25);
-      doc.line(left + columnWidth + columnGap / 2, y + 5, left + columnWidth + columnGap / 2, y + boxH - 5);
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.3);
+      doc.line(left + columnWidth + columnGap / 2, y + 6, left + columnWidth + columnGap / 2, y + boxH - 6);
 
-      let by = y + 8;
-      doc.setTextColor(...BRAND_MID);
+      let by = y + 8.5;
+      sectionDot(doc, left + 6, by - 1.5);
+      sectionDot(doc, eventX + 3, by - 1.5);
+      doc.setTextColor(...GOLD);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.text('CUSTOMER', left + 5, by);
-      doc.text('EVENT & DELIVERY', eventX + 2, by);
-      by += 5.5;
-      doc.setFontSize(9.5);
+      doc.setFontSize(8.5);
+      doc.text('CUSTOMER', left + 9, by);
+      doc.text('EVENT & DELIVERY', eventX + 6, by);
+      by += 6;
+      doc.setFontSize(10.5);
       doc.setTextColor(...BRAND_DARK);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.text(booking.customers?.name || 'Not added', left + 5, by);
       doc.text(booking.event_name, eventX + 2, by);
-      by += 4.6;
+      by += 5;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
+      doc.setTextColor(...INK_SOFT);
       doc.text(booking.customers?.phone || 'Phone not added', left + 5, by);
       doc.text(
         `${friendlyDate(booking.event_date)}${booking.event_time ? `, ${friendlyTime(booking.event_time)}` : ''}`,
         eventX + 2,
         by,
       );
-      by += 4.6;
+      by += 4.8;
       doc.setTextColor(...MUTED);
       doc.text(addressLines, left + 5, by);
       doc.text(locationLines, eventX + 2, by);
-      by += infoLines * 3.9 + 1;
+      by += infoLines * 3.9 + 1.5;
 
       if (isRental) {
-        doc.setTextColor(...BRAND_DARK);
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.25);
+        doc.line(left + 5, by - 3, right - 5, by - 3);
+        doc.setTextColor(...GOLD_DEEP);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.text('Pickup:', left + 5, by);
+        doc.text('Pickup:', left + 5, by + 1.5);
         doc.setFont('helvetica', 'normal');
-        doc.text(friendlyDate(booking.pickup_date), left + 20, by);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(friendlyDate(booking.pickup_date), left + 20, by + 1.5);
         doc.setFont('helvetica', 'bold');
-        doc.text('Return due:', eventX + 2, by);
+        doc.setTextColor(...GOLD_DEEP);
+        doc.text('Return due:', eventX + 2, by + 1.5);
         doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...BRAND_DARK);
         doc.text(
           friendlyDate(booking.due_date),
           eventX + 24,
-          by,
+          by + 1.5,
         );
       }
-      y += boxH + 6;
+      y += boxH + 7;
 
       // ---- Items (inventory barcode included) ----
       if (useItemColumns) {
@@ -368,7 +410,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         const gridWidth = (right - left - gridGap) / 2;
         const rowsPerColumn = Math.ceil(itemCount / 2);
         const rowHeight = Math.max(7.2, Math.min(11.2, 56 / rowsPerColumn));
-        const gridHeaderHeight = denseLayout ? 6 : 7;
+        const gridHeaderHeight = denseLayout ? 6.2 : 7.2;
         const columns = [
           booking.booking_items.slice(0, rowsPerColumn),
           booking.booking_items.slice(rowsPerColumn),
@@ -376,19 +418,19 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
 
         columns.forEach((items, columnIndex) => {
           const columnX = left + columnIndex * (gridWidth + gridGap);
-          doc.setFillColor(245, 245, 245);
-          doc.setDrawColor(...BORDER_SOFT);
-          doc.setLineWidth(0.3);
+          doc.setFillColor(...SAND);
+          doc.setDrawColor(...BORDER);
+          doc.setLineWidth(0.35);
           doc.rect(columnX, y, gridWidth, gridHeaderHeight, 'FD');
-          doc.setTextColor(...BRAND_DARK);
+          doc.setTextColor(...GOLD_DEEP);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(denseLayout ? 7.2 : 8);
           doc.text(
             `PRODUCTS ${columnIndex * rowsPerColumn + 1}-${columnIndex * rowsPerColumn + items.length}`,
             columnX + 2.5,
-            y + gridHeaderHeight - 2.1,
+            y + gridHeaderHeight - 2.2,
           );
-          doc.text('AMOUNT', columnX + gridWidth - 2.5, y + gridHeaderHeight - 2.1, {
+          doc.text('AMOUNT', columnX + gridWidth - 2.5, y + gridHeaderHeight - 2.2, {
             align: 'right',
           });
 
@@ -445,28 +487,28 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
               rowTop + rowHeight * 0.78,
               { align: 'right' },
             );
-            doc.setDrawColor(205, 205, 205);
-            doc.setLineWidth(0.18);
+            doc.setDrawColor(...BORDER);
+            doc.setLineWidth(0.2);
             doc.line(columnX, rowTop + rowHeight, columnX + gridWidth, rowTop + rowHeight);
           });
         });
         y += gridHeaderHeight + rowsPerColumn * rowHeight;
       } else {
         const nameX = left + 16;
-        doc.setFillColor(245, 245, 245);
-        doc.rect(left, y, right - left, 7, 'F');
-        doc.setDrawColor(...BORDER_SOFT);
-        doc.setLineWidth(0.3);
-        doc.rect(left, y, right - left, 7, 'S');
-        doc.setTextColor(...BRAND_DARK);
+        doc.setFillColor(...SAND);
+        doc.rect(left, y, right - left, 7.5, 'F');
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.35);
+        doc.rect(left, y, right - left, 7.5, 'S');
+        doc.setTextColor(...GOLD_DEEP);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.text('Item', nameX, y + 4.8);
-        doc.text('Barcode', 112, y + 4.8, { align: 'right' });
-        doc.text('Qty', 132, y + 4.8, { align: 'right' });
-        doc.text('Rate', 160, y + 4.8, { align: 'right' });
-        doc.text('Amount', right - 3, y + 4.8, { align: 'right' });
-        y += 7;
+        doc.text('Item', nameX, y + 5.1);
+        doc.text('Barcode', 112, y + 5.1, { align: 'right' });
+        doc.text('Qty', 132, y + 5.1, { align: 'right' });
+        doc.text('Rate', 160, y + 5.1, { align: 'right' });
+        doc.text('Amount', right - 3, y + 5.1, { align: 'right' });
+        y += 7.5;
         doc.setFont('helvetica', 'normal');
         for (const item of booking.booking_items) {
           const thumbUrl = item.products?.image_urls?.[0];
@@ -495,10 +537,14 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
             }
           }
           doc.setTextColor(...BRAND_DARK);
+          doc.setFont('helvetica', 'bold');
           doc.setFontSize(8.5);
           doc.text(itemName, nameX, textBaseline);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...MUTED);
           doc.setFontSize(7.4);
           doc.text(item.products?.barcode || '-', 112, textBaseline, { align: 'right' });
+          doc.setTextColor(...BRAND_DARK);
           doc.setFontSize(8.5);
           doc.text(String(item.quantity), 132, textBaseline, { align: 'right' });
           doc.text(amount(item.unit_price), 160, textBaseline, { align: 'right' });
@@ -506,46 +552,74 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
             align: 'right',
           });
           y = rowTop + rowHeight;
-          doc.setDrawColor(...BORDER_SOFT);
-          doc.setLineWidth(0.2);
+          doc.setDrawColor(...BORDER);
+          doc.setLineWidth(0.25);
           doc.line(left, y, right, y);
         }
       }
 
-      ensureSpace(38);
-      y += 4;
-      const summary = [
+      ensureSpace(42);
+      y += 5;
+      const plainSummary: [string, number][] = [
         ['Subtotal', booking.subtotal],
         ['Discount', -booking.discount],
         ['Tax / charges', booking.tax],
         ...(booking.booking_type === 'rental'
           ? [['Security deposit', booking.security_deposit] as [string, number]]
           : []),
-        ['Total', booking.total],
-        ['Paid', booking.paid_amount],
-        ['Balance due', booking.balance_amount],
-      ] as [string, number][];
-      for (const [label, value] of summary) {
-        const strong = label === 'Total' || label === 'Balance due';
-        doc.setFont('helvetica', strong ? 'bold' : 'normal');
-        doc.setTextColor(...(strong ? BRAND_DARK : MUTED));
+      ];
+      for (const [label, value] of plainSummary) {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MUTED);
         doc.text(label, 124, y);
         doc.setTextColor(...BRAND_DARK);
         doc.text(amount(value), right, y, { align: 'right' });
-        y += 5.1;
+        y += 5.4;
       }
 
-      // ---- Payment details (boxed, with UPI QR) ----
-      ensureSpace(37);
-      y += 2;
-      const payBoxH = 37;
-      sectionBox(doc, left, y, right - left, payBoxH);
-      let py = y + 7;
+      // Total — soft gold fill bar, matching the "Total" chip on the card.
+      y += 1;
+      doc.setFillColor(...SAND);
+      doc.rect(left, y - 4.2, right - left, 7.2, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
-      doc.setTextColor(...BRAND_MID);
-      doc.text('PAYMENT DETAILS', left + 5, py);
-      py += 5;
+      doc.setTextColor(...GOLD_DEEP);
+      doc.text('Total', 124, y);
+      doc.setTextColor(...BRAND_DARK);
+      doc.text(amount(booking.total), right, y, { align: 'right' });
+      y += 6.2;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...MUTED);
+      doc.text('Paid', 124, y);
+      doc.setTextColor(...BRAND_DARK);
+      doc.text(amount(booking.paid_amount), right, y, { align: 'right' });
+      y += 6.5;
+
+      // Balance due — dark espresso bar with cream text, the one accent the
+      // reference invoice uses to make the number that matters unmissable.
+      doc.setFillColor(...ESPRESSO);
+      doc.rect(left, y - 4.6, right - left, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...SAND);
+      doc.text('Balance due', 124, y);
+      doc.text(amount(booking.balance_amount), right, y, { align: 'right' });
+      y += 8.5;
+
+      // ---- Payment details (boxed, with UPI QR) ----
+      ensureSpace(38);
+      y += 2;
+      const payBoxH = 38;
+      sectionBox(doc, left, y, right - left, payBoxH);
+      let py = y + 8;
+      sectionDot(doc, left + 6, py - 1.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...GOLD);
+      doc.text('PAYMENT DETAILS', left + 9, py);
+      py += 5.5;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       const paymentRows: [string, string][] = [
@@ -559,67 +633,73 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       for (const [label, value] of paymentRows) {
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...BRAND_DARK);
-        doc.text(`${label}:`, left + 5, py);
+        doc.text(`${label}`, left + 5, py);
+        doc.setTextColor(...BORDER_SOFT);
+        doc.text(':', left + 27, py);
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...MUTED);
-        doc.text(value, left + 33, py);
-        py += 4;
+        doc.setTextColor(...INK_SOFT);
+        doc.text(value, left + 31, py);
+        py += 4.3;
       }
       if (qrDataUrl) {
-        const qrSize = 22;
-        const qrX = right - qrSize - 5;
+        const qrSize = 23;
+        const qrX = right - qrSize - 32;
         const qrY = y + (payBoxH - qrSize - 5) / 2;
         const qrFormat = qrDataUrl.startsWith('data:image/jpeg')
           ? 'JPEG'
           : qrDataUrl.startsWith('data:image/webp')
             ? 'WEBP'
             : 'PNG';
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(qrX - 1.5, qrY - 1.5, qrSize + 3, qrSize + 3, 1.5, 1.5, 'S');
         doc.addImage(qrDataUrl, qrFormat, qrX, qrY, qrSize, qrSize);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.setTextColor(...BRAND_MID);
-        doc.text('Scan to Pay', qrX + qrSize / 2, qrY + qrSize + 3.6, {
+        doc.setTextColor(...GOLD_DEEP);
+        doc.text('Scan to Pay', qrX + qrSize / 2, qrY + qrSize + 4.2, {
           align: 'center',
         });
       }
       if (signature) {
-        const signatureW = 32;
+        const signatureLineY = y + payBoxH - 7;
+        const signatureLineX0 = right - 32;
+        const signatureLineX1 = right - 2;
+        const signatureCenterX = (signatureLineX0 + signatureLineX1) / 2;
+        const signatureW = 28;
         const signatureH = signatureW / signature.ratio;
-        const signatureX = right - 70;
-        const signatureY = y + 7;
         doc.addImage(
           signature.dataUrl,
           'PNG',
-          signatureX,
-          signatureY,
+          signatureCenterX - signatureW / 2,
+          signatureLineY - signatureH - 1.5,
           signatureW,
           signatureH,
           undefined,
           'FAST',
         );
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.3);
+        doc.line(signatureLineX0, signatureLineY, signatureLineX1, signatureLineY);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
-        doc.setTextColor(...BRAND_MID);
-        doc.text(
-          'Authorized Signatory',
-          signatureX + signatureW / 2,
-          y + payBoxH - 4,
-          { align: 'center' },
-        );
+        doc.setTextColor(...MUTED);
+        doc.text('Authorized Signature', signatureCenterX, signatureLineY + 3.6, { align: 'center' });
       }
       y += payBoxH + 9;
 
       // ---- Terms (clean numbered list with a hanging indent) ----
       ensureSpace(16);
+      sectionDot(doc, left + 1.4, y - 1.5);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.setTextColor(...BRAND_DARK);
-      doc.text('TERMS & CONDITIONS', left, y);
-      y += 2.5;
-      doc.setDrawColor(...BORDER_SOFT);
-      doc.setLineWidth(0.3);
+      doc.setTextColor(...GOLD_DEEP);
+      doc.text('TERMS & CONDITIONS', left + 4, y);
+      y += 2.8;
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.35);
       doc.line(left, y, right, y);
-      y += 4.5;
+      y += 4.6;
       const termIndent = 6.5;
       const termColumnGap = 7;
       const termColumnCount = useItemColumns ? 2 : 1;
@@ -679,10 +759,10 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           const blockHeight = lines.length * termLineHeight + 0.6;
           ensureSpace(blockHeight);
           doc.setFont('helvetica', 'bold');
-          doc.setTextColor(...BRAND_GOLD);
+          doc.setTextColor(...GOLD);
           doc.text(`${index + 1}.`, termX, termY);
           doc.setFont('helvetica', 'normal');
-          doc.setTextColor(...BRAND_DARK);
+          doc.setTextColor(...INK_SOFT);
           doc.text(lines, termX + termIndent, termY);
           termY += blockHeight;
         }
@@ -690,13 +770,18 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       }
       y = termEndY;
 
-      doc.setDrawColor(...BORDER_SOFT);
-      doc.setLineWidth(0.3);
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.35);
       doc.line(left, 285, right, 285);
+      doc.setFont('times', 'italic');
+      doc.setFontSize(11);
+      doc.setTextColor(...GOLD_DEEP);
+      doc.text('Thank you', left, 291);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setTextColor(...MUTED);
-      doc.text('Thank you for choosing Safawala.', left, 290);
+      doc.text('F O R   C H O O S I N G   S A F A W A L A', left, 294.6);
+      doc.setFontSize(7);
       doc.text('Page 1 of 1', right, 290, { align: 'right' });
       doc.save(`${booking.booking_number}.pdf`);
     } catch (error) {

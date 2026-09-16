@@ -1164,18 +1164,10 @@ export async function submitPackingChecklist(
     completedAt: now,
     completedBy: staffName,
   });
-  // Packing complete means products are ready for the event — Collection (post-event
-  // check-in) opens now too so it's waiting for the Collection department the moment
-  // the event happens. This does NOT mean the event has occurred; Collection staff are
-  // simply able to see the job on their list rather than it appearing out of nowhere.
-  updated = setStage(
-    updated,
-    job.bookingType === 'rental' ? 'collection' : 'booking_final_check',
-    {
-      status: 'open',
-      openedAt: now,
-    },
-  );
+  // Rental collection opens only after the stylist confirms the work is done.
+  if (job.bookingType !== 'rental') {
+    updated = setStage(updated, 'booking_final_check', { status: 'open', openedAt: now });
+  }
   updated = {
     ...updated,
     updatedAt: now,
@@ -1796,7 +1788,7 @@ const EXECUTION_ORDER: Record<ExecutionAction, StylistExecutionStatus> = {
   complete_work: 'work_completed',
 };
 
-// Reached Venue -> Start Work -> Complete Work, enforced in order. Only updates this
+// Reached Venue (OTP verified) -> Work Done, with older in-progress records supported. Only updates this
 // stylist's own execution entry — never creates another job, never touches
 // job.status, and never closes the Event Job (only Booking staff can do that).
 export async function recordStylistExecution(
@@ -1827,7 +1819,7 @@ export async function recordStylistExecution(
 
   const nextAllowed: Record<StylistExecutionStatus, ExecutionAction | null> = {
     not_started: 'reached_venue',
-    reached_venue: 'start_work',
+    reached_venue: 'complete_work',
     work_started: 'complete_work',
     work_completed: null,
   };
@@ -1856,7 +1848,7 @@ export async function recordStylistExecution(
       )
     : [...job.stylistExecutions, entry];
 
-  const updated: EventJob = {
+  let updated: EventJob = {
     ...job,
     stylistExecutions,
     updatedAt: now,
@@ -1870,6 +1862,12 @@ export async function recordStylistExecution(
       ...job.activity,
     ],
   };
+  if (action === 'complete_work' && job.bookingType === 'rental') {
+    const collection = findStage(updated, 'collection');
+    if (collection?.status === 'not_started') {
+      updated = setStage(updated, 'collection', { status: 'open', openedAt: now });
+    }
+  }
   jobs[index] = updated;
   await writeAll([updated]);
   return { job: updated };
@@ -1897,6 +1895,9 @@ export async function submitCollectionCheck(
     return { error: 'Collection is available only for rental orders.' };
   }
   const stage = findStage(job, 'collection');
+  if (!job.stylistExecutions.some((entry) => entry.status === 'work_completed')) {
+    return { error: 'Collection opens after the stylist marks the event work done.' };
+  }
   if (!stage || (stage.status !== 'open' && stage.status !== 'in_progress')) {
     return { error: 'Collection is not open for this job yet.' };
   }

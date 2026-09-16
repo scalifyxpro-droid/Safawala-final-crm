@@ -44,7 +44,7 @@ export default async function StaffCollectionPage({
         (stage.status === 'open' || stage.status === 'in_progress'),
     );
   const openJobs = rentalJobs.filter(
-    (job) => job.status === 'active' && collectionIsOpen(job),
+    (job) => job.status === 'active' && collectionIsOpen(job) && job.stylistExecutions.some((entry) => entry.status === 'work_completed'),
   );
   const closedJobs = rentalJobs.filter((job) => Boolean(job.collectionCheck));
   const jobs = (view === 'open' ? openJobs : closedJobs).filter((job) => (!q || `${job.eventSummary.customerName ?? ''} ${job.bookingNumber} ${job.eventSummary.eventName}`.toLowerCase().includes(q.toLowerCase())) && (!eventDate || job.eventSummary.eventDate === eventDate) && (!bookingDate || job.createdAt.slice(0, 10) === bookingDate)).sort(sort === 'booking' ? compareJobsByBookingDate : compareJobsByEventSchedule);

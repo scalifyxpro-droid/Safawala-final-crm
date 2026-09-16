@@ -3,32 +3,23 @@ import { requireStylistSession } from '@/lib/staff-portal/guard';
 import { StaffPortalShell } from '@/components/staff-portal/staff-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { friendlyDate, friendlyTime } from '@/lib/bookings';
 import { assignedJobsForStylist, stylistJobsForMainAccount } from '@/lib/event-jobs/store';
 import { unreadCountForSession } from '@/lib/notifications/store';
 import { getSignedFileUrl } from '@/lib/storage/client';
-import type { ExecutionAction } from '@/lib/event-jobs/store';
 import type { StylistExecutionStatus } from '@/lib/event-jobs/types';
-import { recordExecutionAction } from '@/app/staff-portal/stylist/execution-actions';
+import { StylistExecutionControl } from '@/components/staff-portal/stylist-execution-control';
 
 export const dynamic = 'force-dynamic';
 
 const TICKET_BUCKET = 'stylist-tickets';
 
-const NEXT_ACTION: Record<StylistExecutionStatus, { action: ExecutionAction; label: string } | null> = {
-  not_started: { action: 'reached_venue', label: 'Reached Venue' },
-  reached_venue: { action: 'start_work', label: 'Start Work' },
-  work_started: { action: 'complete_work', label: 'Complete Work' },
-  work_completed: null,
-};
-
 const STATUS_LABEL: Record<StylistExecutionStatus, string> = {
   not_started: 'Not started',
-  reached_venue: 'Reached venue',
+  reached_venue: 'Live event · OTP verified',
   work_started: 'Work in progress',
-  work_completed: 'Event completed',
+  work_completed: 'Work done · collection ready',
 };
 
 export default async function StylistAssignedEventsPage() {
@@ -63,7 +54,7 @@ export default async function StylistAssignedEventsPage() {
         <DashboardHeader title={session.isMainId ? 'All Stylist Events' : 'My Assigned Events'} subtitle={session.isMainId ? 'Overview of every stylist assignment and event status' : 'Approved assignments and clearly marked backup events'} backHref="/staff-portal/stylist" />
 
         {jobs.length ? (
-          <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {jobs.map((job) => {
               const interest = job.stylistInterests.find((entry) => entry.stylistAccountId === session.id && entry.status === 'approved')
                 ?? (session.isMainId ? job.stylistInterests.find((entry) => entry.status === 'approved') : undefined);
@@ -71,13 +62,12 @@ export default async function StylistAssignedEventsPage() {
               const execution = job.stylistExecutions.find((entry) => entry.stylistAccountId === session.id)
                 ?? (session.isMainId ? job.stylistExecutions.find((entry) => entry.stylistAccountId === interest?.stylistAccountId) : undefined);
               const status: StylistExecutionStatus = execution?.status ?? 'not_started';
-              const next = NEXT_ACTION[status];
 
               return (
-                <Card key={job.id} className="border-border shadow-level-1">
+                <Card key={job.id} className="min-w-0 border-[#e4d2b6] bg-white shadow-level-1 transition hover:border-primary/35 hover:shadow-level-2 dark:border-[#493822] dark:bg-card">
                   <CardHeader>
                     <div className="flex flex-wrap items-center gap-2">
-                      <CardTitle>{job.eventSummary.customerName || 'Customer not added'}</CardTitle>
+                      <CardTitle className="min-w-0 break-words">{job.eventSummary.customerName || 'Customer not added'}</CardTitle>
                       <p className="mt-0.5 text-sm text-muted-foreground">{job.eventSummary.eventName}</p>
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -126,7 +116,7 @@ export default async function StylistAssignedEventsPage() {
                       </p>
                     )}
 
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-[#fcfaf7] p-3 dark:bg-[#241e17] sm:p-4">
                       <div>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Event-day status</p>
                         <Badge
@@ -142,15 +132,7 @@ export default async function StylistAssignedEventsPage() {
                           {STATUS_LABEL[status]}
                         </Badge>
                       </div>
-                      {next ? (
-                        <form action={recordExecutionAction} className="flex items-center gap-2">
-                          <input type="hidden" name="jobId" value={job.id} />
-                          <input type="hidden" name="action" value={next.action} />
-                          <Button type="submit" size="sm">
-                            {next.label}
-                          </Button>
-                        </form>
-                      ) : null}
+                      {!session.isMainId ? <StylistExecutionControl jobId={job.id} status={status} /> : null}
                     </div>
                   </CardContent>
                 </Card>
