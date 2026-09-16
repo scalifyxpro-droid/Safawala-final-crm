@@ -97,7 +97,7 @@ export default async function CollectionJobDetailPage({ params }: { params: Prom
           </div>
         </section>
 
-        <JobTracker stages={job.stages} />
+        <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
 
         {job.collectionCheck ? (
           <section className="rounded-2xl border border-emerald-200 bg-white dark:bg-card p-5 shadow-level-1">

@@ -26,7 +26,7 @@ import {
 function currentStage(job: EventJob) {
   if (job.status === 'closed') return 'Completed';
   if (job.stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started')) return 'Live event';
-  const active = trackingTimeline(job.stages)
+  const active = trackingTimeline(job.stages, job.stylistExecutions)
     .filter(
       (stage) => stage.status === 'open' || stage.status === 'in_progress',
     )
@@ -212,7 +212,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
             </header>
 
             <ol className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              {trackingTimeline(selected.stages).map(
+              {trackingTimeline(selected.stages, selected.stylistExecutions).map(
                 (stage, index, orderedStages) => {
                   const done = stage.status === 'done';
                   const current =

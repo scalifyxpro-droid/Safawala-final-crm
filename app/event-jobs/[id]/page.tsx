@@ -231,7 +231,7 @@ export default async function EventJobDetailPage({
             <CardTitle>Stages</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {trackingTimeline(job.stages).map((stage) => (
+            {trackingTimeline(job.stages, job.stylistExecutions).map((stage) => (
               <div
                 key={stage.key}
                 className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between"

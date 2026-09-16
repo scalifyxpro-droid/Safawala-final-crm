@@ -172,7 +172,7 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
           </div>
         </div>
 
-        <JobTracker stages={job.stages} />
+        <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
 
         {job.qualityCheck ? (
           qcSentBackToWarehouse ? (

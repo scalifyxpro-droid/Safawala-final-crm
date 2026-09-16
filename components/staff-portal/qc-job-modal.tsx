@@ -207,7 +207,7 @@ export async function QcJobModal({
             </div>
           </section>
           <div className="mt-4">
-            <JobTracker stages={job.stages} />
+            <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border bg-white dark:bg-card p-2">
             <div

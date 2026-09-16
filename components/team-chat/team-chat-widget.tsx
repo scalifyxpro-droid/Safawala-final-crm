@@ -1,7 +1,6 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { usePathname } from 'next/navigation';
 import {
   ArrowLeft,
   LoaderCircle,
@@ -80,9 +79,7 @@ function directChannelKey(memberKey: string) {
 }
 
 export function TeamChatWidget() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState(false);
   const [edgeExpanded, setEdgeExpanded] = useState(false);
   const [edgeTop, setEdgeTop] = useState<number | null>(null);
   const [view, setView] = useState<View>('list');
@@ -107,7 +104,6 @@ export function TeamChatWidget() {
   const suppressLauncherClickRef = useRef(false);
 
   useEffect(() => {
-    const isEditPage = /(?:^|\/)edit(?:\/|$)/i.test(pathname);
     const positionBesideControls = () => {
       const height = window.innerHeight;
       const width = window.innerWidth;
@@ -124,36 +120,19 @@ export function TeamChatWidget() {
       }
       setEdgeTop(best);
     };
-    const checkEditing = () => {
-      const editDialog = Array.from(document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], .fixed.inset-0'))
-        .some((container) => {
-          if (!container.querySelector('form')) return false;
-          const heading = container.querySelector('h1, h2, h3, [role="heading"]')?.textContent?.trim() ?? '';
-          return /^(edit|correct|update)\b/i.test(heading);
-        });
-      const isEditing = isEditPage || editDialog;
-      setEditingRecord(isEditing);
-      if (isEditing) positionBesideControls();
-    };
-    checkEditing();
-    const observer = new MutationObserver(checkEditing);
+    positionBesideControls();
+    const observer = new MutationObserver(positionBesideControls);
     observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', checkEditing);
-    window.addEventListener('scroll', checkEditing, true);
-    return () => { observer.disconnect(); window.removeEventListener('resize', checkEditing); window.removeEventListener('scroll', checkEditing, true); };
-  }, [pathname]);
+    window.addEventListener('resize', positionBesideControls);
+    window.addEventListener('scroll', positionBesideControls, true);
+    return () => { observer.disconnect(); window.removeEventListener('resize', positionBesideControls); window.removeEventListener('scroll', positionBesideControls, true); };
+  }, []);
 
-  useEffect(() => {
-    if (!editingRecord) return;
-    setOpen(false);
-    setEdgeExpanded(false);
-  }, [editingRecord]);
-
-  const clampLauncherPosition = useCallback((x: number, y: number): LauncherPosition => {
-    const margin = 12;
-    const size = 56;
+  const clampLauncherPosition = useCallback((_x: number, y: number): LauncherPosition => {
+    const margin = 24;
+    const size = 36;
     return {
-      x: Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - size - margin)),
+      x: 0,
       y: Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - size - margin)),
     };
   }, []);
@@ -163,11 +142,11 @@ export function TeamChatWidget() {
       const saved = window.localStorage.getItem('safawala-team-chat-launcher-position');
       if (!saved) return;
       const parsed = JSON.parse(saved) as Partial<LauncherPosition>;
-      if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-        setLauncherPosition(clampLauncherPosition(parsed.x, parsed.y));
+      if (typeof parsed.y === 'number') {
+        setLauncherPosition(clampLauncherPosition(0, parsed.y));
       }
     } catch {
-      // Keep the default bottom-right position when storage is unavailable.
+      // Keep the default edge position when storage is unavailable.
     }
   }, [clampLauncherPosition]);
 
@@ -205,7 +184,7 @@ export function TeamChatWidget() {
     if (!drag.moved) return;
     event.preventDefault();
     const next = clampLauncherPosition(
-      event.clientX - drag.offsetX,
+      0,
       event.clientY - drag.offsetY,
     );
     drag.lastPosition = next;
@@ -617,34 +596,32 @@ export function TeamChatWidget() {
 
       <button
         type="button"
-        onPointerDown={editingRecord ? undefined : startLauncherDrag}
-        onPointerMove={editingRecord ? undefined : moveLauncher}
-        onPointerUp={editingRecord ? undefined : finishLauncherDrag}
-        onPointerCancel={editingRecord ? undefined : cancelLauncherDrag}
-        onMouseEnter={editingRecord ? () => setEdgeExpanded(true) : undefined}
-        onMouseLeave={editingRecord ? () => setEdgeExpanded(false) : undefined}
+        onPointerDown={startLauncherDrag}
+        onPointerMove={moveLauncher}
+        onPointerUp={finishLauncherDrag}
+        onPointerCancel={cancelLauncherDrag}
+        onMouseEnter={() => setEdgeExpanded(true)}
+        onMouseLeave={() => setEdgeExpanded(false)}
         onClick={() => {
           if (suppressLauncherClickRef.current) {
             suppressLauncherClickRef.current = false;
             return;
           }
-          if (editingRecord && !edgeExpanded && window.matchMedia('(hover: none)').matches) {
+          if (!edgeExpanded && window.matchMedia('(hover: none)').matches) {
             setEdgeExpanded(true);
             return;
           }
           setOpen((current) => !current);
         }}
-        style={editingRecord ? { top: edgeTop ?? '50%' } : launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
-        className={editingRecord
-          ? `fixed right-0 z-[71] grid h-9 -translate-y-1/2 place-items-center rounded-l-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition-[width,background-color] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 ${edgeExpanded ? 'w-12' : 'w-5'}`
-          : 'fixed bottom-4 right-4 z-[71] grid size-14 touch-none cursor-grab place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition hover:-translate-y-0.5 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing max-sm:bottom-3 max-sm:right-3'}
+        style={{ top: launcherPosition ? launcherPosition.y + 18 : edgeTop ?? '50%' }}
+        className={`fixed right-0 z-[71] grid h-9 touch-none cursor-grab -translate-y-1/2 place-items-center rounded-l-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition-[width,background-color] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing ${edgeExpanded ? 'w-12' : 'w-5'}`}
         aria-label={open ? 'Close team chat' : 'Open team chat'}
         aria-expanded={open}
-        title={editingRecord ? 'Open team chat' : 'Drag to move · Click to open team chat'}
+        title="Drag along edge · Click to open team chat"
       >
-        {open ? <X className={editingRecord ? 'size-4' : 'size-5'} /> : <UsersRound className={editingRecord ? 'size-4' : 'size-5'} />}
+        {open ? <X className="size-4" /> : <UsersRound className="size-4" />}
         {!open && totalUnread > 0 ? (
-          <span className={`absolute -right-0.5 -top-0.5 grid place-items-center rounded-full border-2 border-white bg-red-500 font-bold text-white dark:border-card ${editingRecord ? 'min-h-4 min-w-4 px-0.5 text-[8px]' : 'min-h-5 min-w-5 px-1 text-[10px]'}`}>
+          <span className="absolute -right-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full border-2 border-white bg-red-500 px-0.5 text-[8px] font-bold text-white dark:border-card">
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         ) : null}

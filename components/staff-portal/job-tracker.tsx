@@ -1,8 +1,8 @@
 import { Check, Circle, Route } from 'lucide-react';
 import { trackingTimeline, TRACKING_STAGE_LABEL } from '@/lib/event-jobs/constants';
-import type { EventJobStage } from '@/lib/event-jobs/types';
+import type { EventJobStage, StylistExecutionEntry } from '@/lib/event-jobs/types';
 
-export function JobTracker({ stages }: { stages: EventJobStage[] }) {
+export function JobTracker({ stages, stylistExecutions }: { stages: EventJobStage[]; stylistExecutions?: StylistExecutionEntry[] }) {
   return (
     <details className="group rounded-xl border bg-white dark:bg-card shadow-level-1">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium">
@@ -14,7 +14,7 @@ export function JobTracker({ stages }: { stages: EventJobStage[] }) {
         </span>
       </summary>
       <ol className="space-y-0 border-t px-5 py-3">
-        {trackingTimeline(stages).map((stage, index, orderedStages) => {
+        {trackingTimeline(stages, stylistExecutions).map((stage, index, orderedStages) => {
           const done = stage.status === 'done';
           const current =
             stage.status === 'open' || stage.status === 'in_progress';

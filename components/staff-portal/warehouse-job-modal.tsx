@@ -210,7 +210,7 @@ export async function WarehouseJobModal({
           </section>
 
           <div className="mt-4">
-            <JobTracker stages={job.stages} />
+            <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
           </div>
 
           {job.warehousePrep && stage.status === 'done' ? (

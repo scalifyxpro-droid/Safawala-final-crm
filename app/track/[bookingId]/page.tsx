@@ -62,7 +62,7 @@ export default async function PublicTrackingPage({
   // session (service-role, self-healing) and reflects stage changes made
   // anywhere in the CRM the moment they happen, no separate sync needed.
   const job = cancelled ? null : await getJobByBookingId(bookingId).catch(() => null);
-  const jobStages = job && Array.isArray(job.stages) ? trackingTimeline(job.stages) : null;
+  const jobStages = job && Array.isArray(job.stages) ? trackingTimeline(job.stages, job.stylistExecutions) : null;
 
   return (
     <main className="min-h-screen bg-[#faf7f2] px-4 py-10">

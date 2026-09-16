@@ -1,5 +1,5 @@
 import type { StaffDepartment } from '@/lib/staff-portal/constants';
-import type { EventJobStage } from './types';
+import type { EventJobStage, StylistExecutionEntry } from './types';
 
 export const EVENT_JOB_STAGE_KEYS = [
   'warehouse_pick',
@@ -65,8 +65,10 @@ export const TRACKING_STAGE_LABEL: Record<string, string> = {
 };
 
 /** Display-only tracker sequence shared by admin and staff job views. */
-export function trackingTimeline(stages: EventJobStage[]): TrackingStage[] {
+export function trackingTimeline(stages: EventJobStage[], stylistExecutions: StylistExecutionEntry[] = []): TrackingStage[] {
   const find = (key: EventJobStageKey) => stages.find((stage) => stage.key === key);
+  const workCompleted = stylistExecutions.some((entry) => entry.status === 'work_completed');
+  const eventLive = stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started');
   const combine = (first: EventJobStage | undefined, second: EventJobStage | undefined): EventJobStageStatus => {
     if (first?.status === 'in_progress' || second?.status === 'in_progress') return 'in_progress';
     if (first?.status === 'open' || second?.status === 'open') return 'open';
@@ -79,8 +81,8 @@ export function trackingTimeline(stages: EventJobStage[]): TrackingStage[] {
     { key: 'qc_packing', status: combine(find('quality_check'), find('packing')) },
     { key: 'stylist_opportunity', status: find('stylist_opportunity')?.status ?? 'not_started' },
     { key: 'travel', status: 'not_started' },
-    { key: 'live_event', status: 'not_started' },
-    { key: 'collection', status: find('collection')?.status ?? 'not_started' },
+    { key: 'live_event', status: workCompleted ? 'done' : eventLive ? 'in_progress' : 'not_started' },
+    { key: 'collection', status: workCompleted ? find('collection')?.status ?? 'not_started' : 'not_started' },
     { key: 'return_quality_check', status: find('return_quality_check')?.status ?? 'not_started' },
     { key: 'return_warehouse', status: find('return_warehouse')?.status ?? 'not_started' },
     { key: 'booking_final_check', status: find('booking_final_check')?.status ?? 'not_started' },

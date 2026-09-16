@@ -149,7 +149,7 @@ export default async function WarehouseJobDetailPage({ params }: { params: Promi
           </div>
         </section>
 
-        <JobTracker stages={job.stages} />
+        <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
 
         {job.warehousePrep && job.stages.find((stage) => stage.key === 'warehouse_pick')?.status === 'done' ? (
           <section className="rounded-2xl border border-emerald-200 bg-white dark:bg-card p-5 shadow-level-1">
