@@ -40,6 +40,7 @@ export function WorkOrdersManager({
   staff: Staff[];
 }) {
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [department, setDepartment] = useState('all');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
@@ -66,7 +67,7 @@ export function WorkOrdersManager({
   );
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3">
         <Card
           role="button"
           tabIndex={0}
@@ -122,22 +123,26 @@ export function WorkOrdersManager({
       </div>
       <Card>
         <CardContent className="flex flex-wrap gap-3 p-4">
+          <form className="flex w-full min-w-0 flex-col gap-2 xl:w-auto xl:flex-row" onSubmit={(event) => { event.preventDefault(); setSearch(searchDraft); setPage(1); if (window.matchMedia('(max-width: 1279px)').matches) { setDepartment('all'); setStatus('all'); } }}>
           <input
-            value={search}
+            value={searchDraft}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setSearchDraft(e.target.value);
+              if (window.matchMedia('(min-width: 1280px)').matches) setSearch(e.target.value);
               setPage(1);
             }}
             placeholder="Search job or event"
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="h-10 min-w-0 rounded-lg border bg-white px-3 text-sm dark:bg-card"
           />
+          <Button type="submit" variant="outline" className="xl:hidden">Search</Button>
+          </form>
           <select
             value={department}
             onChange={(e) => {
               setDepartment(e.target.value);
               setPage(1);
             }}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="hidden h-10 rounded-lg border bg-white px-3 text-sm dark:bg-card xl:block"
           >
             <option value="all">All departments</option>
             {departments.map((d) => (
@@ -150,7 +155,7 @@ export function WorkOrdersManager({
               setStatus(e.target.value);
               setPage(1);
             }}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="hidden h-10 rounded-lg border bg-white px-3 text-sm dark:bg-card xl:block"
           >
             <option value="all">All statuses</option>
             {['not_started', 'open', 'in_progress', 'done', 'blocked'].map(

@@ -87,6 +87,7 @@ export function StaffDirectory({
 }) {
   const [staff, setStaff] = useState(initialStaff);
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -168,7 +169,7 @@ export function StaffDirectory({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 sm:grid-cols-4">
         <Metric
           icon={<UsersRound />}
           label="Total staff"
@@ -211,21 +212,34 @@ export function StaffDirectory({
                 {visibleStaff.length} of {staff.length} team members
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <label className="relative block sm:w-72">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+              <label className="relative block min-w-0 flex-1 sm:w-72">
                 <span className="sr-only">Search staff</span>
                 <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
                 <input
-                  value={search}
+                  value={searchDraft}
                   onChange={(event) => {
-                    setSearch(event.target.value);
-                    setPage(1);
+                    setSearchDraft(event.target.value);
+                    if (window.matchMedia('(min-width: 1280px)').matches) {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setSearch(searchDraft.trim());
+                      if (window.matchMedia('(max-width: 1279px)').matches) {
+                        setStatus('all');
+                      }
+                      setPage(1);
+                    }
                   }}
                   placeholder="Search name or phone…"
                   className={`${fieldClass} mt-0 pl-9`}
                 />
               </label>
-              <label>
+              <button type="button" onClick={() => { setSearch(searchDraft.trim()); setStatus('all'); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
+              <label className="hidden xl:block">
                 <span className="sr-only">Filter staff status</span>
                 <select
                   value={status}

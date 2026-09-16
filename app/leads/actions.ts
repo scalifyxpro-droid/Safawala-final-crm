@@ -48,6 +48,10 @@ export async function createLockedDateAction(formData: FormData) {
   const date = text('locked_date');
   const label = text('label');
   const notes = text('notes') || null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    throw new Error('Choose a valid date.');
+  }
+  if (!label) throw new Error('Enter a label for the locked date.');
   try {
     await withUserContext(user.id, async (tx) => {
       await tx`
@@ -64,6 +68,8 @@ export async function createLockedDateAction(formData: FormData) {
     throw new Error(err?.code === '23505' ? 'That date is already locked.' : databaseError(error, 'Unable to lock date.'));
   }
   revalidatePath('/leads');
+  revalidatePath('/dashboard');
+  revalidatePath('/bookings/calendar');
 }
 
 export async function deleteLockedDateAction(formData: FormData) {
@@ -71,4 +77,6 @@ export async function deleteLockedDateAction(formData: FormData) {
   const id = Number(formData.get('id'));
   await withUserContext(user.id, (tx) => tx`delete from public.lead_locked_dates where id = ${id} and owner_id = ${user.id}`);
   revalidatePath('/leads');
+  revalidatePath('/dashboard');
+  revalidatePath('/bookings/calendar');
 }

@@ -301,6 +301,7 @@ export function PayrollManager({
   const [rows] = useState(() => (Array.isArray(initialRecords) ? initialRecords : []).map(normalizePayrollRow));
   const [month, setMonth] = useState('all');
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [status, setStatus] = useState('all');
   const [editing, setEditing] = useState<Row | null>(null);
   const [preview, setPreview] = useState<Row | null>(null);
@@ -399,7 +400,7 @@ export function PayrollManager({
   };
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {[
           ['Payroll total', `₹${total.toLocaleString('en-IN')}`],
           ['Employees', filtered.length],
@@ -418,23 +419,26 @@ export function PayrollManager({
       </div>
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <form className="flex w-full min-w-0 flex-col gap-2 xl:w-auto xl:flex-row" onSubmit={(event) => { event.preventDefault(); setSearch(searchDraft); if (window.matchMedia('(max-width: 1279px)').matches) { setMonth('all'); setStatus('all'); } }}>
           <input
             placeholder="Search employee"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            value={searchDraft}
+            onChange={(e) => { setSearchDraft(e.target.value); if (window.matchMedia('(min-width: 1280px)').matches) setSearch(e.target.value); }}
+            className="h-10 min-w-0 rounded-lg border bg-white px-3 text-sm dark:bg-card"
             type="search"
           />
+          <Button type="submit" variant="outline" className="xl:hidden">Search</Button>
+          </form>
           <input
             type="month"
             value={month === 'all' ? '' : month}
             onChange={(e) => setMonth(e.target.value || 'all')}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="hidden h-10 rounded-lg border bg-white px-3 text-sm dark:bg-card xl:block"
           />
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm"
+            className="hidden h-10 rounded-lg border bg-white px-3 text-sm dark:bg-card xl:block"
           >
             <option value="all">All statuses</option>
             {statuses.map((s) => (

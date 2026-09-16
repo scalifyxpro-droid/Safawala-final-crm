@@ -209,6 +209,7 @@ export function InventoryDirectory({
     return map;
   }, [reservations]);
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [category, setCategory] = useState('all');
   const [subcategory, setSubcategory] = useState('all');
   const [filter, setFilter] = useState<ProductFilter>('all');
@@ -293,6 +294,7 @@ export function InventoryDirectory({
 
   function reviewStockItems() {
     setSearch('');
+    setSearchDraft('');
     setCategory('all');
     setSubcategory('all');
     setShowArchived(false);
@@ -310,6 +312,7 @@ export function InventoryDirectory({
 
   function applyStockKpi(nextFilter: ProductFilter) {
     setSearch('');
+    setSearchDraft('');
     setCategory('all');
     setSubcategory('all');
     setShowArchived(false);
@@ -408,7 +411,7 @@ export function InventoryDirectory({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-5">
         <Metric
           icon={<Boxes />}
           label="Total products"
@@ -471,21 +474,36 @@ export function InventoryDirectory({
 
       <Card className="gap-0 border-border py-0 shadow-level-1 ring-0">
         <CardContent className="p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(280px,1fr)_210px_210px_190px]">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(280px,1fr)_210px_210px_190px]">
             <label className="relative block">
               <span className="sr-only">Search inventory</span>
               <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
               <input
-                value={search}
+                value={searchDraft}
                 onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
+                  setSearchDraft(event.target.value);
+                  if (window.matchMedia('(min-width: 1280px)').matches) {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setSearch(searchDraft.trim());
+                    if (window.matchMedia('(max-width: 1279px)').matches) {
+                      setCategory('all');
+                      setSubcategory('all');
+                      setFilter('all');
+                    }
+                    setPage(1);
+                  }
                 }}
                 placeholder="Search product, barcode or SKU…"
                 className={`${fieldClass} mt-0 pl-9`}
               />
             </label>
-            <label>
+            <button type="button" onClick={() => { setSearch(searchDraft.trim()); setPage(1); setCategory('all'); setSubcategory('all'); setFilter('all'); }} className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
+            <label className="hidden xl:block">
               <span className="sr-only">Filter category</span>
               <select
                 value={category}
@@ -502,7 +520,7 @@ export function InventoryDirectory({
                 ))}
               </select>
             </label>
-            <label>
+            <label className="hidden xl:block">
               <span className="sr-only">Filter subcategory</span>
               <select
                 value={subcategory}
@@ -518,7 +536,7 @@ export function InventoryDirectory({
                 ))}
               </select>
             </label>
-            <label>
+            <label className="hidden xl:block">
               <span className="sr-only">Filter stock status</span>
               <select
                 value={filter}

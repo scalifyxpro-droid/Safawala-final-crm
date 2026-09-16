@@ -71,6 +71,7 @@ export function VendorManager({
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'active' | 'inactive'
   >('all');
@@ -209,7 +210,7 @@ export function VendorManager({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
         <Metric
           icon={<Truck />}
           label="Total Vendors"
@@ -245,20 +246,33 @@ export function VendorManager({
                 {filtered.length} of {total} vendor records
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <label className="relative block sm:w-72">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="relative block min-w-0 flex-1 sm:w-72">
                 <span className="sr-only">Search vendors</span>
                 <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
                 <input
-                  value={search}
+                  value={searchDraft}
                   onChange={(event) => {
-                    setSearch(event.target.value);
-                    setPage(1);
+                    setSearchDraft(event.target.value);
+                    if (window.matchMedia('(min-width: 1280px)').matches) {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setSearch(searchDraft.trim());
+                      if (window.matchMedia('(max-width: 1279px)').matches) {
+                        setStatusFilter('all');
+                      }
+                      setPage(1);
+                    }
                   }}
                   placeholder="Search name, contact, phone…"
                   className={`${inputClass} mt-0 pl-9`}
                 />
               </label>
+              <button type="button" onClick={() => { setSearch(searchDraft.trim()); setStatusFilter('all'); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
               <select
                 value={statusFilter}
                 onChange={(event) => {
@@ -267,7 +281,7 @@ export function VendorManager({
                   );
                   setPage(1);
                 }}
-                className="h-10 rounded-lg border border-input bg-white px-3 text-sm dark:bg-card"
+                className="hidden h-10 rounded-lg border border-input bg-white px-3 text-sm dark:bg-card xl:block"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>

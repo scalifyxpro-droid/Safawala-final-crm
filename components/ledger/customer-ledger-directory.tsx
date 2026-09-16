@@ -30,6 +30,7 @@ export function CustomerLedgerDirectory({
   loadError: string;
 }) {
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [type, setType] = useState<'all' | 'sale' | 'rental'>('all');
   const [balance, setBalance] = useState<'all' | 'due' | 'settled'>('all');
   const [metric, setMetric] = useState<'billing' | 'received' | 'outstanding' | 'customers'>('billing');
@@ -125,6 +126,7 @@ export function CustomerLedgerDirectory({
   const selectMetric = (next: typeof metric) => {
     setMetric(next);
     setSearch('');
+    setSearchDraft('');
     setType('all');
     setBalance(next === 'outstanding' ? 'due' : 'all');
     resetPage();
@@ -138,7 +140,7 @@ export function CustomerLedgerDirectory({
         backHref="/dashboard"
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         <Metric
           icon={<IndianRupee />}
           label="Total billing"
@@ -191,20 +193,35 @@ export function CustomerLedgerDirectory({
                 Open a customer to view the complete chronological statement.
               </p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-[minmax(240px,1fr)_140px_150px]">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(240px,1fr)_140px_150px]">
               <label className="relative">
                 <span className="sr-only">Search customer ledger</span>
                 <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
                 <input
-                  value={search}
+                  value={searchDraft}
                   onChange={(event) => {
-                    setSearch(event.target.value);
-                    resetPage();
+                    setSearchDraft(event.target.value);
+                    if (window.matchMedia('(min-width: 1280px)').matches) {
+                      setSearch(event.target.value);
+                      resetPage();
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setSearch(searchDraft.trim());
+                      if (window.matchMedia('(max-width: 1279px)').matches) {
+                        setType('all');
+                        setBalance('all');
+                        setMetric('billing');
+                      }
+                      resetPage();
+                    }
                   }}
                   placeholder="Customer, bill or reference…"
                   className="h-10 w-full rounded-lg border bg-white dark:bg-card pl-9 pr-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                 />
               </label>
+              <button type="button" onClick={() => { setSearch(searchDraft.trim()); setType('all'); setBalance('all'); setMetric('billing'); resetPage(); }} className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
               <select
                 value={type}
                 onChange={(event) => {
@@ -213,7 +230,7 @@ export function CustomerLedgerDirectory({
                   resetPage();
                 }}
                 aria-label="Booking type"
-                className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm outline-none focus:border-ring"
+                className="hidden h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm outline-none focus:border-ring xl:block"
               >
                 <option value="all">All types</option>
                 <option value="sale">Sales</option>
@@ -229,7 +246,7 @@ export function CustomerLedgerDirectory({
                   resetPage();
                 }}
                 aria-label="Balance status"
-                className="h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm outline-none focus:border-ring"
+                className="hidden h-10 rounded-lg border bg-white dark:bg-card px-3 text-sm outline-none focus:border-ring xl:block"
               >
                 <option value="all">All balances</option>
                 <option value="due">Outstanding</option>

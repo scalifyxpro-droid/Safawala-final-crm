@@ -135,7 +135,7 @@ export function CustomerLedgerDetail({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         <Metric icon={<IndianRupee />} label="Total billing" value={money(totals.totalBilling)} note={`${totals.totalBills} bills`} />
         <Metric icon={<ReceiptText />} label="Total received" value={money(totals.totalPaid)} note="Recorded payments" tone="success" />
         <Metric icon={<WalletCards />} label="Outstanding" value={money(totals.outstanding)} note="Current balance due" tone="warning" />

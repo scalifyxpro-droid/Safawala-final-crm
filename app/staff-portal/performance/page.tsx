@@ -15,7 +15,7 @@ export default async function StaffPerformancePage() {
     order by credited_at desc
   `);
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

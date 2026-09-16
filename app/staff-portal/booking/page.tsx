@@ -97,7 +97,7 @@ export default async function StaffBookingPage() {
   ] as const;
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}
@@ -113,7 +113,7 @@ export default async function StaffBookingPage() {
             </Button>
           }
         />
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
           {kpis.map(([label, value, note, href, Icon, tone]) => (
             <Link key={label} href={href} className="group">
               <Card className="h-full border-border shadow-level-1 ring-0 transition group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-level-2">

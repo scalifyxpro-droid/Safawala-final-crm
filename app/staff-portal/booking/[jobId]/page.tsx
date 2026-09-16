@@ -41,7 +41,7 @@ export default async function BookingJobDetailPage({ params }: { params: Promise
   const damagedItems = (job.returnQualityCheck?.items ?? []).filter((item) => (item.damagedQuantity ?? 0) > 0);
 
   return (
-    <StaffPortalShell name={session.name} departments={session.departments} permissions={session.permissions} isMainId={session.isMainId}>
+    <StaffPortalShell language={session.languagePreference} name={session.name} departments={session.departments} permissions={session.permissions} isMainId={session.isMainId}>
       <div className="mx-auto max-w-[900px] space-y-6">
         <DashboardHeader title={job.id} subtitle={`${job.eventSummary.eventName} · ${job.bookingNumber}`} backHref="/staff-portal/booking/close-jobs" />
 

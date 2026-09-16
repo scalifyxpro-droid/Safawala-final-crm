@@ -79,6 +79,7 @@ export function LaundryManager({
   const router = useRouter();
   const [batches, setBatches] = useState(initialBatches);
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [status, setStatus] = useState('all');
   const [modal, setModal] = useState<'create' | 'edit' | 'view' | null>(null);
   const [selected, setSelected] = useState<LaundryBatch | null>(null);
@@ -165,7 +166,7 @@ export function LaundryManager({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         <Stat
           label="Total batches"
           value={batches.length}
@@ -199,22 +200,25 @@ export function LaundryManager({
               Track and manage all laundry batches sent to vendors
             </p>
           </div>
-          <div className="grid w-full gap-2 sm:grid-cols-[minmax(240px,1fr)_170px] lg:w-auto lg:min-w-[430px]">
+          <div className="grid w-full gap-2 xl:w-auto xl:min-w-[430px] xl:grid-cols-[minmax(240px,1fr)_170px]">
+            <form className="grid min-w-0 gap-2" onSubmit={(event) => { event.preventDefault(); setSearch(searchDraft); if (window.matchMedia('(max-width: 1279px)').matches) setStatus('all'); }}>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 aria-label="Search batches"
                 placeholder="Search batches..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchDraft}
+                onChange={(e) => { setSearchDraft(e.target.value); if (window.matchMedia('(min-width: 1280px)').matches) setSearch(e.target.value); }}
                 className={`${input} pl-9`}
               />
             </div>
+            <Button type="submit" variant="outline" className="xl:hidden">Search</Button>
+            </form>
             <select
               aria-label="Filter status"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className={input}
+              className={`${input} hidden xl:block`}
             >
               <option value="all">All Statuses</option>
               <option value="in_progress">In Progress</option>

@@ -109,6 +109,7 @@ export function CalendarDayGrid({
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [tab, setTab] = useState<'events' | 'mod'>('events');
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const importantDays = useMemo(
     () => importantWeddingDaysForMonth(year, month),
     [year, month],
@@ -513,16 +514,17 @@ export function CalendarDayGrid({
             ) : null}
 
             <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
-              <label className="relative flex-1 sm:max-w-xs">
+              <form className="flex min-w-0 flex-1 flex-col gap-2 xl:max-w-xs" onSubmit={(event) => { event.preventDefault(); setSearch(searchDraft); }}><label className="relative min-w-0 flex-1">
                 <span className="sr-only">Search name, booking</span>
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  value={searchDraft}
+                  onChange={(event) => { setSearchDraft(event.target.value); if (window.matchMedia('(min-width: 1280px)').matches) setSearch(event.target.value); }}
                   placeholder="Search name, booking…"
                   className="h-10 w-full rounded-lg border bg-white dark:bg-card pl-9 pr-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                 />
               </label>
+              <Button type="submit" variant="outline" className="xl:hidden">Search</Button></form>
               <Button
                 type="button"
                 variant="outline"

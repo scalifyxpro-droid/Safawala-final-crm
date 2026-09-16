@@ -36,6 +36,7 @@ function currentStage(job: EventJob) {
 export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
   const [selected, setSelected] = useState<EventJob | null>(null);
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [sortBy, setSortBy] = useState<'event' | 'booking'>('booking');
   const [page, setPage] = useState(1);
@@ -69,7 +70,39 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
   return (
     <>
       <Card className="gap-0 overflow-hidden border-border py-0 shadow-level-1">
-        <div className="grid gap-2 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] sm:grid-cols-[minmax(0,1fr)_180px_210px]"><label className="relative block"><Search className="absolute left-3 top-3 size-4 text-muted-foreground" /><input aria-label="Search jobs" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search customer, booking, event, or location…" className="h-10 w-full rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none focus:border-primary dark:bg-card" /></label><label className="text-xs font-medium text-muted-foreground"><span className="sr-only">Filter event date</span><input type="date" aria-label="Filter event date" value={eventDate} onChange={(event) => { setEventDate(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm font-normal text-foreground outline-none focus:border-primary dark:bg-card" /></label><select aria-label="Sort jobs by" value={sortBy} onChange={(event) => { setSortBy(event.target.value as 'event' | 'booking'); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card"><option value="booking">Booking date · newest first</option><option value="event">Event date · earliest first</option></select></div>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearch(searchDraft.trim());
+            setEventDate('');
+            setSortBy('booking');
+            setPage(1);
+          }}
+          className="grid min-w-0 gap-2 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_180px_210px]"
+        >
+          <label className="relative block min-w-0">
+            <span className="sr-only">Search jobs</span>
+            <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
+            <input
+              value={searchDraft}
+              onChange={(event) => {
+                setSearchDraft(event.target.value);
+                if (window.matchMedia('(min-width: 1280px)').matches) {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }
+              }}
+              placeholder="Search customer, booking, event, or location…"
+              className="h-10 w-full min-w-0 rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none focus:border-primary dark:bg-card"
+            />
+          </label>
+          <button type="submit" className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
+          <label className="hidden text-xs font-medium text-muted-foreground xl:block">
+            <span className="sr-only">Filter event date</span>
+            <input type="date" aria-label="Filter event date" value={eventDate} onChange={(event) => { setEventDate(event.target.value); setPage(1); }} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm font-normal text-foreground outline-none focus:border-primary dark:bg-card" />
+          </label>
+          <select aria-label="Sort jobs by" value={sortBy} onChange={(event) => { setSortBy(event.target.value as 'event' | 'booking'); setPage(1); }} className="hidden h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card xl:block"><option value="booking">Booking date · newest first</option><option value="event">Event date · earliest first</option></select>
+        </form>
         <ListPagination total={filteredJobs.length} page={safePage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} itemLabel="jobs" />
         <div className="divide-y divide-border">
           {visibleJobs.map((job) => (

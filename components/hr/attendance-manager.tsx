@@ -106,7 +106,7 @@ export function AttendanceManager({
   }
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {[
           ['Total records', kpis.total],
           ['Present', kpis.present],

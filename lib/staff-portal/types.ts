@@ -33,6 +33,7 @@ export type StaffPortalAccount = {
 
 export type StaffSession = {
   id: string;
+  languagePreference: 'en' | 'hi' | 'gu';
   staffMemberId: number;
   name: string;
   loginId: string;

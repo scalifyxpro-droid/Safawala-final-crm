@@ -66,7 +66,7 @@ export default async function TravelPage({
           backHref="/dashboard"
         />
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3">
           <Summary
             icon={<UserRound />}
             label="Selected staff"

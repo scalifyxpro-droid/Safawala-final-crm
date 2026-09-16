@@ -52,7 +52,7 @@ export default async function StaffLeadsPage() {
   });
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

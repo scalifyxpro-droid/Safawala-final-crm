@@ -77,7 +77,7 @@ export default async function StaffCollectionPage({
   );
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

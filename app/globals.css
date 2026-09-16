@@ -118,6 +118,40 @@
 .dark ::-webkit-scrollbar-corner { background: transparent; }
 }
 
+/* Compact KPI cards at phone widths; desktop card composition is untouched. */
+@media (max-width: 639px) {
+  .responsive-kpi-grid > * {
+    min-width: 0;
+  }
+
+  .responsive-kpi-grid [data-slot="card"] {
+    min-width: 0;
+    height: 100%;
+  }
+
+  .responsive-kpi-grid [data-slot="card-content"],
+  .responsive-kpi-grid [data-slot="card-header"] {
+    padding: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .responsive-kpi-grid [data-slot="card-content"] p,
+  .responsive-kpi-grid [data-slot="card-header"] p,
+  .responsive-kpi-grid [data-slot="card-title"] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+
+  .responsive-kpi-grid [data-slot="card-content"] > span:has(svg) {
+    order: -1;
+    width: 34px;
+    height: 34px;
+    flex: none;
+  }
+}
+
 @media print {
   aside, header, .print\:hidden { display: none !important; }
   .lg\:pl-64 { padding-left: 0 !important; }

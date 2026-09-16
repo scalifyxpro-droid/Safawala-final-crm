@@ -86,7 +86,7 @@ async function StylistMainDashboard({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {[
           { label: 'Total stylists', value: stylists.length, icon: UsersRound },
           { label: 'Assigned stylists', value: assignedStylistIds.size, icon: UserRound },
@@ -138,7 +138,7 @@ export default async function StaffStylistPage({
   );
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

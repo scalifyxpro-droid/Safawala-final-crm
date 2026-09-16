@@ -19,7 +19,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
 
   const result = await withUserContext(userId, async (tx) => {
     const [profileRows, accountRows] = await Promise.all([
-      tx<{ role: string }[]>`select role from public.profiles where id = ${userId}`,
+      tx<{ role: string; language_preference: string | null }[]>`select role, language_preference from public.profiles where id = ${userId}`,
       tx<
         {
           id: number;
@@ -75,6 +75,7 @@ export const getStaffSession = cache(async (): Promise<StaffSession | null> => {
 
   return {
     id: userId,
+    languagePreference: profile.language_preference === 'hi' || profile.language_preference === 'gu' ? profile.language_preference : 'en',
     staffMemberId: account.id,
     name: account.name,
     loginId: account.login_id ?? '',

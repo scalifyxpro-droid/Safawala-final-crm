@@ -142,7 +142,7 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
 
   if (isModificationStaff) {
     return (
-      <StaffPortalShell
+      <StaffPortalShell language={session.languagePreference}
         name={session.name}
         departments={session.departments}
         permissions={session.permissions}
@@ -175,7 +175,7 @@ export default async function StaffPortalHomePage({ searchParams }: Props) {
   }
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

@@ -19,7 +19,7 @@ export default async function StaffNotificationsPage() {
   const unreadCount = await unreadCountForSession(session.id, activeDepartments);
 
   return (
-    <StaffPortalShell name={session.name} departments={session.departments} permissions={session.permissions} isMainId={session.isMainId} notificationCount={unreadCount}>
+    <StaffPortalShell language={session.languagePreference} name={session.name} departments={session.departments} permissions={session.permissions} isMainId={session.isMainId} notificationCount={unreadCount}>
       <div className="mx-auto max-w-[900px] space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DashboardHeader title="Notifications" subtitle="Updates about jobs in your departments" />

@@ -67,6 +67,7 @@ export function CustomerDirectory({
 }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [search, setSearch] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
   const [customerScope, setCustomerScope] = useState<'all' | 'returning'>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -143,7 +144,7 @@ export function CustomerDirectory({
         ) : null}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         <Metric
           icon={<UsersRound />}
           label="Total customers"
@@ -192,19 +193,31 @@ export function CustomerDirectory({
                 {visibleCustomers.length} of {customers.length} customer records
               </p>
             </div>
-            <label className="relative block sm:w-80">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="relative block min-w-0 flex-1 sm:w-80">
               <span className="sr-only">Search customers</span>
               <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
               <input
-                value={search}
+                value={searchDraft}
                 onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
+                  setSearchDraft(event.target.value);
+                  if (window.matchMedia('(min-width: 1280px)').matches) {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setSearch(searchDraft.trim());
+                    setPage(1);
+                  }
                 }}
                 placeholder="Search name, phone or address…"
                 className={`${inputClass} mt-0 pl-9`}
               />
             </label>
+            <button type="button" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }} className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium hover:bg-accent dark:bg-card xl:hidden">Search</button>
+            </div>
           </div>
         </CardHeader>
         <ListPagination

@@ -50,18 +50,6 @@ export function ListFilterForm({
 
   useEffect(() => setSearchValue(search), [search]);
 
-  useEffect(() => {
-    if (!mobileSearchOnly || searchValue.trim() === search) return;
-    const timeout = window.setTimeout(() => {
-      const params = new URLSearchParams(searchParams.toString());
-      const value = searchValue.trim();
-      if (value) params.set('q', value);
-      else params.delete('q');
-      navigate(params, true);
-    }, 400);
-    return () => window.clearTimeout(timeout);
-  }, [mobileSearchOnly, navigate, search, searchParams, searchValue]);
-
   function changeFilter(name: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) params.set(name, value);
@@ -72,6 +60,11 @@ export function ListFilterForm({
   function submitSearch(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const params = new URLSearchParams(searchParams.toString());
+    // Secondary filters are not visible at responsive widths. Clear stale
+    // desktop selections so a mobile search is never silently constrained.
+    if (mobileSearchOnly && window.matchMedia('(max-width: 1279px)').matches) {
+      filters.forEach(({ name }) => params.delete(name));
+    }
     const value = searchValue.trim();
     if (value) params.set('q', value);
     else params.delete('q');
@@ -88,7 +81,7 @@ export function ListFilterForm({
   return (
     <form
       onSubmit={submitSearch}
-      className="grid gap-3 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] lg:grid-cols-[minmax(220px,1fr)_repeat(2,170px)_auto]"
+      className={`grid gap-3 border-b bg-[#fcfaf7] p-4 dark:bg-[#241e17] ${mobileSearchOnly ? 'sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(220px,1fr)_repeat(2,170px)_auto]' : 'lg:grid-cols-[minmax(220px,1fr)_repeat(2,170px)_auto]'}`}
       aria-busy={pending}
     >
       <label className="relative">
@@ -109,7 +102,7 @@ export function ListFilterForm({
           value={filter.value}
           onChange={(event) => changeFilter(filter.name, event.target.value)}
           aria-label={filter.label}
-          className={`${mobileSearchOnly ? 'hidden lg:block' : ''} h-10 rounded-lg border bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-card`}
+          className={`${mobileSearchOnly ? 'hidden xl:block' : ''} h-10 rounded-lg border bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-card`}
         >
           <option value="">{filter.label}</option>
           {filter.options.map(([key, text]) => (
@@ -119,11 +112,11 @@ export function ListFilterForm({
           ))}
         </select>
       ))}
-      <Button type="submit" variant="outline" className={`${mobileSearchOnly ? 'hidden lg:inline-flex' : ''} h-10 bg-white dark:bg-card`} disabled={pending}>
+      <Button type="submit" variant="outline" className={`${mobileSearchOnly ? 'w-full sm:w-auto' : ''} h-10 bg-white px-6 dark:bg-card`} disabled={pending}>
         Search
       </Button>
       {hasActiveFilters ? (
-        <div className={`${mobileSearchOnly ? 'hidden lg:flex' : 'flex'} flex-wrap items-center gap-2 lg:col-span-full`} aria-live="polite">
+        <div className={`${mobileSearchOnly ? 'hidden xl:flex' : 'flex'} flex-wrap items-center gap-2 lg:col-span-full`} aria-live="polite">
           <span className="text-xs font-medium text-muted-foreground">Active filters:</span>
           {search ? (
             <span className="inline-flex h-7 items-center rounded-full border border-[#e4d2b6] bg-white dark:bg-card px-2.5 text-xs font-medium text-[#70481c]">

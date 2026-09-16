@@ -72,7 +72,7 @@ export default async function StylistApprovalsPage({
           subtitle="Assign interested stylists to rental events"
           backHref="/dashboard"
         />
-        <section className="grid gap-3 md:grid-cols-3">
+        <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3">
             <Summary
               icon={<CalendarClock />}
               label="Rental events"

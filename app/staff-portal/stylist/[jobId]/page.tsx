@@ -41,7 +41,7 @@ export default async function StylistEventDetailsPage({ params }: { params: Prom
   const notificationCount = await unreadCountForSession(session.id, activeDepartments);
 
   return (
-    <StaffPortalShell
+    <StaffPortalShell language={session.languagePreference}
       name={session.name}
       departments={session.departments}
       permissions={session.permissions}

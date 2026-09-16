@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandMark } from '@/components/brand-mark';
 import { TeamChatWidget } from '@/components/team-chat/team-chat-widget';
+import { StaffLanguageProvider, useStaffLanguage, type StaffLanguage } from '@/components/staff-portal/staff-language';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -36,6 +37,7 @@ import {
   IndianRupee,
   ClipboardList,
   LayoutDashboard,
+  Languages,
   LogOut,
   PanelLeftOpen,
   PackageCheck,
@@ -360,6 +362,21 @@ function BrandDivider() {
   return <div aria-hidden="true" className="mt-5 h-px bg-[#cec5b9] dark:bg-[#332b21]" />;
 }
 
+function LanguageSelector() {
+  const { language, setLanguage, saving, error } = useStaffLanguage();
+  return <div className="pointer-events-auto relative flex h-9 w-10 shrink-0 items-center justify-center gap-1 rounded-lg border border-[#dfd3c3] bg-[#fcfaf7] text-[#70481c] shadow-sm dark:border-[#3a2f22] dark:bg-[#241e17] dark:text-[#f0d9ad] sm:w-auto sm:px-2">
+    <Languages aria-hidden="true" className="size-4" />
+    <span aria-hidden="true" className="text-[10px] font-bold sm:hidden">{language.toUpperCase()}</span>
+    <label className="sr-only" htmlFor="staff-language">Staff portal language</label>
+    <select id="staff-language" value={language} disabled={saving} onChange={(event) => void setLanguage(event.target.value as StaffLanguage)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus-visible:ring-2 focus-visible:ring-ring sm:static sm:h-8 sm:w-[92px] sm:bg-transparent sm:text-sm sm:font-semibold sm:opacity-100" aria-describedby={error ? 'staff-language-error' : undefined}>
+      <option value="en">English</option>
+      <option value="hi">हिन्दी</option>
+      <option value="gu">ગુજરાતી</option>
+    </select>
+    {error ? <span id="staff-language-error" role="alert" className="absolute right-0 top-10 z-50 w-56 rounded-lg border border-red-200 bg-white p-2 text-xs text-red-700 shadow-level-2 dark:bg-card">{error}</span> : null}
+  </div>;
+}
+
 export function StaffPortalShell({
   name,
   departments,
@@ -369,6 +386,7 @@ export function StaffPortalShell({
   permissions = [],
   isMainId = false,
   portalKind = 'staff',
+  language = 'en',
 }: {
   name: string;
   departments: StaffDepartmentGrant[];
@@ -378,11 +396,12 @@ export function StaffPortalShell({
   accessModules?: AccessModule[];
   isMainId?: boolean;
   portalKind?: StaffPortalKind;
+  language?: StaffLanguage;
 }) {
   const effectiveModules = accessModules ?? [];
   const [pageHeader, setPageHeader] = useState<PageHeader>(null);
   return (
-    <DashboardHeaderContext.Provider value={setPageHeader}><div className="min-h-dvh bg-surface">
+    <DashboardHeaderContext.Provider value={setPageHeader}><StaffLanguageProvider initialLanguage={language}><div className="min-h-dvh bg-surface">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-white dark:bg-card px-4 py-6 dark:bg-card lg:flex">
         <BrandMark className="px-2" />
         <BrandDivider />
@@ -440,6 +459,7 @@ export function StaffPortalShell({
               </SheetContent>
             </Sheet>
             {pageHeader ? <div className="flex min-w-0 flex-1 items-center gap-2 pl-12 lg:pl-0"><div className="flex min-w-0 flex-1 items-center">{pageHeader.backHref !== null ? <Link href={pageHeader.backHref ?? '/staff-portal'} aria-label="Back" className="pointer-events-auto mr-2 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted sm:mr-3"><ArrowLeft className="size-4" strokeWidth={3} /></Link> : null}<div className="min-w-0"><span className="block truncate text-base font-semibold leading-5">{pageHeader.title}</span><span className="hidden truncate text-[11px] text-muted-foreground sm:block">{pageHeader.subtitle}</span></div></div>{pageHeader.actions ? <div className="pointer-events-auto ml-auto flex max-w-[42vw] shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:max-w-[52vw] lg:max-w-none [&::-webkit-scrollbar]:hidden [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:shrink-0 [&_[data-slot=button]]:px-3 [&_[data-slot=button]]:text-sm">{pageHeader.actions}</div> : null}</div> : <div className="min-w-0 flex-1" />}
+            <LanguageSelector />
             <Link
               href="/staff-portal/notifications"
               aria-label="Notifications"
@@ -462,6 +482,6 @@ export function StaffPortalShell({
         </main>
       </div>
       <TeamChatWidget />
-    </div></DashboardHeaderContext.Provider>
+    </div></StaffLanguageProvider></DashboardHeaderContext.Provider>
   );
 }

@@ -313,7 +313,7 @@ export default async function QuotesPage({ searchParams }: Props) {
           </Alert>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
           {cards.map(({ label, value, note, icon: Icon, tone }) => {
             const colors =
               tone === 'success'
@@ -325,29 +325,35 @@ export default async function QuotesPage({ searchParams }: Props) {
                     : 'bg-accent text-primary ring-[#e4d2b6]';
 
             return (
-              <Card
+              <Link
                 key={label}
-                className="gap-0 border-border py-0 shadow-level-1 ring-0"
+                href={`/quotes?type=${type}${label === 'Total quotes' ? '' : `&state=${label.toLowerCase()}`}`}
+                className="group min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`Show ${label.toLowerCase()}`}
               >
-                <CardContent className="flex items-center justify-between gap-3 p-5">
+              <Card
+                className={`h-full min-w-0 gap-0 py-0 shadow-level-1 transition group-hover:border-primary/40 group-hover:shadow-level-2 ${state === (label === 'Total quotes' ? '' : label.toLowerCase()) ? 'border-primary/50 ring-2 ring-primary/10' : 'border-border ring-0'}`}
+              >
+                <CardContent className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-5">
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <p className="break-words text-[10px] font-semibold uppercase leading-tight tracking-[0.09em] text-muted-foreground sm:text-[11px] sm:tracking-[0.12em]">
                       {label}
                     </p>
-                    <p className="mt-1 truncate text-xl font-semibold tracking-[-0.03em]">
+                    <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] sm:text-xl">
                       {value}
                     </p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-[10px] leading-tight text-muted-foreground sm:truncate sm:text-xs">
                       {note}
                     </p>
                   </div>
                   <span
-                    className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 [&_svg]:size-4 ${colors}`}
+                    className={`order-first grid size-8 shrink-0 place-items-center rounded-xl ring-1 sm:order-last sm:size-10 [&_svg]:size-4 ${colors}`}
                   >
                     <Icon />
                   </span>
                 </CardContent>
               </Card>
+              </Link>
             );
           })}
         </section>
@@ -364,6 +370,7 @@ export default async function QuotesPage({ searchParams }: Props) {
           <ListFilterForm
             search={search}
             searchPlaceholder="Search quote, customer or event"
+            mobileSearchOnly
             filters={[
               {
                 name: 'state',

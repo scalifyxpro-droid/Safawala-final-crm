@@ -24,6 +24,7 @@ import {
   type LockedDate,
 } from '@/components/bookings/calendar-day-grid';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
+import { LockDateButton } from '@/components/dashboard/lock-date-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -117,6 +118,8 @@ export default async function DashboardPage({
   let jobTrackerJobs: Awaited<ReturnType<typeof listActiveJobs>> = [];
   let calendarRows: unknown[] = [];
   let calendarLockedRaw: LockedDate[] = [];
+  let upcomingLockedDates: LockedDate[] = [];
+  let lockedDatesLoadError = false;
 
   try {
     const result = await withUserContext(user.id, async (tx) => {
@@ -240,7 +243,18 @@ export default async function DashboardPage({
     jobTrackerJobs = result.activeJobs;
     calendarRows = result.calendar;
     calendarLockedRaw = result.calendarLocked;
+    try {
+      upcomingLockedDates = await withUserContext(user.id, (tx) => tx<LockedDate[]>`
+        select id, locked_date::text as locked_date, label, notes
+        from public.lead_locked_dates
+        where owner_id = ${user.id} and locked_date >= ${today}
+        order by locked_date asc limit 60
+      `);
+    } catch {
+      lockedDatesLoadError = true;
+    }
   } catch (err) {
+    lockedDatesLoadError = true;
     error =
       err instanceof Error ? err : new Error('Unable to load the dashboard.');
   }
@@ -412,7 +426,7 @@ export default async function DashboardPage({
             </div>
           }
         />
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="responsive-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
           <Link href="/ledger" className="group min-w-0">
             <Card className="h-full min-h-[108px] gap-0 border-border py-0 shadow-level-1 ring-0 transition group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-level-2">
               <CardContent className="flex h-full min-w-0 items-center justify-between gap-4 p-5">
@@ -459,7 +473,7 @@ export default async function DashboardPage({
           ))}
         </section>
         <section className="space-y-3 overflow-hidden rounded-2xl border border-[#dfc7a4] bg-[linear-gradient(145deg,#fbf3e7_0%,#f8f4ee_52%,#f4eee5_100%)] p-3 shadow-level-1 dark:border-[#493822] dark:bg-[linear-gradient(145deg,#2a2117_0%,#211c16_100%)] sm:p-4">
-          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-white/80 bg-white/65 px-3 py-2.5 shadow-sm backdrop-blur-sm dark:border-white/5 dark:bg-white/[0.035] sm:px-4 sm:py-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-white/80 bg-white/65 px-3 py-2.5 shadow-sm backdrop-blur-sm dark:border-white/5 dark:bg-white/[0.035] sm:px-4 sm:py-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight sm:text-lg">
                 <CalendarDays className="size-4.5 shrink-0 text-primary sm:size-5" />
@@ -469,7 +483,8 @@ export default async function DashboardPage({
                 {calendarLabel} · Live sales and rental bookings
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <LockDateButton dates={upcomingLockedDates} loadError={lockedDatesLoadError} />
               <Button
                 variant="outline"
                 size="icon-sm"

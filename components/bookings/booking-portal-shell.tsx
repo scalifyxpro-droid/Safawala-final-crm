@@ -17,6 +17,7 @@ export async function BookingPortalShell({
   if (staffSession) {
     return (
       <StaffPortalShell
+        language={staffSession.languagePreference}
         name={staffSession.name}
         departments={staffSession.departments}
         accessModules={staffSession.accessModules}

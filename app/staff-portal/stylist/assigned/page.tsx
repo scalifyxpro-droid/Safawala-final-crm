@@ -58,7 +58,7 @@ export default async function StylistAssignedEventsPage() {
   );
 
   return (
-    <StaffPortalShell name={session.name} departments={session.departments} permissions={session.permissions} accessModules={session.accessModules} isMainId={session.isMainId} notificationCount={notificationCount}>
+    <StaffPortalShell language={session.languagePreference} name={session.name} departments={session.departments} permissions={session.permissions} accessModules={session.accessModules} isMainId={session.isMainId} notificationCount={notificationCount}>
       <div className="mx-auto max-w-[1080px] space-y-6">
         <DashboardHeader title={session.isMainId ? 'All Stylist Events' : 'My Assigned Events'} subtitle={session.isMainId ? 'Overview of every stylist assignment and event status' : 'Approved assignments and clearly marked backup events'} backHref="/staff-portal/stylist" />
 
