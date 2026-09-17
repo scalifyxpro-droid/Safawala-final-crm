@@ -1,26 +1,26 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowRight, CircleCheckBig } from 'lucide-react';
+import { CircleCheckBig } from 'lucide-react';
 import { requireDepartment } from '@/lib/staff-portal/guard';
 import { StaffPortalShell } from '@/components/staff-portal/staff-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { friendlyDate, money } from '@/lib/bookings';
+import { friendlyDate, friendlyTime, money } from '@/lib/bookings';
 import { listActiveJobs } from '@/lib/event-jobs/store';
+import { compareJobsByBookingDate } from '@/lib/event-jobs/sorting';
 import { withUserContext } from '@/lib/db/client';
+import { DepartmentJobCardGrid } from '@/components/staff-portal/department-job-card-grid';
+import { BookingCloseJobModal } from '@/components/staff-portal/booking-close-job-modal';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CloseJobsPage() {
-  const session = await requireDepartment('booking');
+export default async function CloseJobsPage({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
+  const [session, { job: selectedJobId }] = await Promise.all([requireDepartment('booking'), searchParams]);
   if (!session.isMainId) redirect('/staff-portal');
 
   const jobs = (await listActiveJobs()).filter((job) => {
     const finalStage = job.stages.find((stage) => stage.key === 'booking_final_check');
     return finalStage?.status === 'open' || finalStage?.status === 'in_progress';
-  });
+  }).sort(compareJobsByBookingDate);
   const bookingIds = jobs.map((job) => job.bookingId);
   const bookings = bookingIds.length
     ? await withUserContext(session.id, (tx) =>
@@ -39,6 +39,28 @@ export default async function CloseJobsPage() {
       booking.customers?.name ?? 'Customer',
     ]),
   );
+  const jobCards = jobs.map((job) => {
+    const pending = Math.max(job.paymentSummary?.pendingBalance ?? 0, 0);
+    return {
+      id: job.id,
+      href: `/staff-portal/booking/close-jobs?job=${encodeURIComponent(job.id)}`,
+      jobNumber: job.id,
+      bookingType: job.bookingType,
+      customerName: customerByBooking.get(job.bookingId) ?? job.eventSummary.customerName ?? 'Customer',
+      eventName: job.eventSummary.eventName,
+      bookingNumber: job.bookingNumber,
+      bookingDate: friendlyDate(job.createdAt.slice(0, 10)),
+      bookingDateKey: job.createdAt.slice(0, 10),
+      eventDate: friendlyDate(job.eventSummary.eventDate),
+      eventTime: job.eventSummary.eventTime ? friendlyTime(job.eventSummary.eventTime) : null,
+      venue: job.eventSummary.venue,
+      itemCount: job.requiredItems.length,
+      departmentStatus: pending > 0 ? `${money(pending)} pending` : 'Fully paid',
+      departmentComplete: pending <= 0,
+      jobComplete: false,
+      jobStatusLabel: 'Final check',
+    };
+  });
 
   return (
     <StaffPortalShell language={session.languagePreference}
@@ -47,53 +69,14 @@ export default async function CloseJobsPage() {
       permissions={session.permissions}
       isMainId={session.isMainId}
     >
-      <div className="mx-auto max-w-[1000px] space-y-5">
+      <div className="mx-auto max-w-[1180px] space-y-5">
         <DashboardHeader
           title="Close Jobs"
           subtitle="Check the final payment and close completed rental jobs"
         />
 
         {jobs.length ? (
-          <div className="space-y-3">
-            {jobs.map((job) => {
-              const pending = Math.max(job.paymentSummary?.pendingBalance ?? 0, 0);
-              return (
-                <Card key={job.id} className="border-border py-0 shadow-level-1 ring-0">
-                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
-                      <CircleCheckBig className="size-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">
-                        {customerByBooking.get(job.bookingId)} · {job.bookingNumber}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {job.eventSummary.eventName} · {friendlyDate(job.eventSummary.eventDate)}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 sm:justify-end">
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Payment pending</p>
-                        <Badge
-                          variant="outline"
-                          className={
-                            pending > 0
-                              ? 'mt-1 border-amber-200 bg-amber-50 text-amber-800'
-                              : 'mt-1 border-emerald-200 bg-emerald-50 text-emerald-700'
-                          }
-                        >
-                          {pending > 0 ? money(pending) : 'Fully paid'}
-                        </Badge>
-                      </div>
-                      <Button render={<Link href={`/staff-portal/booking/${job.id}`} />}>
-                        Check &amp; Close <ArrowRight />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <DepartmentJobCardGrid items={jobCards} groupByBookingDate clickableCards />
         ) : (
           <Card className="border-border shadow-level-1">
             <CardContent className="grid min-h-64 place-items-center p-8 text-center">
@@ -110,6 +93,7 @@ export default async function CloseJobsPage() {
           </Card>
         )}
       </div>
+      {selectedJobId ? <BookingCloseJobModal jobId={selectedJobId} /> : null}
     </StaffPortalShell>
   );
 }

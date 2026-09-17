@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { AlertCircle, LoaderCircle, Lock } from 'lucide-react';
+import { AlertCircle, CircleCheckBig, LoaderCircle, Lock } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,16 @@ export function CloseEventForm({
   depositAmount: number;
 }) {
   const [state, formAction, pending] = useActionState(closeEventJobAction, initialState);
+
+  if (state.closed) {
+    return (
+      <Card className="border-emerald-200 bg-emerald-50">
+        <CardContent className="flex items-center gap-2 p-5 text-sm text-emerald-800" role="status">
+          <CircleCheckBig className="size-4 shrink-0" /> Event Job closed successfully.
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!canClose) {
     return (

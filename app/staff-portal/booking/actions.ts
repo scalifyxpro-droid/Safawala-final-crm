@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireDepartment } from '@/lib/staff-portal/guard';
 import { closeEventJob } from '@/lib/event-jobs/store';
 
-export type CloseEventFormState = { error: string };
+export type CloseEventFormState = { error: string; closed?: boolean };
 
 function textValue(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value : '';
@@ -49,5 +49,5 @@ export async function closeEventJobAction(
   revalidatePath('/dashboard');
   revalidatePath('/performance');
   if (result.job) revalidatePath(`/track/${result.job.bookingId}`);
-  return { error: '' };
+  return { error: '', closed: true };
 }

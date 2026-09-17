@@ -26,6 +26,7 @@ export type DepartmentJobCardItem = {
   departmentStatus: string;
   departmentComplete: boolean;
   jobComplete: boolean;
+  jobStatusLabel?: string;
 };
 
 export function DepartmentJobCardGrid({
@@ -140,7 +141,7 @@ export function DepartmentJobCardGrid({
                   ) : (
                     <Workflow className="size-3" />
                   )}
-                  {item.jobComplete ? 'Job completed' : 'Workflow active'}
+                  {item.jobStatusLabel ?? (item.jobComplete ? 'Job completed' : 'Workflow active')}
                 </Badge>
               </div>
             </article>
