@@ -87,9 +87,18 @@ export async function changePasswordAction(
       return { error: 'Choose a new password different from your current password.', notice: '' };
     }
     const passwordHash = await hashPassword(password);
-    await withServiceRole((tx) => tx`
-      update auth.users set encrypted_password = ${passwordHash}, updated_at = now() where id = ${user.id}
-    `);
+    const verified = await withServiceRole(async (tx) => {
+      const [updated] = await tx<{ encrypted_password: string }[]>`
+        update auth.users set encrypted_password = ${passwordHash}, updated_at = now()
+        where id = ${user.id}
+        returning encrypted_password
+      `;
+      if (!updated) return false;
+      return verifyPassword(password, updated.encrypted_password);
+    });
+    if (!verified) {
+      return { error: 'The new password could not be verified in the database. Please try again.', notice: '' };
+    }
     await createSession({ sub: user.id, role: 'admin', email: user.email });
     return { error: '', notice: 'Password changed successfully.' };
   } catch (error) {
