@@ -281,7 +281,14 @@ export async function resetAccountPassword(ownerId: string, userId: string, pass
   const encrypted = await hashPassword(password);
   await withServiceRole(async (tx) => {
     await getOwnedStaffId(tx, ownerId, userId);
-    await tx`update auth.users set encrypted_password = ${encrypted}, updated_at = now() where id = ${userId}`;
+    const [updated] = await tx<{ encrypted_password: string }[]>`
+      update auth.users set encrypted_password = ${encrypted}, updated_at = now()
+      where id = ${userId}
+      returning encrypted_password
+    `;
+    if (!updated || !(await verifyPassword(password, updated.encrypted_password))) {
+      throw new Error('The new password could not be verified in the database. Please try again.');
+    }
   });
 }
 

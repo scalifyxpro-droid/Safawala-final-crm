@@ -18,7 +18,7 @@ import {
   setDepartmentGrant,
 } from '@/lib/staff-portal/store';
 import { requireUser } from '@/lib/auth/session';
-import { withUserContext } from '@/lib/db/client';
+import { withServiceRole, withUserContext } from '@/lib/db/client';
 
 async function requireAdmin() {
   const user = await requireUser();
@@ -98,6 +98,56 @@ export async function toggleStaffStatusAction(
     return { data: record, error: '' };
   } catch (error) {
     return { data: null, error: error instanceof Error ? error.message : 'Staff status could not be updated.' };
+  }
+}
+
+export async function deleteStaffMemberAction(staffMemberId: number): Promise<{ error: string }> {
+  if (!Number.isSafeInteger(staffMemberId) || staffMemberId <= 0) {
+    return { error: 'Invalid staff ID.' };
+  }
+  try {
+    const ownerId = await requireAdmin();
+    await withServiceRole(async (tx) => {
+      const [member] = await tx<{ user_id: string | null }[]>`
+        select user_id from public.staff_members
+        where id = ${staffMemberId} and owner_id = ${ownerId}
+        for update
+      `;
+      if (!member) throw new Error('This staff ID was not found. Refresh the page and try again.');
+      if (member.user_id === ownerId) throw new Error('You cannot delete your own admin login.');
+      if (member.user_id) {
+        const [profile] = await tx<{ role: string }[]>`select role from public.profiles where id = ${member.user_id}`;
+        if (profile?.role !== 'staff') throw new Error('This login is not a staff account and cannot be deleted here.');
+      }
+
+      const [usage] = await tx<{ has_history: boolean }[]>`
+        select (
+          exists(select 1 from public.bookings where assigned_staff_id = ${staffMemberId} or created_by_staff_id = ${staffMemberId})
+          or exists(select 1 from public.leads where assigned_staff_id = ${staffMemberId})
+          or exists(select 1 from public.event_job_stages where assigned_staff_id = ${staffMemberId})
+          or exists(select 1 from public.event_job_stylist_interest where staff_id = ${staffMemberId})
+          or exists(select 1 from public.hr_attendance where staff_id = ${staffMemberId})
+          or exists(select 1 from public.hr_payroll where staff_id = ${staffMemberId})
+          or exists(select 1 from public.hr_letters where staff_id = ${staffMemberId})
+          or exists(select 1 from public.hr_kyc_documents where staff_id = ${staffMemberId})
+          or exists(select 1 from public.hr_work_orders where assigned_staff_id = ${staffMemberId})
+          or exists(select 1 from public.staff_performance_credits where staff_id = ${staffMemberId})
+        ) as has_history
+      `;
+      if (usage?.has_history) {
+        throw new Error('This staff ID has linked work or HR records. Deactivate it instead to preserve your records.');
+      }
+
+      await tx`delete from public.staff_members where id = ${staffMemberId} and owner_id = ${ownerId}`;
+      if (member.user_id) await tx`delete from auth.users where id = ${member.user_id}`;
+    });
+    revalidatePath('/staff');
+    return { error: '' };
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === '23503') {
+      return { error: 'This staff ID is still linked to CRM records. Deactivate it instead.' };
+    }
+    return { error: error instanceof Error ? error.message : 'Staff ID could not be deleted.' };
   }
 }
 

@@ -11,6 +11,7 @@ import {
   Search,
   ShieldCheck,
   ShieldOff,
+  Trash2,
   UserCheck,
   UserRound,
   UsersRound,
@@ -29,6 +30,7 @@ import { DEPARTMENT_META, STAFF_DEPARTMENTS, type StaffDepartment } from '@/lib/
 import type { StaffAccessType, StaffPortalKind, StaffType } from '@/lib/staff-portal/types';
 import {
   createStaffLoginAction,
+  deleteStaffMemberAction,
   resetStaffLoginPasswordAction,
   saveStaffMemberAction,
   setStaffDepartmentAction,
@@ -95,6 +97,7 @@ export function StaffDirectory({
     undefined,
   );
   const [accessFor, setAccessFor] = useState<StaffMember | null>(null);
+  const [deleteFor, setDeleteFor] = useState<StaffMember | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [message, setMessage] = useState(loadError);
 
@@ -153,6 +156,23 @@ export function StaffDirectory({
   function patchMember(id: number, patch: Partial<StaffMember>) {
     setStaff((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
     setAccessFor((current) => (current && current.id === id ? { ...current, ...patch } : current));
+  }
+
+  async function deleteMember(member: StaffMember): Promise<string> {
+    setBusyId(member.id);
+    try {
+      const { error } = await deleteStaffMemberAction(member.id);
+      if (!error) {
+        setStaff((current) => current.filter((row) => row.id !== member.id));
+        setDeleteFor(null);
+        setMessage('');
+      }
+      return error;
+    } catch {
+      return 'The staff ID could not be deleted. Please try again.';
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -295,6 +315,7 @@ export function StaffDirectory({
                       onEdit={() => setEditing(member)}
                       onToggle={() => toggleStatus(member)}
                       onManageAccess={() => setAccessFor(member)}
+                      onDelete={() => setDeleteFor(member)}
                     />
                   ))}
                 </tbody>
@@ -335,6 +356,14 @@ export function StaffDirectory({
           member={accessFor}
           onClose={() => setAccessFor(null)}
           onPatch={(patch) => patchMember(accessFor.id, patch)}
+        />
+      ) : null}
+      {deleteFor ? (
+        <DeleteStaffDialog
+          member={deleteFor}
+          busy={busyId === deleteFor.id}
+          onClose={() => setDeleteFor(null)}
+          onConfirm={() => deleteMember(deleteFor)}
         />
       ) : null}
     </div>
@@ -379,6 +408,7 @@ function StaffRow({
   onEdit,
   onToggle,
   onManageAccess,
+  onDelete,
 }: {
   member: StaffMember;
   assignments: number;
@@ -386,6 +416,7 @@ function StaffRow({
   onEdit: () => void;
   onToggle: () => void;
   onManageAccess: () => void;
+  onDelete: () => void;
 }) {
   const initials = member.name
     .split(/\s+/)
@@ -500,9 +531,58 @@ function StaffRow({
             {member.is_active ? <UserX /> : <UserCheck />}
             {busy ? 'Saving…' : member.is_active ? 'Deactivate' : 'Activate'}
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={busy}
+            onClick={onDelete}
+            aria-label={`Delete staff ID for ${member.name}`}
+            title={`Delete staff ID for ${member.name}`}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
+          </Button>
         </div>
       </td>
     </tr>
+  );
+}
+
+function DeleteStaffDialog({
+  member,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  member: StaffMember;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<string>;
+}) {
+  const [error, setError] = useState('');
+  async function confirm() {
+    setError('');
+    const result = await onConfirm();
+    if (result) setError(result);
+  }
+  return (
+    <Modal title="Delete staff ID?" subtitle={`${member.name} · SF-${String(member.id).padStart(4, '0')}`} onClose={() => { if (!busy) onClose(); }}>
+      <div className="space-y-4 p-5">
+        <p className="text-sm text-muted-foreground">
+          This permanently removes the staff record and its portal login. It cannot be undone.
+          IDs with bookings, assignments, or HR history cannot be deleted; deactivate those instead.
+        </p>
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="destructive" disabled={busy} onClick={confirm}>
+            <Trash2 />
+            {busy ? 'Deleting…' : 'Delete ID'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -547,7 +627,14 @@ function StaffDialog({
     };
     const loginId = readText('loginId');
     const password = readExactText('password');
+    const newPassword = readExactText('newPassword');
     const wantsLogin = showLoginSection;
+
+    if (member?.user_id && newPassword && newPassword.length < 6) {
+      setError('New password must be at least 6 characters.');
+      setBusy(false);
+      return;
+    }
 
     if (wantsLogin) {
       if (!loginId) {
@@ -625,6 +712,21 @@ function StaffDialog({
         staff_access_modules: loginResult.account.modules.map((module) => ({ module, enabled: true })),
       });
       return;
+    }
+
+    if (member?.user_id && newPassword) {
+      try {
+        const passwordResult = await resetStaffLoginPasswordAction(member.user_id, newPassword);
+        if (passwordResult.error) {
+          setError(`Staff details were saved, but the password was not changed: ${passwordResult.error}`);
+          setBusy(false);
+          return;
+        }
+      } catch {
+        setError('Staff details were saved, but the password could not be changed. Please try again.');
+        setBusy(false);
+        return;
+      }
     }
 
     onSaved(savedMember);
@@ -808,9 +910,26 @@ function StaffDialog({
             </div>
           ) : null}
 
+          {member?.user_id ? (
+            <label className="block text-sm">
+              <span className="font-medium">New portal password (optional)</span>
+              <input
+                name="newPassword"
+                type="password"
+                minLength={6}
+                autoComplete="new-password"
+                placeholder="Leave blank to keep the current password"
+                className={fieldClass}
+              />
+              <span className="mt-1 block text-xs text-muted-foreground">
+                If entered, the new password is saved and verified with the staff details.
+              </span>
+            </label>
+          ) : null}
+
           {error ? (
             <Alert variant="destructive">
-              <AlertTitle>Staff member was not saved</AlertTitle>
+              <AlertTitle>Could not complete changes</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
@@ -1275,17 +1394,30 @@ function CreateLoginForm({
 function PasswordDialog({ member, onClose }: { member: StaffMember; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    const password = formText(new FormData(event.currentTarget), 'password');
+    const form = event.currentTarget;
+    const password = formText(new FormData(form), 'password');
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
     setBusy(true);
-    await resetStaffLoginPasswordAction(member.user_id as string, password);
-    setBusy(false);
-    onClose();
+    setError('');
+    try {
+      const result = await resetStaffLoginPasswordAction(member.user_id as string, password);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      form.reset();
+      setSaved(true);
+    } catch {
+      setError('Could not save the password. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-[#211d18]/70 p-4 backdrop-blur-sm">
@@ -1295,19 +1427,23 @@ function PasswordDialog({ member, onClose }: { member: StaffMember; onClose: () 
             <h2 className="text-lg font-semibold">{`Reset password · ${member.name}`}</h2>
             <p className="mt-1 text-xs text-muted-foreground">The existing password is never displayed.</p>
           </div>
-          <button type="button" aria-label="Close" onClick={onClose} className="grid size-9 place-items-center rounded-full border bg-white dark:bg-card">
+          <button type="button" aria-label="Close" disabled={busy} onClick={onClose} className="grid size-9 place-items-center rounded-full border bg-white dark:bg-card">
             <X className="size-4" />
           </button>
         </div>
         <form onSubmit={submit} className="space-y-4 p-5">
-          <input name="password" type="password" required minLength={6} placeholder="New password" className={fieldClass.replace('mt-1.5', 'mt-0')} />
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {saved ? (
+            <p role="status" className="text-sm text-emerald-700">New password saved and verified in the database.</p>
+          ) : (
+            <input name="password" type="password" required minLength={6} autoComplete="new-password" placeholder="New password" className={fieldClass.replace('mt-1.5', 'mt-0')} />
+          )}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button disabled={busy}>
+            <Button type="button" variant="outline" disabled={busy} onClick={onClose}>{saved ? 'Done' : 'Cancel'}</Button>
+            {!saved ? <Button disabled={busy}>
               <Check />
               {busy ? 'Saving…' : 'Save password'}
-            </Button>
+            </Button> : null}
           </div>
         </form>
       </dialog>
