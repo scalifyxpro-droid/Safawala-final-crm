@@ -26,9 +26,9 @@ export function ListPagination({
   const to = Math.min(safePage * pageSize, total);
 
   return (
-    <div className="flex flex-col gap-3 border-b bg-white dark:bg-card px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <p className="text-muted-foreground" aria-live="polite">
+    <div className="flex min-w-0 flex-col gap-2.5 border-b bg-white px-3 py-3 dark:bg-card sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="grid min-w-0 gap-2 text-xs min-[430px]:grid-cols-[minmax(0,1fr)_auto] min-[430px]:items-center sm:text-sm">
+        <p className="min-w-0 truncate text-muted-foreground" aria-live="polite">
           {total === 0 ? (
             `No ${itemLabel} to show`
           ) : (
@@ -39,12 +39,12 @@ export function ListPagination({
             </>
           )}
         </p>
-        <label className="flex items-center gap-2 text-muted-foreground">
-          <span>Items per page</span>
+        <label className="flex items-center justify-between gap-2 text-muted-foreground min-[430px]:justify-start">
+          <span className="whitespace-nowrap">Items per page</span>
           <select
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-9 rounded-lg border bg-white dark:bg-card px-3 font-semibold text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+            className="h-9 min-w-16 rounded-lg border bg-white px-2 font-semibold text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-card"
             aria-label={`Items per page for ${itemLabel}`}
           >
             {LIST_PAGE_SIZES.map((size) => (
@@ -56,7 +56,7 @@ export function ListPagination({
         </label>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-2.5 lg:justify-end lg:border-t-0 lg:pt-0">
         <Button
           type="button"
           variant="outline"

@@ -2,79 +2,52 @@
 
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
-import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 
 type Props = {
   basePath: string;
   search?: string;
-  sort?: string;
-  eventDate?: string;
-  bookingDate?: string;
   view?: 'open' | 'closed';
 };
 
 export function QueueFilterBar({
   basePath,
   search = '',
-  sort = 'booking',
-  eventDate = '',
-  bookingDate = '',
   view = 'open',
 }: Props) {
   const router = useRouter();
+  const [draft, setDraft] = useState(search);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const params = new URLSearchParams();
-    if (view === 'closed') params.set('view', 'closed');
-    const values = new FormData(event.currentTarget);
-    const query = String(values.get('q') ?? '').trim();
-    if (query) params.set('q', query);
-    const sortValue = String(values.get('sort') ?? 'booking');
-    if (sortValue !== 'booking') params.set('sort', sortValue);
-    if (window.matchMedia('(min-width: 1280px)').matches) {
-      for (const name of ['bookingDate', 'eventDate']) {
-        const value = String(values.get(name) ?? '');
-        if (value) params.set(name, value);
-      }
-    }
-    router.push(params.size ? `${basePath}?${params}` : basePath);
-  }
+  useEffect(() => setDraft(search), [search]);
+
+  useEffect(() => {
+    const query = draft.trim();
+    if (query === search.trim()) return;
+
+    const timeout = window.setTimeout(() => {
+      const params = new URLSearchParams();
+      if (view === 'closed') params.set('view', 'closed');
+      if (query) params.set('q', query);
+      router.replace(params.size ? `${basePath}?${params}` : basePath, { scroll: false });
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [basePath, draft, router, search, view]);
 
   return (
-    <form
-      action={basePath}
-      onSubmit={submit}
-      className="grid min-w-0 gap-2 rounded-xl border border-border bg-[#fcfaf7] p-3 dark:bg-[#241e17] sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_170px_170px_210px]"
-    >
-      <label className="relative min-w-0">
+    <div className="min-w-0 rounded-xl border border-border bg-[#fcfaf7] p-2.5 dark:bg-[#241e17] sm:p-3">
+      <label className="relative block min-w-0">
         <span className="sr-only">Search jobs</span>
-        <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          name="q"
-          defaultValue={search}
+          type="search"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
           placeholder="Search customer, booking, event, or location…"
-          className="h-10 w-full min-w-0 rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none focus:border-primary dark:bg-card"
+          autoComplete="off"
+          className="h-11 w-full min-w-0 rounded-lg border border-input bg-white pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10 dark:bg-card"
         />
       </label>
-      <button
-        type="submit"
-        className="h-10 rounded-lg border border-input bg-white px-5 text-sm font-medium transition hover:bg-accent dark:bg-card sm:w-auto xl:hidden"
-      >
-        Search
-      </button>
-      <label className="hidden text-[11px] font-medium text-muted-foreground xl:block">
-        Booking date
-        <input name="bookingDate" type="date" defaultValue={bookingDate} aria-label="Filter booking date" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="mt-1 h-9 w-full rounded-lg border border-input bg-white px-2 text-sm font-normal text-foreground dark:bg-card" />
-      </label>
-      <label className="hidden text-[11px] font-medium text-muted-foreground xl:block">
-        Event date
-        <input name="eventDate" type="date" defaultValue={eventDate} aria-label="Filter event date" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="mt-1 h-9 w-full rounded-lg border border-input bg-white px-2 text-sm font-normal text-foreground dark:bg-card" />
-      </label>
-      <select name="sort" defaultValue={sort} aria-label="Sort jobs" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card sm:col-span-2 xl:col-span-1">
-        <option value="booking">Booking date · newest first</option>
-        <option value="event">Event date · earliest first</option>
-      </select>
-    </form>
+    </div>
   );
 }

@@ -85,15 +85,13 @@ function drawBrandBanner(
   w: number,
   h: number,
 ) {
-  doc.setFillColor(...CREAM);
-  doc.setDrawColor(...BORDER);
+  doc.setFillColor(...ESPRESSO);
+  doc.setDrawColor(...ESPRESSO);
   doc.setLineWidth(0.55);
   doc.roundedRect(x, y, w, h, 3.5, 3.5, 'FD');
-  // A thin gold rule along the bottom edge of the header card — the one
-  // recurring "brand line" every section below echoes.
   doc.setDrawColor(...GOLD);
-  doc.setLineWidth(0.7);
-  doc.line(x + 6, y + h - 0.4, x + w - 6, y + h - 0.4);
+  doc.setLineWidth(1.1);
+  doc.line(x + 7, y + h - 0.6, x + w - 7, y + h - 0.6);
 }
 function sectionBox(
   doc: import('jspdf').jsPDF,
@@ -240,7 +238,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         ),
       );
       const [logo, signature, qrDataUrl, ...rawProductImages] = await Promise.all([
-        recolorLogo('/safawala-crown-dark.png', GOLD_DEEP),
+        recolorLogo('/safawala-crown-dark.png', SAND),
         recolorLogo('/ronak-dave-signature.png', BRAND_DARK),
         bankDetails.qrCodeImage
           ? toDataUrl(bankDetails.qrCodeImage)
@@ -302,27 +300,27 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14 : 16, logoW, logoH);
       } else {
         // Fallback text mark for the rare case the logo image fails to load.
-        doc.setTextColor(...GOLD_DEEP);
+        doc.setTextColor(...SAND);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(17);
         doc.text('SAFAWALA', left, 24);
       }
-      doc.setTextColor(...INK_SOFT);
+      doc.setTextColor(...CREAM);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.text('Premium Wedding Accessories', left, 10 + headerHeight - 4.5);
 
-      doc.setTextColor(...BRAND_DARK);
+      doc.setTextColor(...CREAM);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14.5);
       doc.text(booking.booking_number, right, denseLayout ? 20 : 22, { align: 'right' });
-      doc.setTextColor(...GOLD_DEEP);
+      doc.setTextColor(...SAND);
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'bold');
       doc.text(docLabel, right, denseLayout ? 26.5 : 29.5, { align: 'right' });
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...MUTED);
+      doc.setTextColor(...CREAM);
       doc.text(
         `Date: ${friendlyDate(new Date().toISOString().slice(0, 10))}`,
         right,
@@ -369,9 +367,9 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       doc.text(booking.customers?.name || 'Not added', left + 5, by);
       doc.text(booking.event_name, eventX + 2, by);
       by += 5;
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
-      doc.setTextColor(...INK_SOFT);
+      doc.setTextColor(...BRAND_DARK);
       doc.text(booking.customers?.phone || 'Phone not added', left + 5, by);
       doc.text(
         `${friendlyDate(booking.event_date)}${booking.event_time ? `, ${friendlyTime(booking.event_time)}` : ''}`,
@@ -379,6 +377,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         by,
       );
       by += 4.8;
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(...MUTED);
       doc.text(addressLines, left + 5, by);
       doc.text(locationLines, eventX + 2, by);
@@ -564,6 +563,14 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
 
       ensureSpace(42);
       y += 5;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...GOLD);
+      doc.text('AMOUNT SUMMARY', 124, y);
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.3);
+      doc.line(124, y + 1.8, right, y + 1.8);
+      y += 6;
       const plainSummary: [string, number][] = [
         ['Subtotal', booking.subtotal],
         ['Discount', -booking.discount],
@@ -576,6 +583,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...MUTED);
         doc.text(label, 124, y);
+        doc.setFont('helvetica', 'bold');
         doc.setTextColor(...BRAND_DARK);
         doc.text(amount(value), right, y, { align: 'right' });
         y += 5.4;
@@ -695,8 +703,8 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           doc.text(`${label}`, left + 5, py);
           doc.setTextColor(...BORDER_SOFT);
           doc.text(':', left + 27, py);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(...INK_SOFT);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...GOLD_DEEP);
           doc.text(fitText(doc, value, payDividerX - (left + 31) - 3), left + 31, py);
           py += 4.3;
         }
@@ -767,7 +775,10 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       y += 4.6;
       const termIndent = 6.5;
       const termColumnGap = 7;
-      const termColumnCount = useItemColumns ? 2 : 1;
+      // Terms always use two balanced columns. This keeps the legal copy
+      // comfortably above the fixed footer even when payment details and a
+      // longer amount summary are present on the same single-page invoice.
+      const termColumnCount = 2;
       const termsPerColumn = Math.ceil(BOOKING_TERMS.length / termColumnCount);
       const termColumnWidth =
         (right - left - termColumnGap * (termColumnCount - 1)) / termColumnCount;

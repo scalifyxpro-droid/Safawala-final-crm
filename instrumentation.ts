@@ -9,6 +9,14 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Railway runs the persistent WhatsApp worker in production. Starting it
+    // automatically in local development makes an expired/missing Railway DB
+    // tunnel surface as a Next.js runtime overlay before the login page can
+    // render. The QR status endpoint can still start the session on demand.
+    const autoStartWhatsApp =
+      process.env.NODE_ENV === 'production' || process.env.WHATSAPP_AUTO_START === 'true';
+    if (!autoStartWhatsApp) return;
+
     const { startWhatsAppSession } = await import('@/lib/whatsapp/session');
     startWhatsAppSession().catch((err) => {
       console.error('[whatsapp] failed to start session on boot', err);
