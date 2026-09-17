@@ -194,22 +194,26 @@ export async function generateInvoicePdf(
     doc.setLineWidth(0.7);
     doc.line(16, 41.6, width - 16, 41.6);
 
+    // No canvas/Image APIs are available in this server-side (Node) path, so
+    // the brand mark stays a drawn text wordmark rather than the logo image
+    // used in the browser-side generator — kept to one clean sans font
+    // instead of mixing a serif wordmark with the sans body text below.
     doc.setTextColor(...GOLD_DEEP);
-    doc.setFont('times', 'bold');
-    doc.setFontSize(17);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
     doc.text('SAFAWALA', left, 24);
-    doc.setTextColor(...GOLD);
+    doc.setTextColor(...MUTED);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.6);
-    doc.text('P R E M I U M   W E D D I N G   A C C E S S O R I E S', left, 37);
+    doc.setFontSize(7);
+    doc.text('Premium Wedding Accessories', left, 37);
 
     doc.setTextColor(...BRAND_DARK);
-    doc.setFont('times', 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.text(data.bookingNumber, right, 20, { align: 'right' });
-    doc.setTextColor(...GOLD);
+    doc.setTextColor(...GOLD_DEEP);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.text(`${data.bookingType.toUpperCase()} INVOICE`, right, 27, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
@@ -242,9 +246,12 @@ export async function generateInvoicePdf(
     doc.text('CUSTOMER', left + 9, by);
     doc.text('EVENT', eventX + 6, by);
     by += 6;
-    doc.setFontSize(10.5);
-    doc.setTextColor(...BRAND_DARK);
-    doc.setFont('times', 'bold');
+    // Customer name and event occasion are set apart from the rest of the
+    // details — larger, bold, in the brand accent color — to match the
+    // admin/staff panel invoice.
+    doc.setFontSize(12);
+    doc.setTextColor(...GOLD_DEEP);
+    doc.setFont('helvetica', 'bold');
     doc.text(data.customerName, left + 5, by);
     doc.text(data.eventName, eventX + 2, by);
     by += 5;
@@ -434,16 +441,12 @@ export async function generateInvoicePdf(
     doc.setDrawColor(...BORDER_SOFT);
     doc.setLineWidth(0.35);
     doc.line(left, 285, right, 285);
-    doc.setFont('times', 'italic');
-    doc.setFontSize(11);
-    doc.setTextColor(...GOLD_DEEP);
-    doc.text('Thank you', left, 291);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    doc.setFontSize(8);
     doc.setTextColor(...MUTED);
-    doc.text('F O R   C H O O S I N G   S A F A W A L A', left, 294.6);
+    doc.text('Thank you for choosing Safawala.', left, 291);
     doc.setFontSize(7);
-    doc.text('Page 1 of 1', right, 290, { align: 'right' });
+    doc.text('Page 1 of 1', right, 291, { align: 'right' });
 
     const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer;
     return { buffer: Buffer.from(arrayBuffer), fileName: `${data.bookingNumber}.pdf` };

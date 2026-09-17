@@ -292,31 +292,32 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
 
       // ---- Header banner ----
       drawBrandBanner(doc, 10, 10, width - 20, headerHeight);
+      // The crown artwork already carries the full "Safawala.com by Ronak"
+      // wordmark baked into the image, so it is the ONLY brand mark drawn
+      // here — a separate "SAFAWALA" text used to be printed right next to
+      // it, which read as the name appearing twice in the header.
       if (logo) {
-        const logoH = denseLayout ? 12 : 14.5;
+        const logoH = denseLayout ? 13 : 15.5;
         const logoW = logoH * logo.ratio;
-        doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14.5 : 16, logoW, logoH);
-        doc.setTextColor(...GOLD_DEEP);
-        doc.setFont('times', 'bold');
-        doc.setFontSize(denseLayout ? 13.5 : 15.5);
-        doc.text('SAFAWALA', left + logoW + 4, denseLayout ? 21 : 24);
+        doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14 : 16, logoW, logoH);
       } else {
+        // Fallback text mark for the rare case the logo image fails to load.
         doc.setTextColor(...GOLD_DEEP);
-        doc.setFont('times', 'bold');
-        doc.setFontSize(19);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
         doc.text('SAFAWALA', left, 24);
       }
-      doc.setTextColor(...GOLD);
+      doc.setTextColor(...INK_SOFT);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.6);
-      doc.text('P R E M I U M   W E D D I N G   A C C E S S O R I E S', left, 10 + headerHeight - 5);
+      doc.setFontSize(7);
+      doc.text('Premium Wedding Accessories', left, 10 + headerHeight - 4.5);
 
       doc.setTextColor(...BRAND_DARK);
-      doc.setFont('times', 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(14.5);
       doc.text(booking.booking_number, right, denseLayout ? 20 : 22, { align: 'right' });
-      doc.setTextColor(...GOLD);
-      doc.setFontSize(9);
+      doc.setTextColor(...GOLD_DEEP);
+      doc.setFontSize(8.5);
       doc.setFont('helvetica', 'bold');
       doc.text(docLabel, right, denseLayout ? 26.5 : 29.5, { align: 'right' });
       doc.setFontSize(7.5);
@@ -359,9 +360,12 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       doc.text('CUSTOMER', left + 9, by);
       doc.text('EVENT & DELIVERY', eventX + 6, by);
       by += 6;
-      doc.setFontSize(10.5);
-      doc.setTextColor(...BRAND_DARK);
-      doc.setFont('times', 'bold');
+      // Customer name and event occasion are the two facts a glance at the
+      // invoice should land on first, so they're set apart from every other
+      // line here — larger, bold, in the brand accent color.
+      doc.setFontSize(12);
+      doc.setTextColor(...GOLD_DEEP);
+      doc.setFont('helvetica', 'bold');
       doc.text(booking.customers?.name || 'Not added', left + 5, by);
       doc.text(booking.event_name, eventX + 2, by);
       by += 5;
@@ -577,116 +581,177 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         y += 5.4;
       }
 
-      // Total — soft gold fill bar, matching the "Total" chip on the card.
-      y += 1;
-      doc.setFillColor(...SAND);
-      doc.rect(left, y - 4.2, right - left, 7.2, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(...GOLD_DEEP);
-      doc.text('Total', 124, y);
-      doc.setTextColor(...BRAND_DARK);
-      doc.text(amount(booking.total), right, y, { align: 'right' });
-      y += 6.2;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(...MUTED);
-      doc.text('Paid', 124, y);
-      doc.setTextColor(...BRAND_DARK);
-      doc.text(amount(booking.paid_amount), right, y, { align: 'right' });
-      y += 6.5;
-
-      // Balance due — dark espresso bar with cream text, the one accent the
-      // reference invoice uses to make the number that matters unmissable.
-      doc.setFillColor(...ESPRESSO);
-      doc.rect(left, y - 4.6, right - left, 8, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(...SAND);
-      doc.text('Balance due', 124, y);
-      doc.text(amount(booking.balance_amount), right, y, { align: 'right' });
-      y += 8.5;
-
-      // ---- Payment details (boxed, with UPI QR) ----
-      ensureSpace(38);
-      y += 2;
-      const payBoxH = 38;
-      sectionBox(doc, left, y, right - left, payBoxH);
-      let py = y + 8;
-      sectionDot(doc, left + 6, py - 1.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(...GOLD);
-      doc.text('PAYMENT DETAILS', left + 9, py);
-      py += 5.5;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      const paymentRows: [string, string][] = [
-        ['Bank', bankDetails.bank],
-        ['A/C Holder', bankDetails.accountHolder],
-        ['A/C No.', bankDetails.accountNumber],
-        ['IFSC', bankDetails.ifsc],
-        ['Branch', bankDetails.branch],
-        ['UPI', bankDetails.upi],
-      ].filter((row): row is [string, string] => Boolean(row[1]));
-      for (const [label, value] of paymentRows) {
+      if (isQuote) {
+        // A quotation has nothing "paid" or "due" yet — one clear estimated
+        // total takes the place of the Total / Paid / Balance due breakdown
+        // an actual invoice needs, so it never reads as a request for money.
+        y += 1;
+        doc.setFillColor(...ESPRESSO);
+        doc.rect(left, y - 4.6, right - left, 8, 'F');
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...BRAND_DARK);
-        doc.text(`${label}`, left + 5, py);
-        doc.setTextColor(...BORDER_SOFT);
-        doc.text(':', left + 27, py);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...INK_SOFT);
-        doc.text(value, left + 31, py);
-        py += 4.3;
-      }
-      if (qrDataUrl) {
-        const qrSize = 23;
-        const qrX = right - qrSize - 32;
-        const qrY = y + (payBoxH - qrSize - 5) / 2;
-        const qrFormat = qrDataUrl.startsWith('data:image/jpeg')
-          ? 'JPEG'
-          : qrDataUrl.startsWith('data:image/webp')
-            ? 'WEBP'
-            : 'PNG';
-        doc.setDrawColor(...BORDER);
-        doc.setLineWidth(0.35);
-        doc.roundedRect(qrX - 1.5, qrY - 1.5, qrSize + 3, qrSize + 3, 1.5, 1.5, 'S');
-        doc.addImage(qrDataUrl, qrFormat, qrX, qrY, qrSize, qrSize);
+        doc.setFontSize(9.5);
+        doc.setTextColor(...SAND);
+        doc.text('Estimated Total', 124, y);
+        doc.text(amount(booking.total), right, y, { align: 'right' });
+        y += 8.5;
+      } else {
+        // Total — soft gold fill bar, matching the "Total" chip on the card.
+        y += 1;
+        doc.setFillColor(...SAND);
+        doc.rect(left, y - 4.2, right - left, 7.2, 'F');
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
+        doc.setFontSize(9.5);
         doc.setTextColor(...GOLD_DEEP);
-        doc.text('Scan to Pay', qrX + qrSize / 2, qrY + qrSize + 4.2, {
-          align: 'center',
-        });
+        doc.text('Total', 124, y);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(amount(booking.total), right, y, { align: 'right' });
+        y += 6.2;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...MUTED);
+        doc.text('Paid', 124, y);
+        doc.setTextColor(...BRAND_DARK);
+        doc.text(amount(booking.paid_amount), right, y, { align: 'right' });
+        y += 6.5;
+
+        // Balance due — dark espresso bar with cream text, the one accent the
+        // reference invoice uses to make the number that matters unmissable.
+        doc.setFillColor(...ESPRESSO);
+        doc.rect(left, y - 4.6, right - left, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(...SAND);
+        doc.text('Balance due', 124, y);
+        doc.text(amount(booking.balance_amount), right, y, { align: 'right' });
+        y += 8.5;
       }
-      if (signature) {
-        const signatureLineY = y + payBoxH - 7;
-        const signatureLineX0 = right - 32;
-        const signatureLineX1 = right - 2;
-        const signatureCenterX = (signatureLineX0 + signatureLineX1) / 2;
-        const signatureW = 28;
-        const signatureH = signatureW / signature.ratio;
-        doc.addImage(
-          signature.dataUrl,
-          'PNG',
-          signatureCenterX - signatureW / 2,
-          signatureLineY - signatureH - 1.5,
-          signatureW,
-          signatureH,
-          undefined,
-          'FAST',
+
+      if (isQuote) {
+        // ---- Quotation validity (replaces Payment Details entirely) ----
+        // A quote is not a request for payment, so it never shows bank
+        // details, a payment QR, or a signature line — only how long the
+        // estimate holds and a clear "this is not a bill" disclaimer.
+        ensureSpace(30);
+        y += 2;
+        const validBoxH = 30;
+        sectionBox(doc, left, y, right - left, validBoxH);
+        let vy = y + 8;
+        sectionDot(doc, left + 6, vy - 1.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...GOLD);
+        doc.text('QUOTATION VALIDITY', left + 9, vy);
+        vy += 6;
+        const validUntil = new Date();
+        validUntil.setDate(validUntil.getDate() + 7);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(...GOLD_DEEP);
+        doc.text(`Valid until ${friendlyDate(validUntil.toISOString().slice(0, 10))}`, left + 5, vy);
+        vy += 5.6;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...INK_SOFT);
+        const validityNote = doc.splitTextToSize(
+          'This is a price estimate, not a tax invoice. Prices and availability are subject to change until the booking is confirmed. Please contact us to confirm and proceed with payment.',
+          right - left - 10,
         );
+        doc.text(validityNote, left + 5, vy);
+        y += validBoxH + 9;
+      } else {
+        // ---- Payment details (boxed: bank details left, QR + signature
+        // right, split by a divider so the two sides read as one aligned
+        // grid instead of the QR and signature crowding into each other) ----
+        ensureSpace(40);
+        y += 2;
+        const payBoxH = 40;
+        sectionBox(doc, left, y, right - left, payBoxH);
+        const payDividerX = right - 62;
         doc.setDrawColor(...BORDER);
         doc.setLineWidth(0.3);
-        doc.line(signatureLineX0, signatureLineY, signatureLineX1, signatureLineY);
+        doc.line(payDividerX, y + 6, payDividerX, y + payBoxH - 6);
+
+        let py = y + 8;
+        sectionDot(doc, left + 6, py - 1.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...GOLD);
+        doc.text('PAYMENT DETAILS', left + 9, py);
+        py += 5.5;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(...MUTED);
-        doc.text('Authorized Signature', signatureCenterX, signatureLineY + 3.6, { align: 'center' });
+        doc.setFontSize(8.5);
+        const paymentRows: [string, string][] = [
+          ['Bank', bankDetails.bank],
+          ['A/C Holder', bankDetails.accountHolder],
+          ['A/C No.', bankDetails.accountNumber],
+          ['IFSC', bankDetails.ifsc],
+          ['Branch', bankDetails.branch],
+          ['UPI', bankDetails.upi],
+        ].filter((row): row is [string, string] => Boolean(row[1]));
+        for (const [label, value] of paymentRows) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...BRAND_DARK);
+          doc.text(`${label}`, left + 5, py);
+          doc.setTextColor(...BORDER_SOFT);
+          doc.text(':', left + 27, py);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...INK_SOFT);
+          doc.text(fitText(doc, value, payDividerX - (left + 31) - 3), left + 31, py);
+          py += 4.3;
+        }
+
+        // QR and signature sit in their own half of the right column and
+        // share the same caption baseline, so they line up with each other
+        // and with the bank-details block instead of drifting apart.
+        const rightColX0 = payDividerX + 5;
+        const rightColX1 = right - 3;
+        const rightHalfW = (rightColX1 - rightColX0) / 2;
+        const qrCenterX = rightColX0 + rightHalfW / 2;
+        const sigCenterX = rightColX0 + rightHalfW + rightHalfW / 2;
+        const capsY = y + payBoxH - 6;
+        if (qrDataUrl) {
+          const qrSize = 21;
+          const qrX = qrCenterX - qrSize / 2;
+          const qrY = capsY - 4.2 - qrSize;
+          const qrFormat = qrDataUrl.startsWith('data:image/jpeg')
+            ? 'JPEG'
+            : qrDataUrl.startsWith('data:image/webp')
+              ? 'WEBP'
+              : 'PNG';
+          doc.setDrawColor(...BORDER);
+          doc.setLineWidth(0.35);
+          doc.roundedRect(qrX - 1.5, qrY - 1.5, qrSize + 3, qrSize + 3, 1.5, 1.5, 'S');
+          doc.addImage(qrDataUrl, qrFormat, qrX, qrY, qrSize, qrSize);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.8);
+          doc.setTextColor(...GOLD_DEEP);
+          doc.text('Scan to Pay', qrCenterX, capsY, { align: 'center' });
+        }
+        if (signature) {
+          const signatureLineY = capsY - 3.6;
+          const signatureW = 22;
+          const signatureH = signatureW / signature.ratio;
+          doc.addImage(
+            signature.dataUrl,
+            'PNG',
+            sigCenterX - signatureW / 2,
+            signatureLineY - signatureH - 1.2,
+            signatureW,
+            signatureH,
+            undefined,
+            'FAST',
+          );
+          doc.setDrawColor(...BORDER);
+          doc.setLineWidth(0.3);
+          doc.line(sigCenterX - 12, signatureLineY, sigCenterX + 12, signatureLineY);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6.8);
+          doc.setTextColor(...MUTED);
+          doc.text('Authorized Signature', sigCenterX, capsY, { align: 'center' });
+        }
+        y += payBoxH + 9;
       }
-      y += payBoxH + 9;
 
       // ---- Terms (clean numbered list with a hanging indent) ----
       ensureSpace(16);
@@ -773,16 +838,12 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       doc.setDrawColor(...BORDER);
       doc.setLineWidth(0.35);
       doc.line(left, 285, right, 285);
-      doc.setFont('times', 'italic');
-      doc.setFontSize(11);
-      doc.setTextColor(...GOLD_DEEP);
-      doc.text('Thank you', left, 291);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
+      doc.setFontSize(8);
       doc.setTextColor(...MUTED);
-      doc.text('F O R   C H O O S I N G   S A F A W A L A', left, 294.6);
+      doc.text('Thank you for choosing Safawala.', left, 291);
       doc.setFontSize(7);
-      doc.text('Page 1 of 1', right, 290, { align: 'right' });
+      doc.text('Page 1 of 1', right, 291, { align: 'right' });
       doc.save(`${booking.booking_number}.pdf`);
     } catch (error) {
       console.error('Could not generate booking PDF', error);

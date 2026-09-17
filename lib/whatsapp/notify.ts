@@ -54,7 +54,7 @@ async function firstItemName(bookingId: number): Promise<string> {
       [bookingId],
     ),
   );
-  return (row as { item_name?: string } | undefined)?.item_name ?? 'SafaWala Package';
+  return (row as { item_name?: string } | undefined)?.item_name ?? 'Safawala Package';
 }
 
 type MessageType =
@@ -62,7 +62,9 @@ type MessageType =
   | 'invoice'
   | 'payment_received'
   | 'full_payment_completed'
-  | 'thank_you_feedback';
+  | 'thank_you_feedback'
+  | 'event_reminder_7d'
+  | 'event_reminder_1d';
 
 async function alreadySent(bookingId: number, type: MessageType): Promise<boolean> {
   const [row] = await withServiceRole((tx) =>
@@ -184,6 +186,9 @@ export async function notifyBookingConfirmed(bookingId: number): Promise<void> {
         customerName: booking.customer_name,
         bookingNumber: booking.booking_number,
         bookingId: booking.id,
+        eventDate: booking.event_date,
+        eventLocation: booking.event_location,
+        totalAmount: Number(booking.total),
       });
       const pdf = await generateInvoicePdf(bookingId).catch((err) => {
         console.error(`[whatsapp] invoice PDF generation threw for booking ${bookingId}`, err);
@@ -214,6 +219,8 @@ export async function notifyPaymentReceived(bookingId: number, paymentAmount: nu
       paymentAmount,
       totalPaid: Number(booking.paid_amount),
       remainingAmount: Number(booking.balance_amount),
+      eventDate: booking.event_date,
+      eventLocation: booking.event_location,
     });
     await safeSend(booking, 'payment_received', body);
 
@@ -232,6 +239,8 @@ async function notifyFullPaymentCompleted(booking: BookingForNotify): Promise<vo
     customerName: booking.customer_name,
     bookingNumber: booking.booking_number,
     totalPaid: Number(booking.paid_amount),
+    eventDate: booking.event_date,
+    eventLocation: booking.event_location,
   });
   await safeSend(booking, 'full_payment_completed', body);
   await maybeNotifyThankYou(booking.id, booking);
@@ -256,10 +265,69 @@ export async function maybeNotifyThankYou(
 
     const body = templates.thankYouFeedbackMessage({
       customerName: booking.customer_name,
+      bookingNumber: booking.booking_number,
       bookingId: booking.id,
+      eventDate: booking.event_date,
+      eventLocation: booking.event_location,
     });
     await safeSend(booking, 'thank_you_feedback', body);
   } catch (err) {
     console.error(`[whatsapp] maybeNotifyThankYou failed for booking ${bookingId}`, err);
+  }
+}
+
+/**
+ * Trigger 5/6: event-date reminders. Scans every live (non-draft,
+ * non-cancelled) booking for an event date exactly 7 or 1 day(s) away and
+ * sends the matching reminder — each is sent at most once per booking via
+ * the same public.whatsapp_messages dedupe used by every other trigger
+ * here. Meant to be called periodically (see instrumentation.ts), not from
+ * a specific booking/payment action.
+ */
+export async function checkAndSendEventReminders(): Promise<void> {
+  let dueBookings: { id: number; days_out: number }[] = [];
+  try {
+    dueBookings = (await withServiceRole((tx) =>
+      tx.unsafe(
+        `
+          select b.id, (b.event_date - current_date) as days_out
+          from public.bookings b
+          where b.status not in ('draft', 'cancelled')
+            and (b.event_date - current_date) in (7, 1)
+        `,
+      ),
+    )) as unknown as { id: number; days_out: number }[];
+  } catch (err) {
+    console.error('[whatsapp] checkAndSendEventReminders failed to query due bookings', err);
+    return;
+  }
+
+  for (const due of dueBookings) {
+    const type: MessageType = due.days_out === 7 ? 'event_reminder_7d' : 'event_reminder_1d';
+    try {
+      if (await alreadySent(due.id, type)) continue;
+      const booking = await fetchBooking(due.id);
+      if (!booking) continue;
+      const packageName = await firstItemName(due.id);
+      const body =
+        type === 'event_reminder_7d'
+          ? templates.eventReminder7DaysMessage({
+              customerName: booking.customer_name,
+              bookingNumber: booking.booking_number,
+              eventDate: booking.event_date,
+              eventLocation: booking.event_location,
+              packageName,
+            })
+          : templates.eventReminder1DayMessage({
+              customerName: booking.customer_name,
+              bookingNumber: booking.booking_number,
+              eventDate: booking.event_date,
+              eventLocation: booking.event_location,
+              packageName,
+            });
+      await safeSend(booking, type, body);
+    } catch (err) {
+      console.error(`[whatsapp] event reminder failed for booking ${due.id}`, err);
+    }
   }
 }

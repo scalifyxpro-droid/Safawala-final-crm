@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { withServiceRole } from '@/lib/db/client';
 import { assignedJobsForStylist, recordStylistExecution } from '@/lib/event-jobs/store';
 import { sendWhatsAppText } from '@/lib/whatsapp/session';
+import { stylistArrivalOtpMessage } from '@/lib/whatsapp/templates';
 
 function digest(jobId: string, stylistId: string, salt: string, code: string) {
   const secret = process.env.AUTH_SECRET || process.env.DATABASE_URL;
@@ -15,8 +16,13 @@ export async function sendStylistArrivalOtp(jobId: string, stylistId: string) {
   if (job.stylistExecutions.some((entry) => entry.stylistAccountId === stylistId && entry.status !== 'not_started')) {
     return { error: 'Arrival has already been verified.' };
   }
-  const [customer] = await withServiceRole((tx) => tx<{ phone: string | null }[]>`
-    select c.phone
+  const [customer] = await withServiceRole((tx) => tx<{
+    phone: string | null;
+    name: string | null;
+    event_date: string | null;
+    event_location: string | null;
+  }[]>`
+    select c.phone, c.name, b.event_date, b.event_location
     from public.bookings b
     left join public.customers c on c.id = b.customer_id
     where b.id = ${job.bookingId}
@@ -39,7 +45,14 @@ export async function sendStylistArrivalOtp(jobId: string, stylistId: string) {
   `);
   if (!issued.length) return { error: 'Please wait one minute before requesting another code.' };
   try {
-    await sendWhatsAppText(phone, `Safawala: Your 4-digit venue arrival verification code for booking ${job.bookingNumber} is ${code}. Share it only with your assigned stylist at the venue. It expires in 5 minutes.`);
+    const message = stylistArrivalOtpMessage({
+      customerName: customer?.name || 'Customer',
+      bookingNumber: job.bookingNumber,
+      eventDate: customer?.event_date ?? null,
+      eventLocation: customer?.event_location ?? null,
+      code,
+    });
+    await sendWhatsAppText(phone, message);
   } catch {
     await withServiceRole((tx) => tx`
       delete from public.stylist_arrival_otp where job_id = ${jobId} and stylist_account_id = ${stylistId} and code_hash = ${hash}
