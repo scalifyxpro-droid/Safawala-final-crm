@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SyntheticEvent } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import {
   AlertTriangle,
@@ -226,6 +227,9 @@ export function InventoryDirectory({
   const [notice, setNotice] = useState('');
   const [showArchived, setShowArchived] = useState(initialShowArchived);
   const [archiveCandidate, setArchiveCandidate] = useState<InventoryProduct | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<InventoryProduct | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const inventoryResultsRef = useRef<HTMLDivElement>(null);
 
   const { activeCount, inStock, lowStock, outOfStock, inventoryValue } = summary;
@@ -346,13 +350,21 @@ export function InventoryDirectory({
   }
 
   async function deleteProduct(product: InventoryProduct) {
-    if (!window.confirm(`Delete ${product.name} permanently? Existing booking item details will remain in booking history, but this product will be removed from any packages that contain it.`)) return;
-    const { error } = await deleteProductAction(product.id);
-    if (error) { setMessage(error); return; }
-    setMessage('');
-    setProducts((current) => current.filter((item) => item.id !== product.id));
-    setNotice(`${product.name} was deleted.`);
-    setRefreshKey((current) => current + 1);
+    setDeletePending(true);
+    setDeleteError('');
+    try {
+      const { error } = await deleteProductAction(product.id);
+      if (error) { setDeleteError(error); return; }
+      setDeleteCandidate(null);
+      setMessage('');
+      setProducts((current) => current.filter((item) => item.id !== product.id));
+      setNotice(`${product.name} was deleted.`);
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Product could not be deleted. Please try again.');
+    } finally {
+      setDeletePending(false);
+    }
   }
 
   function saved(product: InventoryProduct, wasEditing: boolean) {
@@ -459,10 +471,12 @@ export function InventoryDirectory({
       </div>
 
       {message ? (
-        <Alert variant="destructive">
-          <AlertTitle>Inventory action could not be completed</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
+        <div role="alert">
+          <Alert variant="destructive">
+            <AlertTitle>Inventory action could not be completed</AlertTitle>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        </div>
       ) : null}
 
       {notice ? (
@@ -584,7 +598,7 @@ export function InventoryDirectory({
               onEdit={() => openEditProduct(product)}
               onArchive={() => requestArchive(product)}
               onRestore={() => updateProductStatus(product, true)}
-              onDelete={() => deleteProduct(product)}
+              onDelete={() => { setDeleteError(''); setDeleteCandidate(product); }}
               archived={showArchived}
             />
           ))}
@@ -624,6 +638,23 @@ export function InventoryDirectory({
             <CardContent className="flex justify-end gap-2 border-t p-5">
               <Button type="button" variant="outline" onClick={() => setArchiveCandidate(null)}>Cancel</Button>
               <Button type="button" onClick={async () => { const product = archiveCandidate; setArchiveCandidate(null); await updateProductStatus(product, false); }}>Archive Product</Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {deleteCandidate ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-[#211d18]/60 p-4" role="presentation">
+          <Card role="dialog" aria-modal="true" aria-labelledby="delete-product-title" className="w-full max-w-md border-border shadow-2xl">
+            <CardHeader>
+              <CardTitle id="delete-product-title">Delete product?</CardTitle>
+              <p className="text-sm text-muted-foreground">Permanently delete {deleteCandidate.name}? Recorded booking item details will remain, but this product will be removed from packages containing it.</p>
+            </CardHeader>
+            <CardContent className="space-y-4 border-t p-5">
+              {deleteError ? <Alert variant="destructive" role="alert"><AlertDescription>{deleteError}</AlertDescription></Alert> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" disabled={deletePending} onClick={() => setDeleteCandidate(null)}>Cancel</Button>
+                <Button type="button" variant="destructive" disabled={deletePending} onClick={() => deleteProduct(deleteCandidate)}>{deletePending ? 'Deleting…' : 'Delete Product'}</Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -830,8 +861,49 @@ function ProductCard({
 
 function ProductMenu({ product, archived, onEdit, onArchive, onRestore, onDelete }: { product: InventoryProduct; archived: boolean; onEdit: () => void; onArchive: () => void; onRestore: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
-  async function copyBarcode() { if (product.barcode) { try { await navigator.clipboard?.writeText(product.barcode); } catch { /* Clipboard access may be unavailable in insecure previews. */ } setOpen(false); } }
-  return <div className="relative shrink-0"><Button type="button" variant="outline" size="icon" aria-label={`Actions for ${product.name}`} onClick={() => setOpen((current) => !current)}><MoreHorizontal className="size-4" /></Button>{open ? <><button type="button" aria-label="Close product actions" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} /><div className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-lg border border-border bg-white p-1 shadow-level-2 dark:bg-card"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onEdit(); setOpen(false); }}><Pencil className="size-4" /> Edit Product</button>{!archived ? <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onArchive(); setOpen(false); }}><Archive className="size-4" /> Archive Product</button> : <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { onRestore(); setOpen(false); }}><Check className="size-4" /> Restore Product</button>}<button type="button" disabled={!product.barcode} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50" onClick={copyBarcode}><Copy className="size-4" /> {product.barcode ? 'Copy Barcode' : 'No Barcode'}</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-destructive hover:bg-red-50" onClick={() => { onDelete(); setOpen(false); }}><Trash2 className="size-4" /> Delete Product</button></div></> : null}</div>;
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  async function copyBarcode() {
+    if (!product.barcode) return;
+    try { await navigator.clipboard?.writeText(product.barcode); }
+    catch { /* Clipboard access may be unavailable in insecure previews. */ }
+    setOpen(false);
+  }
+
+  return <div className="relative shrink-0">
+    <Button type="button" variant="outline" size="icon" aria-label={`Actions for ${product.name}`} aria-haspopup="menu" aria-expanded={open} onClick={(event) => {
+      if (open) { setOpen(false); return; }
+      const rect = event.currentTarget.getBoundingClientRect();
+      const menuHeight = 220;
+      setPosition({
+        top: rect.bottom + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight) : rect.bottom + 4,
+        left: Math.max(8, Math.min(window.innerWidth - 184, rect.right - 176)),
+      });
+      setOpen(true);
+    }}><MoreHorizontal className="size-4" /></Button>
+    {open ? createPortal(<>
+      <button type="button" aria-label="Close product actions" className="fixed inset-0 z-[70] cursor-default" onClick={() => setOpen(false)} />
+      <div role="menu" aria-label={`Actions for ${product.name}`} className="fixed z-[71] w-44 overflow-hidden rounded-lg border border-border bg-white p-1 shadow-level-2 dark:bg-card" style={position}>
+        <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { setOpen(false); onEdit(); }}><Pencil className="size-4" /> Edit Product</button>
+        {!archived ? <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { setOpen(false); onArchive(); }}><Archive className="size-4" /> Archive Product</button> : <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted" onClick={() => { setOpen(false); onRestore(); }}><Check className="size-4" /> Restore Product</button>}
+        <button type="button" role="menuitem" disabled={!product.barcode} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50" onClick={copyBarcode}><Copy className="size-4" /> {product.barcode ? 'Copy Barcode' : 'No Barcode'}</button>
+        <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-destructive hover:bg-red-50" onClick={() => { setOpen(false); onDelete(); }}><Trash2 className="size-4" /> Delete Product</button>
+      </div>
+    </>, document.body) : null}
+  </div>;
 }
 
 function ProductDialog({

@@ -138,7 +138,7 @@ export default async function StaffWarehousePage({
         <QueueFilterBar basePath="/staff-portal/warehouse" search={q} view={view} />
 
         {jobs.length ? (
-          <DepartmentJobCardGrid items={jobCards} groupByBookingDate />
+          <DepartmentJobCardGrid items={jobCards} groupByBookingDate clickableCards />
         ) : (
           <Card className="overflow-hidden border-border shadow-level-1">
             <CardContent className="p-0">

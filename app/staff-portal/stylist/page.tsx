@@ -175,8 +175,9 @@ export default async function StaffStylistPage({
                   return (
                     <li
                       key={job.id}
-                      className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-[#e4d2b6] bg-white p-4 shadow-level-1 transition hover:border-primary/35 hover:shadow-level-2 dark:border-[#493822] dark:bg-card"
+                      className="relative flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-[#e4d2b6] bg-white p-4 shadow-level-1 transition hover:border-primary/35 hover:shadow-level-2 focus-within:border-primary dark:border-[#493822] dark:bg-card"
                     >
+                      <Link href={`/staff-portal/stylist?job=${encodeURIComponent(job.id)}`} aria-label={`View details for ${job.eventSummary.customerName || job.id}`} className="absolute inset-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" />
                       <div className="min-w-0">
                         <div className="flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold text-primary">{job.id}</span><Badge variant="outline" className="border-[#dfc6a4] bg-[#f5ead8] text-[10px] text-[#70481c]">Rental</Badge></div>
                         <p className="font-semibold">
@@ -204,7 +205,7 @@ export default async function StaffStylistPage({
                           </span>
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 border-t border-[#eadcc8] pt-3 dark:border-[#493822] [&_[data-slot=button]]:min-h-9">
+                      <div className="relative z-10 flex flex-wrap items-center gap-2 border-t border-[#eadcc8] pt-3 dark:border-[#493822] [&_[data-slot=button]]:min-h-9">
                         <Button
                           variant="outline"
                           size="sm"

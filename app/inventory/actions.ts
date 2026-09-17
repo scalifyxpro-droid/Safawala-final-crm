@@ -352,10 +352,13 @@ export async function deleteProductAction(productId: number): Promise<{ error: s
   try {
     if (!Number.isSafeInteger(productId) || productId <= 0) return { error: 'Invalid product ID.' };
     const user = await requireUser();
+    if (user.role !== 'admin') return { error: 'Only an administrator can delete inventory products.' };
     const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`
       select role from public.profiles where id = ${user.id}
     `);
-    if (profile?.role !== 'admin') return { error: 'Only an administrator can delete inventory products.' };
+    // Admin login accepts an account without a profile row. Keep this action
+    // consistent with that verified session, while rejecting a role downgrade.
+    if (profile && profile.role !== 'admin') return { error: 'Only an administrator can delete inventory products.' };
 
     await withServiceRole(async (tx) => {
       const [product] = await tx<{ id: number }[]>`
@@ -376,10 +379,12 @@ export async function deleteProductAction(productId: number): Promise<{ error: s
         delete from public.package_items
         where product_id = ${productId} and owner_id = ${user.id}
       `;
-      await tx`
+      const deleted = await tx<{ id: number }[]>`
         delete from public.products
         where id = ${productId} and owner_id = ${user.id}
+        returning id
       `;
+      if (!deleted.length) throw new Error('Product was not deleted. Refresh inventory and try again.');
     });
     return { error: '' };
   } catch (error) {

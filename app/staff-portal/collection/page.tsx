@@ -14,6 +14,7 @@ import { withServiceRole } from '@/lib/db/client';
 import { QueueFilterBar } from '@/components/staff-portal/queue-filter-bar';
 import { DepartmentJobCardGrid } from '@/components/staff-portal/department-job-card-grid';
 import { compareJobsByBookingDate } from '@/lib/event-jobs/sorting';
+import { CollectionJobModal } from '@/components/staff-portal/collection-job-modal';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,14 +23,14 @@ type QueueView = 'open' | 'closed';
 export default async function StaffCollectionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; job?: string }>;
 }) {
   const [session, params, allJobs] = await Promise.all([
     requireDepartment('collection'),
     searchParams,
     listJobs(),
   ]);
-  const { view: requestedView, q = '' } = params as typeof params & { q?: string };
+  const { view: requestedView, job: selectedJobId, q = '' } = params as typeof params & { q?: string };
   const view: QueueView = requestedView === 'closed' ? 'closed' : 'open';
   const rentalJobs = allJobs.filter((job) => job.bookingType === 'rental');
   const collectionIsOpen = (job: (typeof rentalJobs)[number]) =>
@@ -64,7 +65,7 @@ export default async function StaffCollectionPage({
   );
   const jobCards = jobs.map((job) => ({
     id: job.id,
-    href: `/staff-portal/collection/${job.id}`,
+    href: `/staff-portal/collection?view=${view}&job=${encodeURIComponent(job.id)}`,
     jobNumber: job.id,
     bookingType: job.bookingType,
     customerName: customerByBookingId.get(job.bookingId) ?? job.eventSummary.customerName ?? 'Customer',
@@ -118,7 +119,7 @@ export default async function StaffCollectionPage({
         <QueueFilterBar basePath="/staff-portal/collection" search={q} view={view} />
 
         {jobs.length ? (
-          <DepartmentJobCardGrid items={jobCards} />
+          <DepartmentJobCardGrid items={jobCards} clickableCards />
         ) : (
           <Card className="overflow-hidden border-border shadow-level-1">
             <CardContent className="p-0">
@@ -145,6 +146,7 @@ export default async function StaffCollectionPage({
           </Card>
         )}
       </div>
+      {selectedJobId ? <CollectionJobModal jobId={selectedJobId} view={view} /> : null}
     </StaffPortalShell>
   );
 }
