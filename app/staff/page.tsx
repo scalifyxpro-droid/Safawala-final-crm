@@ -20,6 +20,7 @@ const STAFF_QUERY = `
     select json_agg(json_build_object('module', m.module, 'enabled', m.enabled)) as rows
     from public.staff_access_modules m where m.staff_id = sm.id
   ) mod on true
+  where sm.deleted_at is null
   order by sm.name
 `;
 

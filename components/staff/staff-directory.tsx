@@ -570,8 +570,8 @@ function DeleteStaffDialog({
     <Modal title="Delete staff ID?" subtitle={`${member.name} · SF-${String(member.id).padStart(4, '0')}`} onClose={() => { if (!busy) onClose(); }}>
       <div className="space-y-4 p-5">
         <p className="text-sm text-muted-foreground">
-          This permanently removes the staff record and its portal login. It cannot be undone.
-          IDs with bookings, assignments, or HR history cannot be deleted; deactivate those instead.
+          This permanently removes the portal login and hides the staff ID from the directory.
+          Bookings and HR records remain linked to its historical record. This cannot be undone.
         </p>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2 border-t pt-4">

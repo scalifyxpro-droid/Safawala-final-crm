@@ -58,7 +58,7 @@ export async function saveStaffMemberAction(
           update public.staff_members
           set name = ${input.name}, phone = ${input.phone}, email = ${input.email},
             address = ${input.address}, is_active = ${input.is_active}, updated_at = now()
-          where id = ${input.id}
+          where id = ${input.id} and owner_id = ${ownerId} and deleted_at is null
           returning id, name, phone, email, address, is_active, created_at, updated_at
         `;
         return row ?? null;
@@ -89,7 +89,7 @@ export async function toggleStaffStatusAction(
     const record = await withUserContext(ownerId, async (tx) => {
       const [row] = await tx<StaffMemberRecord[]>`
         update public.staff_members set is_active = ${isActive}
-        where id = ${staffMemberId}
+        where id = ${staffMemberId} and owner_id = ${ownerId} and deleted_at is null
         returning id, name, phone, email, address, is_active, created_at, updated_at
       `;
       return row ?? null;
@@ -101,8 +101,11 @@ export async function toggleStaffStatusAction(
   }
 }
 
-export async function deleteStaffMemberAction(staffMemberId: number): Promise<{ error: string }> {
-  if (!Number.isSafeInteger(staffMemberId) || staffMemberId <= 0) {
+export async function deleteStaffMemberAction(staffMemberId: number | string): Promise<{ error: string }> {
+  const id = typeof staffMemberId === 'number' || (typeof staffMemberId === 'string' && /^\d+$/.test(staffMemberId))
+    ? Number(staffMemberId)
+    : NaN;
+  if (!Number.isSafeInteger(id) || id <= 0) {
     return { error: 'Invalid staff ID.' };
   }
   try {
@@ -110,7 +113,7 @@ export async function deleteStaffMemberAction(staffMemberId: number): Promise<{ 
     await withServiceRole(async (tx) => {
       const [member] = await tx<{ user_id: string | null }[]>`
         select user_id from public.staff_members
-        where id = ${staffMemberId} and owner_id = ${ownerId}
+        where id = ${id} and owner_id = ${ownerId} and deleted_at is null
         for update
       `;
       if (!member) throw new Error('This staff ID was not found. Refresh the page and try again.');
@@ -120,32 +123,27 @@ export async function deleteStaffMemberAction(staffMemberId: number): Promise<{ 
         if (profile?.role !== 'staff') throw new Error('This login is not a staff account and cannot be deleted here.');
       }
 
-      const [usage] = await tx<{ has_history: boolean }[]>`
-        select (
-          exists(select 1 from public.bookings where assigned_staff_id = ${staffMemberId} or created_by_staff_id = ${staffMemberId})
-          or exists(select 1 from public.leads where assigned_staff_id = ${staffMemberId})
-          or exists(select 1 from public.event_job_stages where assigned_staff_id = ${staffMemberId})
-          or exists(select 1 from public.event_job_stylist_interest where staff_id = ${staffMemberId})
-          or exists(select 1 from public.hr_attendance where staff_id = ${staffMemberId})
-          or exists(select 1 from public.hr_payroll where staff_id = ${staffMemberId})
-          or exists(select 1 from public.hr_letters where staff_id = ${staffMemberId})
-          or exists(select 1 from public.hr_kyc_documents where staff_id = ${staffMemberId})
-          or exists(select 1 from public.hr_work_orders where assigned_staff_id = ${staffMemberId})
-          or exists(select 1 from public.staff_performance_credits where staff_id = ${staffMemberId})
-        ) as has_history
+      await tx`delete from public.staff_access_modules where staff_id = ${id}`;
+      await tx`delete from public.staff_departments where staff_id = ${id}`;
+      await tx`
+        update public.staff_members
+        set user_id = null, login_id = null, portal_active = false,
+          is_active = false, phone = null, email = null, address = null,
+          deleted_at = now(), updated_at = now()
+        where id = ${id} and owner_id = ${ownerId} and deleted_at is null
       `;
-      if (usage?.has_history) {
-        throw new Error('This staff ID has linked work or HR records. Deactivate it instead to preserve your records.');
+      if (member.user_id) {
+        // This optional HR reference has a restrictive FK, unlike the other
+        // auth-user audit references. Keep the document before removing login.
+        await tx`update public.hr_kyc_documents set verified_by = null where verified_by = ${member.user_id}`;
+        await tx`delete from auth.users where id = ${member.user_id}`;
       }
-
-      await tx`delete from public.staff_members where id = ${staffMemberId} and owner_id = ${ownerId}`;
-      if (member.user_id) await tx`delete from auth.users where id = ${member.user_id}`;
     });
     revalidatePath('/staff');
     return { error: '' };
   } catch (error) {
     if ((error as { code?: string } | null)?.code === '23503') {
-      return { error: 'This staff ID is still linked to CRM records. Deactivate it instead.' };
+      return { error: 'This staff ID is still linked to another protected record. No changes were saved.' };
     }
     return { error: error instanceof Error ? error.message : 'Staff ID could not be deleted.' };
   }

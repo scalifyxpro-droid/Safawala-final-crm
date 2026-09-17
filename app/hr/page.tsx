@@ -23,7 +23,7 @@ export default async function HrDashboardPage() {
   let loadError = '';
   try {
     const [summary] = await withUserContext(user.id, (tx) => tx<{ count: number }[]>`
-      select count(*)::int as count from public.staff_members
+      select count(*)::int as count from public.staff_members where deleted_at is null
     `);
     count = Number(summary?.count ?? 0);
   } catch (error) {
