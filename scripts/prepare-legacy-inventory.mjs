@@ -244,7 +244,10 @@ function prepare(data) {
     securityDeposit: 0,
     stockQuantity: integer(row.quantity),
     reorderLevel: 0,
-    isActive: clean(row.stock_status)?.toLowerCase() !== 'inactive',
+    // Retail catalogue rows were stored separately in the legacy CRM. Do not
+    // surface empty catalogue entries as active main-inventory products.
+    isActive:
+      integer(row.quantity) > 0 && clean(row.stock_status)?.toLowerCase() !== 'inactive',
     images: unique([clean(row.main_photo_url)]),
     source: 'retail_products',
   }));
