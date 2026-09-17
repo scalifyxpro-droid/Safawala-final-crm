@@ -73,16 +73,25 @@ export async function submitReturnWarehouseAction(
     remarks: textValue(formData.get(`remarks-${index}`)).trim(),
   }));
 
-  const result = await submitReturnWarehouseCheck(jobId, items, session.name, {
-    receivedFrom: textValue(formData.get('receivedFrom')).trim(),
-    receivingNotes: textValue(formData.get('receivingNotes')).trim(),
-    handoverConfirmed: formData.get('handoverConfirmed') === 'on',
-  });
+  let result;
+  try {
+    result = await submitReturnWarehouseCheck(jobId, items, session.name, {
+      receivedFrom: textValue(formData.get('receivedFrom')).trim(),
+      receivingNotes: textValue(formData.get('receivingNotes')).trim(),
+      handoverConfirmed: formData.get('handoverConfirmed') === 'on',
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not save Return Warehouse. Please try again.' };
+  }
   if (result.error) return { error: result.error };
 
   revalidatePath('/staff-portal/warehouse');
   revalidatePath(`/staff-portal/warehouse/${jobId}`);
+  revalidatePath('/staff-portal/booking/close-jobs');
+  revalidatePath('/staff-portal/event-tracking');
+  revalidatePath('/event-tracking');
   revalidatePath('/event-jobs');
   revalidatePath(`/event-jobs/${jobId}`);
+  if (result.job) revalidatePath(`/track/${result.job.bookingId}`);
   return { error: '', success: true };
 }

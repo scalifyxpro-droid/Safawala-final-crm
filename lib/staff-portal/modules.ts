@@ -36,7 +36,7 @@ export const DEPARTMENT_STAFF_MODULES: Record<StaffDepartment, readonly StaffMod
   booking: ['booking_overview', 'quotations', 'leads', 'bookings', 'customers', 'event_jobs', 'event_tracking', 'calendar', 'my_tasks', 'attendance', 'performance', 'leave_management', 'agreements', 'invoices'],
   warehouse: ['warehouse_tasks', 'event_jobs', 'my_tasks', 'attendance', 'performance', 'leave_management'],
   qc: ['qc_tasks', 'event_jobs', 'my_tasks', 'attendance', 'performance', 'leave_management'],
-  stylist: ['stylist_opportunities', 'assigned_events'],
+  stylist: ['stylist_opportunities', 'assigned_events', 'my_tasks', 'attendance', 'performance', 'leave_management'],
   collection: ['collection_tasks', 'event_jobs', 'my_tasks', 'attendance', 'performance', 'leave_management'],
   modification: ['modification_tasks', 'event_jobs', 'my_tasks', 'attendance', 'performance', 'leave_management'],
 };

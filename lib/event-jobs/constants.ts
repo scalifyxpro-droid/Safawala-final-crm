@@ -65,28 +65,38 @@ export const TRACKING_STAGE_LABEL: Record<string, string> = {
 };
 
 /** Display-only tracker sequence shared by admin and staff job views. */
-export function trackingTimeline(stages: EventJobStage[], stylistExecutions: StylistExecutionEntry[] = []): TrackingStage[] {
+export function trackingTimeline(
+  stages: EventJobStage[],
+  stylistExecutions: StylistExecutionEntry[] = [],
+  completed = false,
+): TrackingStage[] {
   const find = (key: EventJobStageKey) => stages.find((stage) => stage.key === key);
   const workCompleted = stylistExecutions.some((entry) => entry.status === 'work_completed');
   const eventLive = stylistExecutions.some((entry) => entry.status === 'reached_venue' || entry.status === 'work_started');
+  const jobClosed = completed || find('booking_final_check')?.status === 'done';
   const combine = (first: EventJobStage | undefined, second: EventJobStage | undefined): EventJobStageStatus => {
     if (first?.status === 'in_progress' || second?.status === 'in_progress') return 'in_progress';
     if (first?.status === 'open' || second?.status === 'open') return 'open';
     if (first?.status === 'done' && second?.status === 'done') return 'done';
     return 'not_started';
   };
-  return [
+  const timeline: TrackingStage[] = [
     { key: 'booking_done', status: 'done' },
     { key: 'warehouse_pick', status: find('warehouse_pick')?.status ?? 'not_started' },
     { key: 'qc_packing', status: combine(find('quality_check'), find('packing')) },
     { key: 'stylist_opportunity', status: find('stylist_opportunity')?.status ?? 'not_started' },
-    { key: 'travel', status: 'not_started' },
+    { key: 'travel', status: eventLive || workCompleted ? 'done' : 'not_started' },
     { key: 'live_event', status: workCompleted ? 'done' : eventLive ? 'in_progress' : 'not_started' },
     { key: 'collection', status: workCompleted ? find('collection')?.status ?? 'not_started' : 'not_started' },
     { key: 'return_quality_check', status: find('return_quality_check')?.status ?? 'not_started' },
     { key: 'return_warehouse', status: find('return_warehouse')?.status ?? 'not_started' },
     { key: 'booking_final_check', status: find('booking_final_check')?.status ?? 'not_started' },
   ];
+  // Final closure is authoritative: a closed job must never leave an earlier
+  // display-only tracker step looking incomplete on staff or customer views.
+  return jobClosed
+    ? timeline.map((stage) => ({ ...stage, status: 'done' as const }))
+    : timeline;
 }
 
 // Stages that open together the moment a Central Event Job is created — everything

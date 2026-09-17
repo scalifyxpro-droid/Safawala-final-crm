@@ -253,9 +253,15 @@ function SidebarNavigation({
                 ];
   const navigationLinks = portalKind === 'accounts' || portalKind === 'manager'
     ? links
-    : links.some((link) => link.href === '/staff-portal/event-tracking')
-    ? links
-    : [...links, { href: '/staff-portal/event-tracking', label: 'Job Tracker', icon: ClipboardList }];
+    : [
+        ...links,
+        ...(links.some((link) => link.href === '/staff-portal/event-tracking')
+          ? []
+          : [{ href: '/staff-portal/event-tracking', label: 'Job Tracker', icon: ClipboardList }]),
+        ...(links.some((link) => link.href === '/staff-portal/performance')
+          ? []
+          : [{ href: '/staff-portal/performance', label: 'My Performance', icon: CircleGauge }]),
+      ];
   return (
     <nav aria-label="Primary navigation" className="mt-8 space-y-1">
       {navigationLinks.map(({ href, label, icon: Icon }) => {

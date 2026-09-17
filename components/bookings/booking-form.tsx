@@ -414,9 +414,9 @@ export function BookingForm({
   function getAvailableQuantity(product: Product): number {
     if (type === 'rental' && pickupDate && dueDate) {
       const info = availabilityByProduct[product.id];
-      if (info) return info.available;
+      if (info) return Math.max(0, info.available);
     }
-    return product.stock_quantity || 999;
+    return Math.max(0, product.stock_quantity);
   }
 
   function availabilityLabel(product: Product): string {
@@ -437,7 +437,9 @@ export function BookingForm({
     const isRentalWindow = Boolean(type === 'rental' && pickupDate && dueDate);
     setMessage({
       title: 'Not enough stock for these dates',
-      text: isRentalWindow
+      text: available < 1
+        ? `"${product.name}" is unavailable${isRentalWindow ? ` from ${pickupDate} to ${dueDate}` : ''}. Choose another product or change the rental dates.`
+        : isRentalWindow
         ? `Only ${available} of "${product.name}" are free from ${pickupDate} to ${dueDate}. Added the maximum available instead.`
         : `Only ${available} of "${product.name}" are in stock. Added the maximum available instead.`,
     });
@@ -474,6 +476,10 @@ export function BookingForm({
   function addProduct(product: Product, quantity = 1) {
     const requestedQuantity = Math.max(1, Math.floor(quantity));
     const maxQuantity = getAvailableQuantity(product);
+    if (maxQuantity < 1) {
+      void warnIfOverCapacity(product, requestedQuantity, maxQuantity);
+      return false;
+    }
     const existingItem = items.find((item) => item.product_id === product.id);
     const totalWanted = (existingItem?.quantity ?? 0) + requestedQuantity;
     if (totalWanted > maxQuantity) {
@@ -509,6 +515,7 @@ export function BookingForm({
     });
     setAddedToast(`${product.name} added to order`);
     window.setTimeout(() => setAddedToast(''), 2400);
+    return true;
   }
 
   async function handleProductScan(rawValue: string) {
@@ -531,9 +538,10 @@ export function BookingForm({
       }
     }
     if (product) {
-      addProduct(product);
-      setProductSearch('');
-      setMessage(null);
+      if (addProduct(product)) {
+        setProductSearch('');
+        setMessage(null);
+      }
       return;
     }
     setProductSearch(rawValue);
@@ -558,8 +566,7 @@ export function BookingForm({
         item.sku?.trim().toLowerCase() === scanned,
     );
     if (exact) {
-      addProduct(exact);
-      setProductSearch('');
+      if (addProduct(exact)) setProductSearch('');
     }
   }
 
@@ -653,6 +660,10 @@ export function BookingForm({
     }
     setMessage(null);
     const maxQuantity = getAvailableQuantity(product);
+    if (maxQuantity < 1) {
+      void warnIfOverCapacity(product, quantity, maxQuantity);
+      return;
+    }
     const existingItem = items.find(
       (item) => item.additional_safa && item.product_id === product.id,
     );
@@ -804,23 +815,37 @@ export function BookingForm({
   }
 
   function continueFromProducts() {
-    if (
-      !customerOwnedModification &&
-      (items.length === 0 ||
-        items.some(
-          (item) => item.item_name.trim().length < 2 || item.quantity < 1,
-        ))
-    ) {
-      setMessage({
-        title: 'Add order items',
-        text: 'Select at least one product, package or custom product.',
-      });
+    const itemError = orderItemsError();
+    if (itemError) {
+      setMessage(itemError);
       return;
     }
     const form = formRef.current ? new FormData(formRef.current) : null;
     const time = form?.get('event_time');
     setEventTime(typeof time === 'string' ? time : '');
     showStep(3);
+  }
+
+  function orderItemsError(): { title: string; text: string } | null {
+    if (customerOwnedModification) return null;
+    if (items.length === 0) {
+      return {
+        title: 'Add order items',
+        text: !isSale && rentalSelectionMode === 'packages' && rentalPackages.length
+          ? 'Select a package variant, or switch to Individual products and use Add to Order.'
+          : 'Use Add to Order on a product, package or custom product before continuing.',
+      };
+    }
+    const unnamed = items.find((item) => item.item_name.trim().length < 2);
+    if (unnamed) return { title: 'Check the item name', text: 'Each order item needs a name of at least 2 characters.' };
+    const invalidQuantity = items.find((item) => item.quantity < 1);
+    if (invalidQuantity) {
+      return {
+        title: 'Check the item quantity',
+        text: `"${invalidQuantity.item_name}" has no available quantity. Remove it, choose another product or change the rental dates.`,
+      };
+    }
+    return null;
   }
 
   function toggleCustomerOwnedModification(checked: boolean) {
@@ -868,17 +893,9 @@ export function BookingForm({
       });
       return;
     }
-    if (
-      !customerOwnedModification &&
-      (items.length === 0 ||
-        items.some(
-          (item) => item.item_name.trim().length < 2 || item.quantity < 1,
-        ))
-    ) {
-      setMessage({
-        title: 'Add order items',
-        text: 'Select at least one product, package or custom product.',
-      });
+    const itemError = orderItemsError();
+    if (itemError) {
+      setMessage(itemError);
       return;
     }
     if (!quote && paid > total) {

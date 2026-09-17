@@ -19,12 +19,15 @@ function textValue(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value : '';
 }
 
-function revalidateJob(jobId: string) {
+function revalidateJob(jobId: string, bookingId?: number) {
   revalidatePath('/staff-portal/qc');
   revalidatePath(`/staff-portal/qc/${jobId}`);
   revalidatePath('/staff-portal/warehouse');
+  revalidatePath('/staff-portal/event-tracking');
+  revalidatePath('/event-tracking');
   revalidatePath('/event-jobs');
   revalidatePath(`/event-jobs/${jobId}`);
+  if (bookingId) revalidatePath(`/track/${bookingId}`);
 }
 
 async function ownerIdForJob(jobId: string): Promise<string | null> {
@@ -196,12 +199,18 @@ export async function submitReturnQualityCheckAction(
     }
   }
 
-  const result = await submitReturnQualityCheck(jobId, items, session.name, uploadedPaths);
+  let result;
+  try {
+    result = await submitReturnQualityCheck(jobId, items, session.name, uploadedPaths);
+  } catch (error) {
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
+    return { error: error instanceof Error ? error.message : 'Could not save Return QC. Please try again.' };
+  }
   if (result.error) {
     await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
     return { error: result.error };
   }
 
-  revalidateJob(jobId);
+  revalidateJob(jobId, result.job?.bookingId);
   return { error: '', success: true };
 }

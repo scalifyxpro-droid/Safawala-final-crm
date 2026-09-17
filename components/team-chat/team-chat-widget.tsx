@@ -110,7 +110,7 @@ export function TeamChatWidget() {
       const controls = Array.from(document.querySelectorAll('button, input, textarea, select, a[href], [role="button"]'))
         .filter((element) => !element.closest('[aria-label="Safawala CRM team chat"]') && element.getAttribute('aria-label') !== 'Open team chat')
         .map((element) => element.getBoundingClientRect())
-        .filter((rect) => rect.width > 0 && rect.height > 0 && rect.height < 120 && rect.right > width - 52 && rect.left < width);
+        .filter((rect) => rect.width > 0 && rect.height > 0 && rect.height < 120 && rect.right > width - 120 && rect.left < width);
       let best = Math.round(height / 2);
       let bestScore = Number.POSITIVE_INFINITY;
       for (let top = 60; top <= height - 60; top += 8) {
@@ -602,6 +602,8 @@ export function TeamChatWidget() {
         onPointerCancel={cancelLauncherDrag}
         onMouseEnter={() => setEdgeExpanded(true)}
         onMouseLeave={() => setEdgeExpanded(false)}
+        onFocus={() => setEdgeExpanded(true)}
+        onBlur={() => setEdgeExpanded(false)}
         onClick={() => {
           if (suppressLauncherClickRef.current) {
             suppressLauncherClickRef.current = false;
@@ -612,16 +614,26 @@ export function TeamChatWidget() {
             return;
           }
           setOpen((current) => !current);
+          if (window.matchMedia('(hover: none)').matches) setEdgeExpanded(false);
         }}
         style={{ top: launcherPosition ? launcherPosition.y + 18 : edgeTop ?? '50%' }}
-        className={`fixed right-0 z-[71] grid h-9 touch-none cursor-grab -translate-y-1/2 place-items-center rounded-l-full bg-primary text-primary-foreground shadow-[0_12px_30px_rgba(94,55,24,0.3)] transition-[width,background-color] duration-200 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing ${edgeExpanded ? 'w-12' : 'w-5'}`}
+        className={`group fixed right-0 z-[71] flex h-11 touch-none cursor-grab select-none items-center overflow-visible rounded-l-xl border border-r-0 border-[#d9b982] bg-gradient-to-br from-[#ae762f] to-[#89551d] text-white shadow-[0_10px_28px_rgba(94,55,24,0.28)] transition-[width,box-shadow,background-color] duration-200 ease-out hover:shadow-[0_14px_34px_rgba(94,55,24,0.34)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 active:cursor-grabbing ${edgeExpanded ? 'w-[108px]' : 'w-10'}`}
         aria-label={open ? 'Close team chat' : 'Open team chat'}
         aria-expanded={open}
         title="Drag along edge · Click to open team chat"
       >
-        {open ? <X className="size-4" /> : <UsersRound className="size-4" />}
+        <span className="ml-1.5 grid size-7 shrink-0 place-items-center rounded-lg bg-white/14 ring-1 ring-inset ring-white/15">
+          {open ? <X className="size-4" /> : <UsersRound className="size-[17px]" />}
+        </span>
+        <span
+          className={`ml-2 whitespace-nowrap text-xs font-semibold tracking-wide transition-opacity duration-150 ${edgeExpanded ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          aria-hidden={!edgeExpanded}
+        >
+          {open ? 'Close chat' : 'Team chat'}
+        </span>
+        <span aria-hidden="true" className="absolute inset-y-2 right-0 w-px bg-white/20" />
         {!open && totalUnread > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full border-2 border-white bg-red-500 px-0.5 text-[8px] font-bold text-white dark:border-card">
+          <span className="absolute left-0 top-0 grid min-h-[17px] min-w-[17px] -translate-x-[30%] -translate-y-[30%] place-items-center rounded-full border-2 border-white bg-red-500 px-0.5 text-[8px] font-bold leading-none text-white shadow-sm dark:border-card">
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         ) : null}

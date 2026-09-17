@@ -35,7 +35,7 @@ function currentStage(job: EventJob) {
 }
 
 export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
-  const [selected, setSelected] = useState<EventJob | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [eventDate, setEventDate] = useState('');
@@ -51,6 +51,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
   const pageCount = Math.max(1, Math.ceil(filteredJobs.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const visibleJobs = filteredJobs.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const selected = selectedId ? jobs.find((job) => job.id === selectedId) ?? null : null;
 
   if (!jobs.length) {
     return (
@@ -145,7 +146,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
                 size="sm"
                 variant="outline"
                 className="h-8 w-fit shrink-0 bg-white dark:bg-card px-3 text-xs"
-                onClick={() => setSelected(job)}
+                onClick={() => setSelectedId(job.id)}
               >
                 <Route className="size-3.5" />
                 Track
@@ -160,7 +161,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
           <button
             type="button"
             aria-label="Close job tracker"
-            onClick={() => setSelected(null)}
+            onClick={() => setSelectedId(null)}
             className="absolute inset-0 bg-[#211d18]/55 backdrop-blur-[2px]"
           />
           <dialog
@@ -188,7 +189,7 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
                 <button
                   type="button"
                   aria-label="Close job tracker"
-                  onClick={() => setSelected(null)}
+                  onClick={() => setSelectedId(null)}
                   className="grid size-8 shrink-0 place-items-center rounded-full border bg-white dark:bg-card text-muted-foreground transition hover:text-foreground"
                 >
                   <X className="size-4" />
@@ -212,7 +213,11 @@ export function EventTrackingList({ jobs }: { jobs: EventJob[] }) {
             </header>
 
             <ol className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              {trackingTimeline(selected.stages, selected.stylistExecutions).map(
+              {trackingTimeline(
+                selected.stages,
+                selected.stylistExecutions,
+                selected.status === 'closed',
+              ).map(
                 (stage, index, orderedStages) => {
                   const done = stage.status === 'done';
                   const current =
