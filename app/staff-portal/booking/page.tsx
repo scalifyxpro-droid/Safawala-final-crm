@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { redirect } from 'next/navigation';
 import { PackageCheck, Plus, ReceiptText, Users, Wrench } from 'lucide-react';
 import { requireDepartment } from '@/lib/staff-portal/guard';
@@ -7,7 +8,7 @@ import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
+import { bookingDateHeading, friendlyDate, money, statusLabel, statusTone } from '@/lib/bookings';
 import { withUserContext } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,7 @@ export default async function StaffBookingPage() {
         tx.unsafe(`
           select
             b.id, b.booking_number, b.booking_type, b.status, b.payment_status, b.event_name, b.event_date, b.total,
+            b.created_at::text as created_at,
             case when c.id is null then null else json_build_object('name', c.name) end as customers
           from public.bookings b
           left join public.customers c on c.id = b.customer_id
@@ -55,6 +57,7 @@ export default async function StaffBookingPage() {
           payment_status: string;
           event_name: string;
           event_date: string;
+          created_at: string;
           total: number;
           customers: { name: string } | null;
         }>,
@@ -190,9 +193,14 @@ export default async function StaffBookingPage() {
           <CardContent className="p-0">
             {recent.length ? (
               <div className="divide-y divide-border">
-                {recent.map((booking) => (
+                {recent.map((booking, index) => (
+                  <Fragment key={booking.id}>
+                  {booking.created_at.slice(0, 10) !== recent[index - 1]?.created_at.slice(0, 10) ? (
+                    <div className="bg-[#f8f2e9] px-4 py-2.5 text-sm font-semibold text-[#70481c] dark:bg-[#241e17] dark:text-[#e6c99d]">
+                      {bookingDateHeading(booking.created_at)}
+                    </div>
+                  ) : null}
                   <Link
-                    key={booking.id}
                     href={`/bookings/${booking.id}`}
                     className="flex flex-col gap-2 px-4 py-3 transition hover:bg-[#fcfaf7] dark:hover:bg-[#241e17] sm:flex-row sm:items-center"
                   >
@@ -218,6 +226,7 @@ export default async function StaffBookingPage() {
                       {money(booking.total)}
                     </span>
                   </Link>
+                  </Fragment>
                 ))}
               </div>
             ) : (

@@ -96,6 +96,7 @@ export default async function StaffQcPage({
       eventName: job.eventSummary.eventName,
       bookingNumber: job.bookingNumber,
       bookingDate: friendlyDate(job.createdAt.slice(0, 10)),
+      bookingDateKey: job.createdAt.slice(0, 10),
       eventDate: friendlyDate(job.eventSummary.eventDate),
       eventTime: job.eventSummary.eventTime ? friendlyTime(job.eventSummary.eventTime) : null,
       venue: job.eventSummary.venue,
@@ -144,7 +145,7 @@ export default async function StaffQcPage({
         <QueueFilterBar basePath="/staff-portal/qc" search={q} view={view} />
 
         {jobs.length ? (
-          <DepartmentJobCardGrid items={jobCards} clickableCards />
+          <DepartmentJobCardGrid items={jobCards} groupByBookingDate clickableCards />
         ) : (
           <Card className="overflow-hidden border-border shadow-level-1">
             <CardContent className="p-0">
