@@ -100,9 +100,10 @@ export async function getPersonalPerformanceData(input: {
           c.credited_at,
           coalesce(j.state -> 'eventSummary' ->> 'eventName', 'Completed event') as event_name,
           nullif(j.state -> 'eventSummary' ->> 'eventDate', '') as event_date,
-          nullif(j.booking_number, '') as booking_number
+          nullif(b.booking_number, '') as booking_number
         from public.staff_performance_credits c
         left join public.event_jobs j on j.id = c.event_job_id
+        left join public.bookings b on b.id = j.booking_id
         where c.staff_id = ${input.staffMemberId}
           or (
             c.staff_id is null
