@@ -3,6 +3,7 @@
 import { requireUser } from '@/lib/auth/session';
 import { withServiceRole, withUserContext, type Tx } from '@/lib/db/client';
 import { getPublicFilePath, uploadFile } from '@/lib/storage/client';
+import { normalizeInventoryProductId } from '@/lib/inventory-product-id';
 
 const PRODUCT_IMAGES_BUCKET = 'product-images';
 
@@ -348,9 +349,10 @@ export async function updateProductStatusAction(
   }
 }
 
-export async function deleteProductAction(productId: number): Promise<{ error: string }> {
+export async function deleteProductAction(productId: number | string): Promise<{ error: string }> {
   try {
-    if (!Number.isSafeInteger(productId) || productId <= 0) return { error: 'Invalid product ID.' };
+    const id = normalizeInventoryProductId(productId);
+    if (!id) return { error: 'Invalid product ID.' };
     const user = await requireUser();
     if (user.role !== 'admin') return { error: 'Only an administrator can delete inventory products.' };
     const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`
@@ -363,7 +365,7 @@ export async function deleteProductAction(productId: number): Promise<{ error: s
     await withServiceRole(async (tx) => {
       const [product] = await tx<{ id: number }[]>`
         select id from public.products
-        where id = ${productId} and owner_id = ${user.id}
+        where id = ${id} and owner_id = ${user.id}
         for update
       `;
       if (!product) throw new Error('Product not found. Refresh inventory and try again.');
@@ -373,15 +375,15 @@ export async function deleteProductAction(productId: number): Promise<{ error: s
       // product, so remove that package membership in the same transaction.
       await tx`
         update public.booking_items set product_id = null
-        where product_id = ${productId} and owner_id = ${user.id}
+        where product_id = ${id} and owner_id = ${user.id}
       `;
       await tx`
         delete from public.package_items
-        where product_id = ${productId} and owner_id = ${user.id}
+        where product_id = ${id} and owner_id = ${user.id}
       `;
       const deleted = await tx<{ id: number }[]>`
         delete from public.products
-        where id = ${productId} and owner_id = ${user.id}
+        where id = ${id} and owner_id = ${user.id}
         returning id
       `;
       if (!deleted.length) throw new Error('Product was not deleted. Refresh inventory and try again.');
