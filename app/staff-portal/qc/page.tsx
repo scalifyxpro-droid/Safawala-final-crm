@@ -144,7 +144,7 @@ export default async function StaffQcPage({
         <QueueFilterBar basePath="/staff-portal/qc" search={q} view={view} />
 
         {jobs.length ? (
-          <DepartmentJobCardGrid items={jobCards} />
+          <DepartmentJobCardGrid items={jobCards} clickableCards />
         ) : (
           <Card className="overflow-hidden border-border shadow-level-1">
             <CardContent className="p-0">

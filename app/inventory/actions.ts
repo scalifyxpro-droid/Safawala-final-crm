@@ -1,7 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/session';
-import { withUserContext, type Tx } from '@/lib/db/client';
+import { withServiceRole, withUserContext, type Tx } from '@/lib/db/client';
 import { getPublicFilePath, uploadFile } from '@/lib/storage/client';
 
 const PRODUCT_IMAGES_BUCKET = 'product-images';
@@ -350,12 +350,41 @@ export async function updateProductStatusAction(
 
 export async function deleteProductAction(productId: number): Promise<{ error: string }> {
   try {
+    if (!Number.isSafeInteger(productId) || productId <= 0) return { error: 'Invalid product ID.' };
     const user = await requireUser();
-    await withUserContext(user.id, (tx) => tx`
-      delete from public.products where id = ${productId}
+    const [profile] = await withUserContext(user.id, (tx) => tx<{ role: string }[]>`
+      select role from public.profiles where id = ${user.id}
     `);
+    if (profile?.role !== 'admin') return { error: 'Only an administrator can delete inventory products.' };
+
+    await withServiceRole(async (tx) => {
+      const [product] = await tx<{ id: number }[]>`
+        select id from public.products
+        where id = ${productId} and owner_id = ${user.id}
+        for update
+      `;
+      if (!product) throw new Error('Product not found. Refresh inventory and try again.');
+
+      // Booking items keep their recorded name, quantity and price; only the
+      // live catalogue reference is removed. Packages cannot retain a deleted
+      // product, so remove that package membership in the same transaction.
+      await tx`
+        update public.booking_items set product_id = null
+        where product_id = ${productId} and owner_id = ${user.id}
+      `;
+      await tx`
+        delete from public.package_items
+        where product_id = ${productId} and owner_id = ${user.id}
+      `;
+      await tx`
+        delete from public.products
+        where id = ${productId} and owner_id = ${user.id}
+      `;
+    });
     return { error: '' };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : 'Product could not be deleted.' };
+    return { error: (error as { code?: string })?.code === '23503'
+      ? 'This product is still used by another record and cannot be deleted safely.'
+      : error instanceof Error ? error.message : 'Product could not be deleted.' };
   }
 }

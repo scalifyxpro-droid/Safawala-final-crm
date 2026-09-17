@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireDepartment } from '@/lib/staff-portal/guard';
-import { getJob, submitQualityCheck, submitPackingChecklist, submitReturnQualityCheck } from '@/lib/event-jobs/store';
+import { getJob, sendQcIssueToWarehouse, submitQualityCheck, submitPackingChecklist, submitReturnQualityCheck } from '@/lib/event-jobs/store';
 import type { PackingChecklist, QcIssueType, QcItemCheck, ReturnQcItemCheck } from '@/lib/event-jobs/types';
 import { withServiceRole } from '@/lib/db/client';
 import { deleteFiles, uploadFile } from '@/lib/storage/client';
@@ -61,11 +61,60 @@ export async function submitQualityCheckAction(
       evidenceNote: textValue(formData.get(`evidenceNote-${index}`)).trim(),
     };
   });
-
-  const result = await submitQualityCheck(jobId, items, session.name);
+  const proofPhotos = formData.getAll('qcProofPhotos').filter((value): value is File => value instanceof File && value.size > 0);
+  if (!proofPhotos.length) return { error: 'Add at least one product QC proof photo.' };
+  if (proofPhotos.length > MAX_PROOF_PHOTOS) return { error: `Add no more than ${MAX_PROOF_PHOTOS} proof photos.` };
+  if (proofPhotos.some((file) => !file.type.startsWith('image/'))) return { error: 'Proof files must be images.' };
+  if (proofPhotos.some((file) => file.size > MAX_PROOF_BYTES)) return { error: 'Each proof photo must be 3 MB or smaller.' };
+  const job = await getJob(jobId);
+  const qcStage = job?.stages.find((stage) => stage.key === 'quality_check');
+  if (!job || !qcStage || !['open', 'in_progress'].includes(qcStage.status)) return { error: 'Quality check is not open for this job.' };
+  const ownerId = await ownerIdForJob(jobId);
+  if (!ownerId) return { error: 'Could not verify this job for proof upload.' };
+  const uploadedPaths: string[] = [];
+  try {
+    for (const [index, photo] of proofPhotos.entries()) {
+      const extension = photo.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg';
+      const path = `${ownerId}/qc-check/${jobId}/${Date.now()}-${index}.${extension}`;
+      const uploaded = await uploadFile(PROOF_BUCKET, path, photo);
+      uploadedPaths.push(uploaded.path);
+    }
+  } catch (error) {
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
+    return { error: error instanceof Error ? `Proof photo upload failed: ${error.message}` : 'Proof photo upload failed.' };
+  }
+  let result;
+  try {
+    result = await submitQualityCheck(jobId, items, session.name, uploadedPaths);
+  } catch (error) {
+    await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
+    return { error: error instanceof Error ? error.message : 'Could not save Quality Check. Please try again.' };
+  }
+  if (result.error) await deleteFiles(PROOF_BUCKET, uploadedPaths).catch(() => undefined);
   if (result.error) return { error: result.error };
 
-  revalidateJob(jobId);
+  revalidateJob(jobId, result.job?.bookingId);
+  return { error: '', success: true };
+}
+
+export async function sendQcIssueToWarehouseAction(
+  _prevState: QcFormState,
+  formData: FormData,
+): Promise<QcFormState> {
+  const session = await requireDepartment('qc');
+  const jobId = textValue(formData.get('jobId')).trim();
+  const itemName = textValue(formData.get('itemName')).trim();
+  const issueType = textValue(formData.get('issueType')) as QcIssueType;
+  const remarks = textValue(formData.get('remarks')).trim();
+  if (!jobId || !itemName) return { error: 'Choose a product to return.' };
+  let result;
+  try {
+    result = await sendQcIssueToWarehouse(jobId, itemName, issueType, remarks, session.name);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not return this job. Please try again.' };
+  }
+  if (result.error) return { error: result.error };
+  revalidateJob(jobId, result.job?.bookingId);
   return { error: '', success: true };
 }
 

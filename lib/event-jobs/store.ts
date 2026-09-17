@@ -1125,10 +1125,89 @@ export async function submitWarehousePreparation(
 
 export type QcResult = { job?: EventJob; error?: string };
 
+export async function sendQcIssueToWarehouse(
+  jobId: string,
+  itemName: string,
+  issueType: QcItemCheck['issueType'],
+  remarks: string,
+  staffName: string,
+): Promise<QcResult> {
+  const jobs = await readAll(jobId);
+  const index = jobs.findIndex((job) => job.id === jobId);
+  if (index === -1) return { error: 'Job not found.' };
+  const job = jobs[index];
+  const warehouseStage = findStage(job, 'warehouse_pick');
+  const qcStage = findStage(job, 'quality_check');
+  const packingStage = findStage(job, 'packing');
+  if (
+    job.status !== 'active' ||
+    warehouseStage?.status !== 'done' ||
+    qcStage?.status !== 'done' ||
+    !job.qualityCheck ||
+    !packingStage ||
+    job.bookingFinalCheck ||
+    job.stylistExecutions.some((entry) => entry.status !== 'not_started') ||
+    job.collectionCheck ||
+    ['collection', 'return_quality_check', 'return_warehouse'].some((key) => {
+      const stage = job.stages.find((entry) => entry.key === key);
+      return stage && stage.status !== 'not_started';
+    })
+  ) {
+    return { error: 'This job can no longer be returned to Warehouse from QC.' };
+  }
+  const prepared = job.warehousePrep?.items.find((item) => item.itemName === itemName);
+  if (!prepared || (prepared.preparedQuantity ?? 0) <= 0) {
+    return { error: 'Choose a product that was picked for this job.' };
+  }
+  if (issueType === 'none' || !['stain', 'tear', 'missing_part', 'other'].includes(issueType)) {
+    return { error: 'Select the product issue.' };
+  }
+  if (!remarks.trim()) return { error: 'Add a short note so Warehouse knows what to correct.' };
+
+  const now = new Date().toISOString();
+  const items: QcItemCheck[] = job.warehousePrep!.items
+    .filter((item) => (item.preparedQuantity ?? 0) > 0)
+    .map((item) => ({
+      itemName: item.itemName,
+      checkedQuantity: item.preparedQuantity,
+      goodQuantity: item.itemName === itemName ? 0 : item.preparedQuantity,
+      issueType: item.itemName === itemName ? issueType : 'none',
+      remarks: item.itemName === itemName ? remarks.trim() : '',
+      evidenceNote: '',
+    }));
+  let updated: EventJob = {
+    ...job,
+    qualityCheck: { items, completedAt: now, completedBy: staffName },
+    packingChecklist: null,
+  };
+  updated = setStage(updated, 'warehouse_pick', {
+    status: 'open', openedAt: now, completedAt: null, completedBy: null,
+  });
+  updated = setStage(updated, 'quality_check', {
+    status: 'not_started', openedAt: null, completedAt: null, completedBy: null,
+  });
+  updated = setStage(updated, 'packing', {
+    status: 'not_started', openedAt: null, completedAt: null, completedBy: null,
+  });
+  updated = setStage(updated, 'booking_final_check', {
+    status: 'not_started', openedAt: null, completedAt: null, completedBy: null,
+  });
+  updated = {
+    ...updated,
+    updatedAt: now,
+    activity: [activityEntry(staffName, 'qc', 'quality_check_returned_to_warehouse', `${itemName}: ${remarks.trim()}`), ...updated.activity],
+  };
+  jobs[index] = updated;
+  await writeAll([updated], { expectedUpdatedAt: job.updatedAt });
+  await notifyDepartment(job.id, 'warehouse', `${job.id} — QC returned ${itemName} for correction: ${remarks.trim()}`);
+  return { job: updated };
+}
+
 export async function submitQualityCheck(
   jobId: string,
   items: QcItemCheck[],
   staffName: string,
+  proofPhotoPaths: string[] = [],
 ): Promise<QcResult> {
   const jobs = await readAll(jobId);
   const index = jobs.findIndex((job) => job.id === jobId);
@@ -1182,7 +1261,7 @@ export async function submitQualityCheck(
   );
   let updated: EventJob = {
     ...job,
-    qualityCheck: { items, completedAt: now, completedBy: staffName },
+    qualityCheck: { items, proofPhotoPaths, completedAt: now, completedBy: staffName },
   };
   updated = setStage(updated, 'quality_check', {
     status: 'done',

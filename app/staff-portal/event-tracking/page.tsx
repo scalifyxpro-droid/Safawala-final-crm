@@ -23,7 +23,7 @@ export default async function EventTrackingPage() {
           title="Event Tracking"
           subtitle="Check the current progress of every confirmed event"
         />
-        <EventTrackingList jobs={jobs} />
+        <EventTrackingList jobs={jobs} cardView={session.departments.some((grant) => grant.active && grant.department === 'qc')} />
       </div>
     </StaffPortalShell>
   );

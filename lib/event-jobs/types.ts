@@ -92,6 +92,7 @@ export type QcItemCheck = {
 
 export type QualityCheck = {
   items: QcItemCheck[];
+  proofPhotoPaths?: string[];
   completedAt: string | null;
   completedBy: string | null;
 };

@@ -15,7 +15,7 @@ import {
   WithdrawInterestButton,
 } from '@/components/staff-portal/stylist-interest-button';
 
-export async function StylistJobModal({ jobId }: { jobId: string }) {
+export async function StylistJobModal({ jobId, closeHref = '/staff-portal/stylist' }: { jobId: string; closeHref?: string }) {
   const session = await requireStylistSession();
   const job = await stylistJobForAccount(jobId, session.id, session.isMainId);
   if (!job) return null;
@@ -36,7 +36,7 @@ export async function StylistJobModal({ jobId }: { jobId: string }) {
       aria-modal="true"
       aria-label="Stylist event details"
     >
-      <div className="w-full max-w-[680px] overflow-hidden rounded-2xl border border-[#dfd3c3] bg-[#fcfaf7] dark:bg-[#241e17] shadow-2xl">
+      <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-[680px] overflow-y-auto rounded-2xl border border-[#dfd3c3] bg-[#fcfaf7] dark:bg-[#241e17] shadow-2xl">
         <div className="flex items-start justify-between border-b bg-white dark:bg-card px-5 py-4 sm:px-6">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#70481c]">
@@ -50,7 +50,7 @@ export async function StylistJobModal({ jobId }: { jobId: string }) {
             </p>
           </div>
           <Link
-            href="/staff-portal/stylist"
+            href={closeHref}
             aria-label="Close event details"
             className="rounded-full p-2 text-muted-foreground hover:bg-[#f5ead8] hover:text-[#70481c]"
           >
@@ -149,7 +149,7 @@ export async function StylistJobModal({ jobId }: { jobId: string }) {
             </div>
             {interest?.status === 'interested' ? (
               <WithdrawInterestButton jobId={job.id} />
-            ) : !interest ? (
+            ) : !interest && !session.isMainId ? (
               <StylistInterestButton jobId={job.id} />
             ) : null}
           </div>

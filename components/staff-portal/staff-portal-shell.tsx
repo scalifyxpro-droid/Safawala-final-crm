@@ -30,6 +30,7 @@ import {
   Bell,
   Boxes,
   CalendarDays,
+  ChevronDown,
   ChevronUp,
   CircleCheckBig,
   CircleGauge,
@@ -40,6 +41,7 @@ import {
   Languages,
   LogOut,
   Menu,
+  Ellipsis,
   PackageCheck,
   Sparkles,
   Plus,
@@ -55,14 +57,19 @@ function SidebarNavigation({
   departments,
   isMainId,
   portalKind,
+  variant = 'sidebar',
+  onNavigate,
 }: {
   modules: AccessModule[];
   permissions: StaffModule[];
   departments: StaffDepartmentGrant[];
   isMainId: boolean;
   portalKind: StaffPortalKind;
+  variant?: 'sidebar' | 'bottom';
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
   const moduleIcons: Partial<Record<AccessModule, typeof LayoutDashboard>> = {
     dashboard: LayoutDashboard,
     quotations: ClipboardList,
@@ -262,27 +269,64 @@ function SidebarNavigation({
           ? []
           : [{ href: '/staff-portal/performance', label: 'My Performance', icon: CircleGauge }]),
       ];
+  const matchesPath = (candidate: string) =>
+    candidate === '/staff-portal'
+      ? pathname === candidate
+      : candidate === '/bookings'
+        ? pathname === '/bookings' || /^\/bookings\/\d+/.test(pathname)
+        : pathname === candidate || pathname.startsWith(`${candidate}/`);
+  const isActiveHref = (href: string) =>
+    matchesPath(href) &&
+    !navigationLinks.some((other) => other.href !== href && other.href.length > href.length && matchesPath(other.href));
+
+  if (variant === 'bottom') {
+    const primaryLinks = navigationLinks.slice(0, 3);
+    const extraLinks = navigationLinks.slice(3);
+    const shortLabels: Record<string, string> = {
+      'All Bookings': 'Bookings',
+      'Picking & Returns': 'Warehouse',
+      'QC & Packing': 'QC',
+      'Stylist opportunities': 'Opportunities',
+      'Stylist dashboard': 'Stylist',
+      'All assigned events': 'Assigned',
+      'Event Tracking': 'Tracker',
+      'My Performance': 'Performance',
+    };
+    return (
+      <nav aria-label="Staff mobile navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_18px_rgba(52,36,19,0.08)] backdrop-blur dark:bg-card/95 lg:hidden">
+        <div className={`grid min-h-16 ${extraLinks.length ? 'grid-cols-4' : 'grid-cols-3'} items-stretch px-1.5 sm:px-4`}>
+          {primaryLinks.map(({ href, label, icon: Icon }) => {
+            const active = isActiveHref(href);
+            return <Link key={href} href={href} aria-label={label} aria-current={active ? 'page' : undefined} className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[10px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'text-[#70481c] dark:text-[#f0d9ad]' : 'text-muted-foreground hover:text-foreground'}`}>
+              <span className={`grid size-8 place-items-center rounded-lg ${active ? 'bg-[#f5ead8] dark:bg-[#33291c]' : ''}`}><Icon aria-hidden="true" className="size-[18px]" /></span>
+              <span className="max-w-full truncate">{shortLabels[label] ?? label}</span>
+            </Link>;
+          })}
+          {extraLinks.length ? <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+            <SheetTrigger aria-label="More staff modules" className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[10px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${extraLinks.some((link) => isActiveHref(link.href)) ? 'text-[#70481c] dark:text-[#f0d9ad]' : 'text-muted-foreground hover:text-foreground'}`}>
+              <span className={`grid size-8 place-items-center rounded-lg ${extraLinks.some((link) => isActiveHref(link.href)) ? 'bg-[#f5ead8] dark:bg-[#33291c]' : ''}`}><Ellipsis aria-hidden="true" className="size-[19px]" /></span>
+              <span>More</span>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="max-h-[80dvh] rounded-t-2xl border-border bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:bg-card">
+              <SheetHeader className="px-0 pb-0"><SheetTitle>All modules</SheetTitle><SheetDescription>Choose a staff portal section</SheetDescription></SheetHeader>
+              <div className="min-h-0 overflow-y-auto pb-2">
+                <SidebarNavigation modules={modules} permissions={permissions} departments={departments} isMainId={isMainId} portalKind={portalKind} onNavigate={() => setMoreOpen(false)} />
+              </div>
+            </SheetContent>
+          </Sheet> : null}
+        </div>
+      </nav>
+    );
+  }
   return (
     <nav aria-label="Primary navigation" className="mt-8 space-y-1">
       {navigationLinks.map(({ href, label, icon: Icon }) => {
-        const matchesPath = (candidate: string) =>
-          candidate === '/staff-portal'
-            ? pathname === candidate
-            : candidate === '/bookings'
-              ? pathname === '/bookings' || /^\/bookings\/\d+/.test(pathname)
-              : pathname === candidate || pathname.startsWith(`${candidate}/`);
-        const isActive =
-          matchesPath(href) &&
-          !links.some(
-            (other) =>
-              other.href !== href &&
-              other.href.length > href.length &&
-              matchesPath(other.href),
-          );
+        const isActive = isActiveHref(href);
         return (
           <Link
             key={href}
             href={href}
+            onClick={onNavigate}
             aria-current={isActive ? 'page' : undefined}
             className={`flex h-11 items-center gap-2.5 rounded-lg border px-2.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isActive ? 'border-[#e4d2b6] bg-[#f5ead8] font-semibold text-[#70481c] dark:border-[#4a3c2a] dark:bg-[#33291c] dark:text-[#f0d9ad]' : 'border-transparent text-muted-foreground hover:bg-[#f7f4ef] dark:hover:bg-[#241e17] hover:text-foreground dark:hover:bg-[#241e17]'}`}
           >
@@ -370,11 +414,14 @@ function BrandDivider() {
 
 function LanguageSelector() {
   const { language, setLanguage, saving, error } = useStaffLanguage();
-  return <div className="pointer-events-auto relative flex h-9 w-10 shrink-0 items-center justify-center gap-1 rounded-lg border border-[#dfd3c3] bg-[#fcfaf7] text-[#70481c] shadow-sm dark:border-[#3a2f22] dark:bg-[#241e17] dark:text-[#f0d9ad] sm:w-auto sm:px-2">
-    <Languages aria-hidden="true" className="size-4" />
-    <span aria-hidden="true" className="text-[10px] font-bold sm:hidden">{language.toUpperCase()}</span>
+  const languageLabel = language === 'hi' ? 'हिन्दी' : language === 'gu' ? 'ગુજરાતી' : 'English';
+  return <div data-no-translate className="pointer-events-auto relative inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#dfd3c3] bg-[#fcfaf7] px-2.5 text-[#70481c] shadow-sm transition hover:border-[#b98a4a] hover:bg-[#f5ead8] focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 dark:border-[#3a2f22] dark:bg-[#241e17] dark:text-[#f0d9ad] dark:hover:bg-[#33291c] sm:gap-2 sm:px-3">
+    <Languages aria-hidden="true" className="size-4 shrink-0" />
+    <span aria-hidden="true" className="text-xs font-semibold sm:hidden">{language.toUpperCase()}</span>
+    <span aria-hidden="true" className="hidden max-w-20 truncate text-sm font-semibold sm:inline">{languageLabel}</span>
+    <ChevronDown aria-hidden="true" className="hidden size-3.5 shrink-0 opacity-70 sm:block" />
     <label className="sr-only" htmlFor="staff-language">Staff portal language</label>
-    <select id="staff-language" value={language} disabled={saving} onChange={(event) => void setLanguage(event.target.value as StaffLanguage)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus-visible:ring-2 focus-visible:ring-ring sm:static sm:h-8 sm:w-[92px] sm:bg-transparent sm:text-sm sm:font-semibold sm:opacity-100" aria-describedby={error ? 'staff-language-error' : undefined}>
+    <select id="staff-language" value={language} disabled={saving} onChange={(event) => void setLanguage(event.target.value as StaffLanguage)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait" aria-label="Staff portal language" aria-describedby={error ? 'staff-language-error' : undefined}>
       <option value="en">English</option>
       <option value="hi">हिन्दी</option>
       <option value="gu">ગુજરાતી</option>
@@ -405,6 +452,7 @@ export function StaffPortalShell({
   language?: StaffLanguage;
 }) {
   const effectiveModules = accessModules ?? [];
+  const hasBottomNavigation = portalKind === 'staff' && departments.some((grant) => grant.active && ['booking', 'warehouse', 'qc', 'stylist'].includes(grant.department));
   const [pageHeader, setPageHeader] = useState<PageHeader>(null);
   return (
     <DashboardHeaderContext.Provider value={setPageHeader}><StaffLanguageProvider initialLanguage={language}><div className="min-h-dvh w-full min-w-0 max-w-full overflow-x-clip bg-surface">
@@ -464,7 +512,7 @@ export function StaffPortalShell({
                 </div>
               </SheetContent>
             </Sheet>
-            {pageHeader ? <div className="flex min-w-0 flex-1 items-center gap-2"><div className="flex min-w-0 flex-1 items-center">{pageHeader.backHref !== null ? <Link href={pageHeader.backHref ?? '/staff-portal'} aria-label="Back" className="pointer-events-auto mr-2 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted sm:mr-3"><ArrowLeft className="size-4" strokeWidth={3} /></Link> : null}<div className="min-w-0"><span className="block truncate text-base font-semibold leading-5">{pageHeader.title}</span><span className="hidden truncate text-[11px] text-muted-foreground sm:block">{pageHeader.subtitle}</span></div></div>{pageHeader.actions ? <div className="pointer-events-auto ml-auto flex max-w-[42vw] shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:max-w-[52vw] lg:max-w-none [&::-webkit-scrollbar]:hidden [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:shrink-0 [&_[data-slot=button]]:px-3 [&_[data-slot=button]]:text-sm">{pageHeader.actions}</div> : null}</div> : <div className="min-w-0 flex-1" />}
+            {pageHeader ? <div className="flex min-w-0 flex-1 items-center gap-2"><div className="flex min-w-0 flex-1 items-center">{pageHeader.backHref !== null ? <Link href={pageHeader.backHref ?? '/staff-portal'} aria-label="Back" className="pointer-events-auto mr-2 hidden size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted lg:inline-flex"><ArrowLeft className="size-4" strokeWidth={3} /></Link> : null}<div className="min-w-0"><span className="block truncate text-base font-semibold leading-5">{pageHeader.title}</span><span className="hidden truncate text-[11px] text-muted-foreground sm:block">{pageHeader.subtitle}</span></div></div>{pageHeader.actions ? <div className="pointer-events-auto ml-auto flex max-w-[42vw] shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:max-w-[52vw] lg:max-w-none [&::-webkit-scrollbar]:hidden [&_[data-slot=button]]:h-9 [&_[data-slot=button]]:shrink-0 [&_[data-slot=button]]:px-3 [&_[data-slot=button]]:text-sm">{pageHeader.actions}</div> : null}</div> : <div className="min-w-0 flex-1" />}
             <LanguageSelector />
             <Link
               href="/staff-portal/notifications"
@@ -483,10 +531,11 @@ export function StaffPortalShell({
             </Link>
           </div>
         </header>
-        <main className="w-full min-w-0 max-w-full overflow-x-clip bg-surface px-4 pb-5 pt-[5.25rem] sm:px-6 sm:pb-7 sm:pt-[5.75rem] lg:px-8">
+        <main className={`w-full min-w-0 max-w-full overflow-x-clip bg-surface px-4 pt-[5.25rem] sm:px-6 sm:pt-[5.75rem] lg:px-8 ${hasBottomNavigation ? 'pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-5' : 'pb-5 sm:pb-7'}`}>
           {children}
         </main>
       </div>
+      {hasBottomNavigation ? <SidebarNavigation modules={effectiveModules} permissions={permissions} departments={departments} isMainId={isMainId} portalKind={portalKind} variant="bottom" /> : null}
       <TeamChatWidget />
     </div></StaffLanguageProvider></DashboardHeaderContext.Provider>
   );

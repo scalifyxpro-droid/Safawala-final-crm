@@ -59,9 +59,9 @@ export function BookingsListToolbar({
   }, [rentalHref, router, saleHref]);
 
   return (
-    <div className="flex flex-col gap-3 border-b bg-white dark:bg-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col items-center gap-3 border-b bg-white px-4 py-3 dark:bg-card lg:flex-row lg:justify-between">
       <div
-        className="inline-flex w-fit items-center rounded-xl border bg-[#fcfaf7] dark:bg-[#241e17] p-1 shadow-sm"
+        className="inline-flex w-fit items-center rounded-xl border bg-[#fcfaf7] p-1 shadow-sm dark:bg-[#241e17]"
         aria-label="Booking mode"
       >
         {modes.map(({ value, label, icon: Icon }) => {
@@ -86,7 +86,7 @@ export function BookingsListToolbar({
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-center text-sm lg:justify-start lg:text-left">
         <p className="text-muted-foreground" aria-live="polite">
           {count === 0 ? (
             `No ${itemLabel} to show`

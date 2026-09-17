@@ -407,7 +407,7 @@ export default async function DashboardPage({
     <BookingPortalShell email={user.email ?? 'Safawala user'}>
       <div className="mx-auto w-full max-w-[1440px] space-y-4 sm:space-y-5">
         <DashboardHeader
-          title="Booking Dashboard"
+          title="Dashboard"
           subtitle="Bookings, quotations and jobs waiting for closure"
           actions={
             <div className="flex items-center gap-2">

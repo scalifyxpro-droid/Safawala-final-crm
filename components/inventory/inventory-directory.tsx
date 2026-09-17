@@ -346,9 +346,10 @@ export function InventoryDirectory({
   }
 
   async function deleteProduct(product: InventoryProduct) {
-    if (!window.confirm(`Delete ${product.name} permanently?`)) return;
+    if (!window.confirm(`Delete ${product.name} permanently? Existing booking item details will remain in booking history, but this product will be removed from any packages that contain it.`)) return;
     const { error } = await deleteProductAction(product.id);
     if (error) { setMessage(error); return; }
+    setMessage('');
     setProducts((current) => current.filter((item) => item.id !== product.id));
     setNotice(`${product.name} was deleted.`);
     setRefreshKey((current) => current + 1);
@@ -459,7 +460,7 @@ export function InventoryDirectory({
 
       {message ? (
         <Alert variant="destructive">
-          <AlertTitle>Inventory could not be loaded</AlertTitle>
+          <AlertTitle>Inventory action could not be completed</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       ) : null}

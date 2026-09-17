@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
-import { Button } from '@/components/ui/button';
 import {
   CalendarDayGrid,
   type CalendarBooking,
@@ -152,22 +151,15 @@ export default async function BookingCalendar({
           })}
           backHref="/bookings"
           actions={
-            <>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                render={<Link href={move(-1)} aria-label="Previous month" />}
-              >
-                <ChevronLeft />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                render={<Link href={move(1)} aria-label="Next month" />}
-              >
-                <ChevronRight />
-              </Button>
-            </>
+            <div className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-[#dfd3c3] bg-[#fcfaf7] p-1 shadow-sm dark:border-[#3a2f22] dark:bg-[#241e17]">
+              <Link href={move(-1)} aria-label="Previous month" title="Previous month" className="inline-flex size-8 items-center justify-center rounded-lg text-[#70481c] transition hover:bg-[#f5ead8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-[#f0d9ad] dark:hover:bg-[#33291c]">
+                <ChevronLeft aria-hidden="true" className="size-5" strokeWidth={2.5} />
+              </Link>
+              <span className="h-5 w-px bg-[#dfd3c3] dark:bg-[#3a2f22]" aria-hidden="true" />
+              <Link href={move(1)} aria-label="Next month" title="Next month" className="inline-flex size-8 items-center justify-center rounded-lg text-[#70481c] transition hover:bg-[#f5ead8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-[#f0d9ad] dark:hover:bg-[#33291c]">
+                <ChevronRight aria-hidden="true" className="size-5" strokeWidth={2.5} />
+              </Link>
+            </div>
           }
         />
         {error ? (

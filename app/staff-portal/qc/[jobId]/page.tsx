@@ -13,6 +13,7 @@ import { PackingChecklistForm } from '@/components/staff-portal/packing-checklis
 import { PackingSlipButton } from '@/components/staff-portal/packing-slip-button';
 import { ReturnQualityCheckForm } from '@/components/staff-portal/return-quality-check-form';
 import { ReturnQcSlipButton } from '@/components/staff-portal/return-slips';
+import { QcReturnToWarehouseForm } from '@/components/staff-portal/qc-return-to-warehouse-form';
 import { withServiceRole } from '@/lib/db/client';
 import { getSignedFileUrl } from '@/lib/storage/client';
 
@@ -115,6 +116,9 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
     venue: booking?.event_location ?? job.eventSummary.venue,
   };
   const proofPaths = job.packingChecklist?.proofPhotoPaths ?? [];
+  const qcProofPhotoUrls = (
+    await Promise.all((job.qualityCheck?.proofPhotoPaths ?? []).map((path) => getSignedFileUrl(PROOF_BUCKET, path).catch(() => null)))
+  ).filter((url): url is string => Boolean(url));
   const proofPhotoUrls = (
     await Promise.all(proofPaths.map((path) => getSignedFileUrl(PROOF_BUCKET, path)))
   ).filter((url): url is string => typeof url === 'string' && url.length > 0);
@@ -133,6 +137,12 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
   const qcRejectedItemsCount = (job.qualityCheck?.items ?? []).filter(
     (item) => (item.goodQuantity ?? 0) < (item.checkedQuantity ?? 0),
   ).length;
+  const canReturnToWarehouse =
+    job.status === 'active' && Boolean(job.qualityCheck) &&
+    qcStage.status === 'done' && warehousePickStage?.status === 'done' &&
+    !job.bookingFinalCheck && !job.collectionCheck &&
+    job.stages.every((stage) => !['collection', 'return_quality_check', 'return_warehouse'].includes(stage.key) || stage.status === 'not_started') &&
+    job.stylistExecutions.every((entry) => entry.status === 'not_started');
 
   return (
     <StaffPortalShell language={session.languagePreference}
@@ -165,7 +175,7 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
 
         <div className="grid grid-cols-2 gap-2 rounded-xl border bg-white dark:bg-card p-2 shadow-level-1">
           <div className={`rounded-lg px-3 py-2.5 text-center text-sm font-medium ${qcSentBackToWarehouse ? 'bg-amber-100 text-amber-900' : job.qualityCheck ? 'bg-emerald-50 text-emerald-700' : qcOpen ? 'bg-[#a86f2c] text-white' : 'bg-muted text-muted-foreground'}`}>
-            {qcSentBackToWarehouse ? '↩ Sent to Warehouse' : job.qualityCheck ? '✓ QC passed' : 'Quality check'}
+            {qcSentBackToWarehouse ? '↩ Sent to Warehouse' : qcOpen && job.qualityCheck ? 'Quality recheck needed' : job.qualityCheck ? '✓ QC passed' : 'Quality check'}
           </div>
           <div className={`rounded-lg px-3 py-2.5 text-center text-sm font-medium ${job.packingChecklist ? 'bg-emerald-50 text-emerald-700' : packingOpen ? 'bg-[#a86f2c] text-white' : 'bg-muted text-muted-foreground'}`}>
             {job.packingChecklist ? '✓ Packed' : 'Packing'}
@@ -174,7 +184,7 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
 
         <JobTracker stages={job.stages} stylistExecutions={job.stylistExecutions} />
 
-        {job.qualityCheck ? (
+        {qcOpen ? <QualityCheckForm jobId={job.id} items={qcItems} /> : job.qualityCheck ? (
           qcSentBackToWarehouse ? (
             <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-level-1">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -193,7 +203,16 @@ export default async function QcJobDetailPage({ params }: { params: Promise<{ jo
               </div>
             </section>
           )
-        ) : qcOpen ? <QualityCheckForm jobId={job.id} items={qcItems} /> : null}
+        ) : null}
+        {job.qualityCheck && qcProofPhotoUrls.length ? (
+          <section className="rounded-2xl border bg-white p-5 shadow-level-1 dark:bg-card">
+            <h2 className="text-sm font-semibold">QC product photos</h2>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {qcProofPhotoUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border"><Image src={url} alt={`QC product proof ${index + 1}`} fill unoptimized sizes="(max-width: 640px) 50vw, 240px" className="object-cover" /></a>)}
+            </div>
+          </section>
+        ) : null}
+        {canReturnToWarehouse ? <QcReturnToWarehouseForm jobId={job.id} items={qcItems} /> : null}
 
         {job.qualityCheck && !job.packingChecklist && packingOpen ? <PackingChecklistForm jobId={job.id} details={slipDetails} items={packedItems} /> : null}
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { redirect } from 'next/navigation';
 import {
   CalendarDays,
@@ -23,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   BookingRow,
+  bookingDateHeading,
   friendlyDate,
   money,
   statusLabel,
@@ -255,9 +257,16 @@ export default async function BookingsPage({ searchParams }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {bookings.map((booking) => (
+                    {bookings.map((booking, index) => (
+                      <Fragment key={booking.id}>
+                      {booking.created_at.slice(0, 10) !== bookings[index - 1]?.created_at.slice(0, 10) ? (
+                        <tr className="bg-[#f8f2e9] dark:bg-[#241e17]">
+                          <th colSpan={6} scope="colgroup" className="px-5 py-2.5 text-left text-sm font-semibold text-[#70481c] dark:text-[#e6c99d]">
+                            {bookingDateHeading(booking.created_at)}
+                          </th>
+                        </tr>
+                      ) : null}
                       <tr
-                        key={booking.id}
                         className="border-b last:border-0 hover:bg-[#fcfaf7] dark:hover:bg-[#241e17]"
                       >
                         <td className="px-5 py-4">
@@ -271,8 +280,6 @@ export default async function BookingsPage({ searchParams }: Props) {
                             <span className="capitalize">
                               {booking.booking_type}
                             </span>
-                            {' · '}
-                            {friendlyDate(booking.created_at)}
                           </p>
                         </td>
                         <td className="px-5 py-4 font-medium">
@@ -344,17 +351,18 @@ export default async function BookingsPage({ searchParams }: Props) {
                           </div>
                         </td>
                       </tr>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
           </CardContent>
-          <div className="flex items-center justify-between border-t px-5 py-4 text-sm">
+          <div className="flex flex-col items-center justify-center gap-3 border-t px-4 py-4 text-sm lg:flex-row lg:justify-between lg:px-5">
             <p className="text-muted-foreground">
               {count ?? 0} booking{count === 1 ? '' : 's'}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <Button
                 variant="outline"
                 size="icon"

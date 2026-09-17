@@ -139,7 +139,7 @@ export default async function StaffBookingPage() {
             </Link>
           ))}
         </section>
-        <section>
+        <section className="hidden lg:block">
           <Card className="border-border shadow-level-1 ring-0">
             <CardHeader className="border-b py-4">
               <CardTitle className="text-base">Quick actions</CardTitle>

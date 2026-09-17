@@ -6,6 +6,8 @@ import { CalendarDays, CheckCircle2, MapPin, Package, Workflow } from 'lucide-re
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
+import { bookingDateHeading } from '@/lib/bookings';
+import { Fragment } from 'react';
 
 export type DepartmentJobCardItem = {
   id: string;
@@ -16,6 +18,7 @@ export type DepartmentJobCardItem = {
   eventName: string;
   bookingNumber: string;
   bookingDate: string;
+  bookingDateKey?: string;
   eventDate: string;
   eventTime?: string | null;
   venue?: string | null;
@@ -27,8 +30,12 @@ export type DepartmentJobCardItem = {
 
 export function DepartmentJobCardGrid({
   items,
+  groupByBookingDate = false,
+  clickableCards = false,
 }: {
   items: DepartmentJobCardItem[];
+  groupByBookingDate?: boolean;
+  clickableCards?: boolean;
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -54,11 +61,20 @@ export function DepartmentJobCardGrid({
       />
       <CardContent className="bg-[#f8f2e9]/65 p-3 dark:bg-[#201a14] sm:p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visibleItems.map((item) => (
+          {visibleItems.map((item, index) => (
+            <Fragment key={item.id}>
+              {groupByBookingDate && item.bookingDateKey !== visibleItems[index - 1]?.bookingDateKey ? (
+                <div className="col-span-full flex items-center gap-3 pt-2 first:pt-0">
+                  <h2 className="shrink-0 text-sm font-semibold text-[#70481c] dark:text-[#e6c99d]">
+                    {bookingDateHeading(item.bookingDateKey ?? '')}
+                  </h2>
+                  <span className="h-px flex-1 bg-[#dfc59e] dark:bg-[#493822]" aria-hidden="true" />
+                </div>
+              ) : null}
             <article
-              key={item.id}
-              className="flex min-w-0 flex-col rounded-xl border border-[#dfc59e] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-level-2 dark:border-[#493822] dark:bg-card"
+              className={`relative flex min-w-0 flex-col rounded-xl border border-[#dfc59e] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-level-2 dark:border-[#493822] dark:bg-card ${clickableCards ? 'cursor-pointer' : ''}`}
             >
+              {clickableCards ? <Link href={item.href} aria-label={`View details for ${item.jobNumber}, ${item.customerName}`} className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" /> : null}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9b5f17]">
@@ -94,14 +110,14 @@ export function DepartmentJobCardGrid({
                     <Package className="size-3.5" aria-hidden="true" />
                     {item.itemCount} {item.itemCount === 1 ? 'item' : 'items'}
                   </span>
-                  <span>Booking: {item.bookingDate}</span>
+                  {!groupByBookingDate ? <span>Booking: {item.bookingDate}</span> : null}
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#ead8bc] pt-3 dark:border-[#493822]">
                 <Link
                   href={item.href}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-[#fcfaf7] px-3 text-xs font-medium transition hover:bg-[#f5ead8] hover:text-[#70481c] dark:bg-[#241e17]"
+                  className="relative z-10 inline-flex h-9 items-center justify-center rounded-lg border border-border bg-[#fcfaf7] px-3 text-xs font-medium transition hover:bg-[#f5ead8] hover:text-[#70481c] dark:bg-[#241e17]"
                 >
                   View details
                 </Link>
@@ -128,6 +144,7 @@ export function DepartmentJobCardGrid({
                 </Badge>
               </div>
             </article>
+            </Fragment>
           ))}
         </div>
       </CardContent>

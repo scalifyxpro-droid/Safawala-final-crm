@@ -1,12 +1,13 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { AlertCircle, Camera, Check, LoaderCircle, PackageCheck } from 'lucide-react';
+import { AlertCircle, Check, LoaderCircle, PackageCheck } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { submitPackingChecklistAction, type QcFormState } from '@/app/staff-portal/qc/actions';
 import { PackingSlipButton, type PackingSlipDetails, type PackingSlipItem } from '@/components/staff-portal/packing-slip-button';
+import { ProofPhotoPicker } from '@/components/staff-portal/proof-photo-picker';
 
 const initialState: QcFormState = { error: '' };
 
@@ -30,10 +31,9 @@ export function PackingChecklistForm({
 }) {
   const [state, formAction, pending] = useActionState(submitPackingChecklistAction, initialState);
   const [checked, setChecked] = useState(() => CHECKS.map(() => false));
-  const [photoNames, setPhotoNames] = useState<string[]>([]);
+  const [photosValid, setPhotosValid] = useState(false);
   const checkedCount = checked.filter(Boolean).length;
-  const validPhotoCount = photoNames.length > 0 && photoNames.length <= 3;
-  const ready = checkedCount === CHECKS.length && validPhotoCount;
+  const ready = checkedCount === CHECKS.length && photosValid;
 
   return (
     <form action={formAction} className="overflow-hidden rounded-2xl border bg-white dark:bg-card shadow-level-1">
@@ -63,21 +63,7 @@ export function PackingChecklistForm({
           ))}
         </div>
 
-        <label className="block rounded-xl border border-dashed border-[#d6b98d] bg-[#fcfaf7] dark:bg-[#241e17] p-4 text-center">
-          <Camera className="mx-auto size-5 text-[#9a6a2f]" />
-          <span className="mt-2 block text-sm font-medium">Packing proof photos</span>
-          <span className="mt-1 block text-xs text-muted-foreground">1-3 images, maximum 3 MB each</span>
-          <input
-            name="proofPhotos"
-            type="file"
-            accept="image/*"
-            multiple
-            required
-            className="mt-3 block w-full cursor-pointer text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#f5ead8] file:px-3 file:py-2 file:font-medium file:text-[#70481c]"
-            onChange={(event) => setPhotoNames(Array.from(event.target.files ?? []).map((file) => file.name))}
-          />
-          {photoNames.length ? <span className={`mt-2 block text-xs ${validPhotoCount ? 'text-emerald-700' : 'text-red-600'}`}>{photoNames.length} photo{photoNames.length === 1 ? '' : 's'} selected{validPhotoCount ? '' : ' - select no more than 3'}</span> : null}
-        </label>
+        <ProofPhotoPicker name="proofPhotos" title="Packing proof photos" disabled={pending} onValidityChange={setPhotosValid} />
 
         <label className="block text-sm">
           <span className="mb-1.5 block text-muted-foreground">Remarks (optional)</span>

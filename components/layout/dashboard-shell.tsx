@@ -323,7 +323,7 @@ export function DashboardShell({
       return { title: 'Settings', subtitle: 'Manage your CRM preferences' };
     return path === '/dashboard'
       ? {
-          title: 'Booking Dashboard',
+          title: 'Dashboard',
           subtitle: 'Bookings, quotations and jobs waiting for closure',
         }
       : null;
@@ -386,7 +386,7 @@ export function DashboardShell({
                     {pageHeader.backHref ? (
                       <Link
                         href={pageHeader.backHref}
-                        className="pointer-events-auto mr-2 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted sm:mr-3"
+                        className="pointer-events-auto mr-2 hidden size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted lg:inline-flex"
                         aria-label="Back"
                       >
                         <ArrowLeft

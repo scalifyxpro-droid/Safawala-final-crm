@@ -101,6 +101,21 @@ export const friendlyDate = (value: string | Date | null | undefined) => {
   }).format(date);
 };
 
+/** Day heading for lists sorted by the booking's database creation date. */
+export function bookingDateHeading(value: string) {
+  const datePart = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return 'Date not available';
+  const [year, month, day] = datePart.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.toISOString().slice(0, 10) !== datePart) return 'Date not available';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
 export const friendlyDateTime = (value: string | Date) => {
   const date = parseBookingDate(value);
   if (!date) return 'Not added';

@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { submitQualityCheckAction, type QcFormState } from '@/app/staff-portal/qc/actions';
+import { ProofPhotoPicker } from '@/components/staff-portal/proof-photo-picker';
 
 const initialState: QcFormState = { error: '' };
 
@@ -27,6 +28,7 @@ const ISSUE_OPTIONS = [
 export function QualityCheckForm({ jobId, items }: { jobId: string; items: QcReviewItem[] }) {
   const [state, formAction, pending] = useActionState(submitQualityCheckAction, initialState);
   const [decisions, setDecisions] = useState<ReviewDecision[]>(() => items.map(() => null));
+  const [photosValid, setPhotosValid] = useState(false);
   const reviewedCount = decisions.filter(Boolean).length;
   const allReviewed = reviewedCount === items.length;
 
@@ -63,13 +65,13 @@ export function QualityCheckForm({ jobId, items }: { jobId: string; items: QcRev
                 <input type="hidden" name={`checkedQuantity-${index}`} value={item.quantity} />
                 <input type="hidden" name={`goodQuantity-${index}`} value={decision === 'pass' ? item.quantity : decision === 'fail' ? 0 : ''} />
                 {decision !== 'fail' ? <input type="hidden" name={`issueType-${index}`} value="none" /> : null}
-                <div className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <span className="min-w-0 basis-full flex-1 sm:basis-auto">
                     <strong className="block truncate text-sm font-medium">{item.itemName}</strong>
                     <span className="mt-0.5 block text-xs text-muted-foreground">{item.barcode ? `Barcode: ${item.barcode}` : 'No barcode'} · Quantity {item.quantity}</span>
                   </span>
-                  <Button type="button" size="icon" variant="outline" aria-label={`Flag ${item.itemName}`} className={decision === 'fail' ? 'border-red-500 bg-red-600 text-white hover:bg-red-700 hover:text-white' : ''} onClick={() => setDecisions((current) => current.map((value, itemIndex) => itemIndex === index ? 'fail' : value))}><X /></Button>
-                  <Button type="button" size="icon" variant="outline" aria-label={`Pass ${item.itemName}`} className={decision === 'pass' ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white' : ''} onClick={() => setDecisions((current) => current.map((value, itemIndex) => itemIndex === index ? 'pass' : value))}><Check /></Button>
+                  <Button type="button" size="sm" variant="outline" aria-label={`Flag ${item.itemName} with an issue`} className={decision === 'fail' ? 'border-red-500 bg-red-600 text-white hover:bg-red-700 hover:text-white' : ''} onClick={() => setDecisions((current) => current.map((value, itemIndex) => itemIndex === index ? 'fail' : value))}><X /> Issue</Button>
+                  <Button type="button" size="sm" variant="outline" aria-label={`Pass ${item.itemName}`} className={decision === 'pass' ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white' : ''} onClick={() => setDecisions((current) => current.map((value, itemIndex) => itemIndex === index ? 'pass' : value))}><Check /> Pass</Button>
                 </div>
                 {decision === 'fail' ? (
                   <div className="mt-3 grid gap-2 border-t border-red-200 pt-3 sm:grid-cols-2">
@@ -82,10 +84,12 @@ export function QualityCheckForm({ jobId, items }: { jobId: string; items: QcRev
           })}
         </ul>
 
-        <Button type="submit" disabled={pending || !allReviewed} className="h-11 w-full">
+        <ProofPhotoPicker name="qcProofPhotos" title="Product QC proof photos" disabled={pending} onValidityChange={setPhotosValid} />
+
+        <Button type="submit" disabled={pending || !allReviewed || !photosValid} className="h-11 w-full">
           {pending ? <><LoaderCircle className="animate-spin" /> Submitting…</> : decisions.includes('fail') ? <><AlertCircle /> Return rejected items to warehouse</> : <><Check /> Submit quality check</>}
         </Button>
-        {!allReviewed ? <p className="text-center text-xs text-muted-foreground">Review every product to continue.</p> : null}
+        {!allReviewed || !photosValid ? <p className="text-center text-xs text-muted-foreground">Review every product and add at least one proof photo to continue.</p> : null}
       </div>
     </form>
   );
