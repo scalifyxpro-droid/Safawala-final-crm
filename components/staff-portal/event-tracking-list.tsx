@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Activity,
   CalendarClock,
@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ListPagination } from '@/components/ui/list-pagination';
-import { friendlyDate } from '@/lib/bookings';
+import { bookingDateHeading, friendlyDate } from '@/lib/bookings';
 import { trackingTimeline, TRACKING_STAGE_LABEL } from '@/lib/event-jobs/constants';
 import type { EventJob } from '@/lib/event-jobs/types';
 import {
@@ -34,7 +34,7 @@ function currentStage(job: EventJob) {
   return active.length ? active.join(' + ') : 'Awaiting next stage';
 }
 
-export function EventTrackingList({ jobs, cardView = false }: { jobs: EventJob[]; cardView?: boolean }) {
+export function EventTrackingList({ jobs, cardView = true }: { jobs: EventJob[]; cardView?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
@@ -108,25 +108,35 @@ export function EventTrackingList({ jobs, cardView = false }: { jobs: EventJob[]
         <ListPagination total={filteredJobs.length} page={safePage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} itemLabel="jobs" />
         {cardView ? (
           <div className="grid gap-3 bg-[#f8f2e9]/65 p-3 dark:bg-[#201a14] sm:p-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleJobs.map((job) => (
-              <article key={job.id} className="flex min-w-0 flex-col rounded-xl border border-[#dfc59e] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-level-2 dark:border-[#493822] dark:bg-card">
+            {visibleJobs.map((job, index) => (
+              <Fragment key={job.id}>
+              {sortBy === 'booking' && job.createdAt.slice(0, 10) !== visibleJobs[index - 1]?.createdAt.slice(0, 10) ? (
+                <div className="col-span-full flex items-center gap-3 pt-2 first:pt-0">
+                  <h2 className="shrink-0 text-sm font-semibold text-[#70481c] dark:text-[#e6c99d]">{bookingDateHeading(job.createdAt)}</h2>
+                  <span className="h-px flex-1 bg-[#dfc59e] dark:bg-[#493822]" aria-hidden="true" />
+                </div>
+              ) : null}
+              <article className="relative flex min-w-0 flex-col rounded-xl border border-[#dfc59e] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-level-2 dark:border-[#493822] dark:bg-card">
+                <button type="button" aria-label={`Track ${job.id}, ${job.eventSummary.customerName || 'customer not added'}`} onClick={() => setSelectedId(job.id)} className="absolute inset-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" />
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9b5f17]">{job.id}</p>
                     <h2 className="mt-1 truncate text-sm font-semibold">{job.eventSummary.customerName || 'Customer not added'}</h2>
                     <p className="mt-0.5 truncate text-xs text-[#70481c] dark:text-[#e6c99d]">{job.eventSummary.eventName} · {job.bookingNumber}</p>
                   </div>
-                  <Badge variant="outline" className={job.status === 'closed' ? 'shrink-0 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700' : 'shrink-0 border-[#e5cda9] bg-[#f8eddc] text-[10px] text-[#8a5517]'}>{job.status === 'closed' ? 'Closed' : 'Active'}</Badge>
+                  <Badge variant="outline" className="shrink-0 border-[#e5cda9] bg-[#f8eddc] text-[10px] capitalize text-[#8a5517] dark:border-[#5c4529] dark:bg-[#33291c] dark:text-[#f0d9ad]">{job.bookingType}</Badge>
                 </div>
                 <div className="mt-3 space-y-1.5 rounded-lg bg-[#faf8f5] px-3 py-2.5 text-[11px] text-muted-foreground dark:bg-[#241e17]">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1"><CalendarClock aria-hidden="true" className="size-3.5 shrink-0" /> Event: {friendlyDate(job.eventSummary.eventDate)}{job.eventSummary.venue ? <><MapPin aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{job.eventSummary.venue}</span></> : null}</p>
                   <p>Booking: {friendlyDate(job.createdAt.slice(0, 10))}</p>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#ead8bc] pt-3 dark:border-[#493822]">
-                  <Button type="button" size="sm" variant="outline" className="h-9 bg-[#fcfaf7] px-3 text-xs dark:bg-[#241e17]" onClick={() => setSelectedId(job.id)}><Route className="size-3.5" /> Track</Button>
+                  <Button type="button" size="sm" variant="outline" className="relative z-10 h-9 bg-[#fcfaf7] px-3 text-xs dark:bg-[#241e17]" onClick={() => setSelectedId(job.id)}><Route className="size-3.5" /> Track</Button>
+                  <Badge variant="outline" className={job.status === 'closed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}>{job.status === 'closed' ? 'Closed' : 'Active'}</Badge>
                   <Badge variant="outline" className="max-w-full truncate border-sky-200 bg-sky-50 text-sky-700">{currentStage(job)}</Badge>
                 </div>
               </article>
+              </Fragment>
             ))}
           </div>
         ) : <div className="divide-y divide-border">
