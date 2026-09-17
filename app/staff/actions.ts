@@ -268,12 +268,16 @@ export async function setStaffModuleAction(
   }
 }
 
-export async function resetStaffLoginPasswordAction(userId: string, password: string): Promise<{ error: string }> {
+export async function resetStaffLoginPasswordAction(userId: string, password: string): Promise<{ error: string; loginId?: string; loginActive?: boolean }> {
   try {
-    await resetAccountPassword(await requireAdmin(), userId, password);
+    const result = await resetAccountPassword(await requireAdmin(), userId, password);
     revalidatePath('/staff');
-    return { error: '' };
+    return { error: '', ...result };
   } catch (error) {
+    console.error('[staff] Password reset failed', {
+      userId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     return { error: error instanceof Error ? error.message : 'Could not reset the password.' };
   }
 }

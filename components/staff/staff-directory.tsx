@@ -1395,6 +1395,8 @@ function PasswordDialog({ member, onClose }: { member: StaffMember; onClose: () 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [savedLoginId, setSavedLoginId] = useState('');
+  const [loginActive, setLoginActive] = useState(false);
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1412,6 +1414,8 @@ function PasswordDialog({ member, onClose }: { member: StaffMember; onClose: () 
         return;
       }
       form.reset();
+      setSavedLoginId(result.loginId ?? '');
+      setLoginActive(result.loginActive === true);
       setSaved(true);
     } catch {
       setError('Could not save the password. Please try again.');
@@ -1433,7 +1437,10 @@ function PasswordDialog({ member, onClose }: { member: StaffMember; onClose: () 
         </div>
         <form onSubmit={submit} className="space-y-4 p-5">
           {saved ? (
-            <p role="status" className="text-sm text-emerald-700">New password saved and verified in the database.</p>
+            <div role="status" className="space-y-1 text-sm text-emerald-700">
+              <p>New password saved and verified for Login ID {savedLoginId}.</p>
+              {!loginActive ? <p className="text-amber-700">The login is disabled. Enable it in Manage access before signing in.</p> : null}
+            </div>
           ) : (
             <input name="password" type="password" required minLength={6} autoComplete="new-password" placeholder="New password" className={fieldClass.replace('mt-1.5', 'mt-0')} />
           )}

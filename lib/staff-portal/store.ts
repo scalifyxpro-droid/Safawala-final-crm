@@ -279,8 +279,22 @@ export async function setAccountPortalKind(
 export async function resetAccountPassword(ownerId: string, userId: string, password: string) {
   if (password.length < 6) throw new Error('Password must be at least 6 characters.');
   const encrypted = await hashPassword(password);
-  await withServiceRole(async (tx) => {
+  return withServiceRole(async (tx) => {
     await getOwnedStaffId(tx, ownerId, userId);
+    const [account] = await tx<{
+      login_id: string | null;
+      portal_active: boolean;
+      is_active: boolean;
+      profile_role: string | null;
+    }[]>`
+      select sm.login_id, sm.portal_active, sm.is_active, p.role as profile_role
+      from public.staff_members sm
+      left join public.profiles p on p.id = sm.user_id
+      where sm.owner_id = ${ownerId} and sm.user_id = ${userId}
+      for update of sm
+    `;
+    if (!account?.login_id) throw new Error('This staff account has no Login ID. Create its login first.');
+    if (account.profile_role !== 'staff') throw new Error('This staff login is missing its staff profile. Repair the account before resetting its password.');
     const [updated] = await tx<{ encrypted_password: string }[]>`
       update auth.users set encrypted_password = ${encrypted}, updated_at = now()
       where id = ${userId}
@@ -289,6 +303,24 @@ export async function resetAccountPassword(ownerId: string, userId: string, pass
     if (!updated || !(await verifyPassword(password, updated.encrypted_password))) {
       throw new Error('The new password could not be verified in the database. Please try again.');
     }
+
+    // Exercise the same lookup as the Staff Portal login before committing.
+    // A successful hash update on the wrong account must never be reported as
+    // a usable password reset.
+    const email = staffAuthEmail(account.login_id);
+    const [loginRow] = await tx<{ user_id: string; encrypted_password: string | null }[]>`
+      select sm.user_id, u.encrypted_password
+      from public.staff_members sm
+      join auth.users u on u.id = sm.user_id
+      where lower(u.email) = lower(${email}) or lower(sm.login_id) = lower(${account.login_id})
+      order by case when lower(u.email) = lower(${email}) then 0 else 1 end
+      limit 1
+    `;
+    if (loginRow?.user_id !== userId || !loginRow.encrypted_password ||
+        !(await verifyPassword(password, loginRow.encrypted_password))) {
+      throw new Error('The new password did not pass the portal login check. No password change was saved.');
+    }
+    return { loginId: account.login_id, loginActive: account.portal_active && account.is_active };
   });
 }
 
