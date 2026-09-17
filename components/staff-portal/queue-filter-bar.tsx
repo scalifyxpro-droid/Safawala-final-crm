@@ -10,6 +10,7 @@ type Props = {
   sort?: string;
   eventDate?: string;
   bookingDate?: string;
+  view?: 'open' | 'closed';
 };
 
 export function QueueFilterBar({
@@ -18,21 +19,23 @@ export function QueueFilterBar({
   sort = 'booking',
   eventDate = '',
   bookingDate = '',
+  view = 'open',
 }: Props) {
   const router = useRouter();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const params = new URLSearchParams();
+    if (view === 'closed') params.set('view', 'closed');
     const values = new FormData(event.currentTarget);
     const query = String(values.get('q') ?? '').trim();
     if (query) params.set('q', query);
+    const sortValue = String(values.get('sort') ?? 'booking');
+    if (sortValue !== 'booking') params.set('sort', sortValue);
     if (window.matchMedia('(min-width: 1280px)').matches) {
-      for (const name of ['bookingDate', 'eventDate', 'sort']) {
+      for (const name of ['bookingDate', 'eventDate']) {
         const value = String(values.get(name) ?? '');
-        if (value && !(name === 'sort' && value === 'booking')) {
-          params.set(name, value);
-        }
+        if (value) params.set(name, value);
       }
     }
     router.push(params.size ? `${basePath}?${params}` : basePath);
@@ -68,7 +71,7 @@ export function QueueFilterBar({
         Event date
         <input name="eventDate" type="date" defaultValue={eventDate} aria-label="Filter event date" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="mt-1 h-9 w-full rounded-lg border border-input bg-white px-2 text-sm font-normal text-foreground dark:bg-card" />
       </label>
-      <select name="sort" defaultValue={sort} aria-label="Sort jobs" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="hidden h-10 rounded-lg border border-input bg-white px-3 text-sm dark:bg-card xl:block">
+      <select name="sort" defaultValue={sort} aria-label="Sort jobs" onChange={(event) => event.currentTarget.form?.requestSubmit()} className="h-10 rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-primary dark:bg-card sm:col-span-2 xl:col-span-1">
         <option value="booking">Booking date · newest first</option>
         <option value="event">Event date · earliest first</option>
       </select>

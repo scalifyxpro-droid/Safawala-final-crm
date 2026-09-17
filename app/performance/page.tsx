@@ -11,6 +11,7 @@ import { BookingPortalShell } from '@/components/bookings/booking-portal-shell';
 import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PaginatedList } from '@/components/ui/paginated-list';
 import { getCurrentUser } from '@/lib/auth/session';
 import { listStaffPerformanceOverview } from '@/lib/performance/store';
 
@@ -128,7 +129,11 @@ export default async function PerformancePage() {
           </CardHeader>
           <CardContent className="p-0">
             {staff.length ? (
-              <div className="divide-y divide-border">
+              <PaginatedList
+                itemLabel="staff members"
+                pageSize={10}
+                contentClassName="divide-y divide-border"
+              >
                 {staff.map((member) => (
                   <article key={member.staffMemberId} className="p-4 sm:p-5">
                     <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
@@ -187,7 +192,7 @@ export default async function PerformancePage() {
                     </div>
                   </article>
                 ))}
-              </div>
+              </PaginatedList>
             ) : (
               <div className="grid min-h-56 place-items-center p-8 text-center">
                 <div>

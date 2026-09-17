@@ -11,6 +11,7 @@ import { DashboardHeader } from '@/components/layout/dashboard-header';
 import { StaffPortalShell } from '@/components/staff-portal/staff-portal-shell';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PaginatedList } from '@/components/ui/paginated-list';
 import { listJobs } from '@/lib/event-jobs/store';
 import { getPersonalPerformanceData } from '@/lib/performance/store';
 import { requirePermission } from '@/lib/staff-portal/guard';
@@ -109,7 +110,7 @@ export default async function StaffPerformancePage() {
     (sum, record) => sum + record.overtime,
     0,
   );
-  const recentCredits = data.credits.slice(0, 8);
+  const completedWork = data.credits;
 
   const kpis = [
     {
@@ -207,10 +208,14 @@ export default async function StaffPerformancePage() {
             <CardTitle className="text-base">Recent completed work</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {recentCredits.length ? (
-              <ul className="divide-y divide-border">
-                {recentCredits.map((credit) => (
-                  <li
+            {completedWork.length ? (
+              <PaginatedList
+                itemLabel="completed work records"
+                pageSize={10}
+                contentClassName="divide-y divide-border"
+              >
+                {completedWork.map((credit) => (
+                  <article
                     key={`${credit.eventJobId}-${credit.department}`}
                     className="flex min-w-0 items-center gap-3 px-4 py-3.5 sm:px-5"
                   >
@@ -232,9 +237,9 @@ export default async function StaffPerformancePage() {
                     >
                       {DEPARTMENT_LABEL[credit.department] ?? credit.department}
                     </Badge>
-                  </li>
+                  </article>
                 ))}
-              </ul>
+              </PaginatedList>
             ) : (
               <div className="grid min-h-48 place-items-center p-6 text-center">
                 <div>
