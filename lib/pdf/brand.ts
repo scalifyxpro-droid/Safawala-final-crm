@@ -109,10 +109,17 @@ export function drawDocumentHeader(
     docNumber: string;
     docLabel: string;
     dateLabel: string;
+    // Optional custom-embedded fonts (e.g. Lora/Poppins) for callers that
+    // register them; defaults to the built-in Helvetica so every other
+    // caller of this shared header keeps its exact current look.
+    displayFont?: string;
+    bodyFont?: string;
   },
 ) {
   const top = opts.top ?? 10;
   const height = opts.height ?? 34;
+  const displayFont = opts.displayFont ?? 'helvetica';
+  const bodyFont = opts.bodyFont ?? 'helvetica';
   drawBrandBanner(doc, opts.left - 6, top, opts.right - opts.left + 12, height);
   if (opts.logo) {
     const logoH = 13;
@@ -120,21 +127,21 @@ export function drawDocumentHeader(
     doc.addImage(opts.logo.dataUrl, 'PNG', opts.left, top + 5, logoW, logoH);
   } else {
     doc.setTextColor(...BRAND_DARK);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(displayFont, 'bold');
     doc.setFontSize(18);
     doc.text('SAFAWALA', opts.left, top + 14);
   }
   doc.setTextColor(...MUTED);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(8);
   doc.text('Premium Wedding Accessories', opts.left, top + height - 4);
 
   doc.setTextColor(...BRAND_DARK);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(displayFont, 'bold');
   doc.setFontSize(13);
   doc.text(opts.docNumber, opts.right, top + 11, { align: 'right' });
   doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.text(opts.docLabel, opts.right, top + 18, { align: 'right' });
   doc.setFontSize(7.5);
   doc.setTextColor(...MUTED);
@@ -146,13 +153,22 @@ export function drawDocumentHeader(
 // separated by a thin rule. Call once per page after pagination is known.
 export function drawFooter(
   doc: jsPDF,
-  opts: { left: number; right: number; y?: number; note?: string; pageNumber: number; totalPages: number },
+  opts: {
+    left: number;
+    right: number;
+    y?: number;
+    note?: string;
+    pageNumber: number;
+    totalPages: number;
+    bodyFont?: string;
+  },
 ) {
   const y = opts.y ?? 285;
+  const bodyFont = opts.bodyFont ?? 'helvetica';
   doc.setDrawColor(...BORDER_SOFT);
   doc.setLineWidth(0.3);
   doc.line(opts.left, y, opts.right, y);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(7);
   doc.setTextColor(...MUTED);
   doc.text(opts.note ?? 'Thank you for choosing Safawala.', opts.left, y + 5);
@@ -161,7 +177,10 @@ export function drawFooter(
 
 // Stamps the footer (with correct page numbers) on every page of a finished
 // document. Call this last, right before doc.save()/doc.output().
-export function stampFooterOnAllPages(doc: jsPDF, opts: { left: number; right: number; y?: number; note?: string }) {
+export function stampFooterOnAllPages(
+  doc: jsPDF,
+  opts: { left: number; right: number; y?: number; note?: string; bodyFont?: string },
+) {
   const totalPages = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     doc.setPage(pageNumber);

@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { submitQualityCheckAction, type QcFormState } from '@/app/staff-portal/qc/actions';
-import { ProofPhotoPicker } from '@/components/staff-portal/proof-photo-picker';
+import { QcPhotoPicker } from '@/components/staff-portal/qc-photo-picker';
 
 const initialState: QcFormState = { error: '' };
 
@@ -26,9 +26,14 @@ const ISSUE_OPTIONS = [
 ] as const;
 
 export function QualityCheckForm({ jobId, items }: { jobId: string; items: QcReviewItem[] }) {
-  const [state, formAction, pending] = useActionState(submitQualityCheckAction, initialState);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [state, formAction, pending] = useActionState(async (previous: QcFormState, form: FormData) => {
+    form.delete('qcProofPhotos');
+    photos.forEach((photo) => form.append('qcProofPhotos', photo));
+    return submitQualityCheckAction(previous, form);
+  }, initialState);
   const [decisions, setDecisions] = useState<ReviewDecision[]>(() => items.map(() => null));
-  const [photosValid, setPhotosValid] = useState(false);
+  const photosValid = photos.length > 0 && photos.length <= 3;
   const reviewedCount = decisions.filter(Boolean).length;
   const allReviewed = reviewedCount === items.length;
 
@@ -84,7 +89,7 @@ export function QualityCheckForm({ jobId, items }: { jobId: string; items: QcRev
           })}
         </ul>
 
-        <ProofPhotoPicker name="qcProofPhotos" title="Product QC proof photos" disabled={pending} onValidityChange={setPhotosValid} />
+        <QcPhotoPicker files={photos} onChange={setPhotos} disabled={pending} />
 
         <Button type="submit" disabled={pending || !allReviewed || !photosValid} className="h-11 w-full">
           {pending ? <><LoaderCircle className="animate-spin" /> Submitting…</> : decisions.includes('fail') ? <><AlertCircle /> Return rejected items to warehouse</> : <><Check /> Submit quality check</>}

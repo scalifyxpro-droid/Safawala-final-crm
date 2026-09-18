@@ -59,21 +59,37 @@ async function loadPaymentDetails(): Promise<PublicBankDetails> {
   }
 }
 
-// Same warm cream / amber-gold palette used across the rest of the CRM
-// (dashboard cards, the public tracking page, etc.) so the invoice reads as
-// part of the same product rather than a generic black-and-white document.
-const INK: [number, number, number] = [35, 28, 20]; // near-black warm ink for body text
-const INK_SOFT: [number, number, number] = [90, 78, 62]; // secondary/muted text
-const GOLD: [number, number, number] = [154, 103, 40]; // #9a6728 — section labels, accents
-const GOLD_DEEP: [number, number, number] = [112, 72, 28]; // #70481c — headings on light fill
-const ESPRESSO: [number, number, number] = [58, 40, 24]; // dark filled bar (Balance due)
-const CREAM: [number, number, number] = [255, 253, 249]; // #fffdf9 — card fill
-const CREAM_SOFT: [number, number, number] = [252, 250, 247]; // #fcfaf7 — page/alt fill
-const SAND: [number, number, number] = [245, 234, 216]; // #f5ead8 — Total row fill / table header
-const BORDER: [number, number, number] = [231, 220, 200]; // #e7dcc8 — hairline borders
-const BORDER_SOFT: [number, number, number] = [92, 92, 92];
+// Warm ivory-and-gold palette with a deep wine/burgundy accent bar — a
+// jewel-tone pairing associated with premium Indian wedding branding, laid
+// out with the same structured, restrained hierarchy an MNC statement uses
+// (one accent color, generous whitespace, no clutter) rather than the flat
+// cream/amber of the original, or the cold slate-navy of an earlier pass.
+const INK: [number, number, number] = [40, 24, 22]; // near-black warm ink, wine undertone — body text
+const INK_SOFT: [number, number, number] = [108, 88, 80]; // warm muted taupe — secondary/muted text
+const GOLD: [number, number, number] = [178, 136, 48]; // rich warm gold — section labels, accents
+const GOLD_DEEP: [number, number, number] = [134, 96, 32]; // deep antique gold — headings on light fill, logo tint
+const ESPRESSO: [number, number, number] = [61, 17, 22]; // deep wine/burgundy-black — dark filled bar (Balance due)
+const CREAM: [number, number, number] = [255, 253, 248]; // warm ivory — card fill
+const CREAM_SOFT: [number, number, number] = [251, 247, 240]; // soft ivory-champagne — page/alt fill
+const SAND: [number, number, number] = [246, 232, 207]; // champagne gold — Total row fill / table header
+const SAND_LIGHT: [number, number, number] = [251, 243, 228]; // pale champagne — Paid row fill, between Total and Balance due
+const BORDER: [number, number, number] = [224, 202, 160]; // warm gold-tan — hairline borders
+const BORDER_SOFT: [number, number, number] = [112, 92, 82];
 const MUTED = INK_SOFT;
 const BRAND_DARK = INK;
+
+// Font pairing: Lora (an elegant, contemporary serif) for brand-voice
+// moments — the document number, customer/event names, section titles,
+// totals — paired with Poppins (a clean geometric sans) for everything
+// dense and functional: item tables, addresses, payment-detail rows, the
+// terms list, the footer. Both are embedded from /public/fonts at
+// generation time (see loadFontBase64 below) rather than relying on the 14
+// built-in PDF fonts (Times/Helvetica), which read as generic/default in a
+// generated document. If a font file fails to load for any reason, the
+// document still falls back to the built-in equivalents below rather than
+// failing to generate.
+const FALLBACK_DISPLAY_FONT = 'times';
+const FALLBACK_BODY_FONT = 'helvetica';
 
 const amount = (value: number) =>
   `Rs. ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -85,13 +101,16 @@ function drawBrandBanner(
   w: number,
   h: number,
 ) {
-  doc.setFillColor(...ESPRESSO);
-  doc.setDrawColor(...ESPRESSO);
+  // Light cream banner so the crown logo can be printed in its own dark
+  // brand tone — a dark banner needs a light-tinted logo to stay visible,
+  // which reads as an inverted, off-brand mark next to the rest of the
+  // document's light-card styling. No separate accent line under the banner
+  // — it read as a stray, disconnected bar rather than a deliberate divider,
+  // so the card's own border is the only edge here.
+  doc.setFillColor(...CREAM);
+  doc.setDrawColor(...BORDER);
   doc.setLineWidth(0.55);
   doc.roundedRect(x, y, w, h, 3.5, 3.5, 'FD');
-  doc.setDrawColor(...GOLD);
-  doc.setLineWidth(1.1);
-  doc.line(x + 7, y + h - 0.6, x + w - 7, y + h - 0.6);
 }
 function sectionBox(
   doc: import('jspdf').jsPDF,
@@ -180,6 +199,28 @@ async function toDataUrl(src: string): Promise<string | null> {
   }
 }
 
+// Fetches a font file from /public and returns raw base64 (no "data:"
+// prefix) — the exact form jsPDF's addFileToVFS expects for embedding a
+// custom font. Kept separate from toDataUrl above, which returns a full
+// data: URL for images instead. Returns null on any failure so the caller
+// can fall back to a built-in PDF font rather than breaking PDF generation.
+async function loadFontBase64(src: string): Promise<string | null> {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  } catch {
+    return null;
+  }
+}
+
 // Crops a fetched product photo into a small rounded-corner square so it
 // sits neatly inline with each invoice line item.
 async function roundedThumbnail(
@@ -237,8 +278,18 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
             .filter((url): url is string => Boolean(url)),
         ),
       );
-      const [logo, signature, qrDataUrl, ...rawProductImages] = await Promise.all([
-        recolorLogo('/safawala-crown-dark.png', SAND),
+      const [
+        logo,
+        signature,
+        qrDataUrl,
+        loraRegular,
+        loraBold,
+        loraItalic,
+        poppinsRegular,
+        poppinsBold,
+        ...rawProductImages
+      ] = await Promise.all([
+        recolorLogo('/safawala-crown-dark.png', GOLD_DEEP),
         recolorLogo('/ronak-dave-signature.png', BRAND_DARK),
         bankDetails.qrCodeImage
           ? toDataUrl(bankDetails.qrCodeImage)
@@ -248,6 +299,14 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
                 { margin: 0, scale: 6, color: { dark: '#3a2818', light: '#ffffff' } },
               ).catch(() => null)
             : Promise.resolve(null),
+        // The two document fonts (Lora + Poppins, see the font-pairing
+        // note above), fetched from /public/fonts and embedded further
+        // below — failure here just falls back to the built-in PDF fonts.
+        loadFontBase64('/fonts/Lora-Regular.ttf'),
+        loadFontBase64('/fonts/Lora-Bold.ttf'),
+        loadFontBase64('/fonts/Lora-Italic.ttf'),
+        loadFontBase64('/fonts/Poppins-Regular.ttf'),
+        loadFontBase64('/fonts/Poppins-Bold.ttf'),
         ...uniqueImageUrls.map((url) => toDataUrl(url)),
       ]);
       const roundedProductImages = await Promise.all(
@@ -272,6 +331,35 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           userPermissions: ['print', 'copy'],
         },
       });
+
+      // Embed Lora (display/brand-voice serif) and Poppins (body/data
+      // sans) if both weights of each fetched successfully; otherwise fall
+      // back to the built-in Times/Helvetica so PDF generation never fails
+      // outright over a missing font file.
+      let displayFont: string = FALLBACK_DISPLAY_FONT;
+      let bodyFont: string = FALLBACK_BODY_FONT;
+      try {
+        if (loraRegular && loraBold && loraItalic) {
+          doc.addFileToVFS('Lora-Regular.ttf', loraRegular);
+          doc.addFont('Lora-Regular.ttf', 'Lora', 'normal');
+          doc.addFileToVFS('Lora-Bold.ttf', loraBold);
+          doc.addFont('Lora-Bold.ttf', 'Lora', 'bold');
+          doc.addFileToVFS('Lora-Italic.ttf', loraItalic);
+          doc.addFont('Lora-Italic.ttf', 'Lora', 'italic');
+          displayFont = 'Lora';
+        }
+        if (poppinsRegular && poppinsBold) {
+          doc.addFileToVFS('Poppins-Regular.ttf', poppinsRegular);
+          doc.addFont('Poppins-Regular.ttf', 'Poppins', 'normal');
+          doc.addFileToVFS('Poppins-Bold.ttf', poppinsBold);
+          doc.addFont('Poppins-Bold.ttf', 'Poppins', 'bold');
+          bodyFont = 'Poppins';
+        }
+      } catch {
+        displayFont = FALLBACK_DISPLAY_FONT;
+        bodyFont = FALLBACK_BODY_FONT;
+      }
+
       // A faint page wash (instead of stark white) so the card-style sections
       // read as "on paper" the same way the rest of the product does.
       doc.setFillColor(...CREAM_SOFT);
@@ -280,51 +368,54 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       const left = 16;
       const right = width - 16;
       const itemCount = booking.booking_items.length;
-      const useItemColumns = itemCount > 5;
-      const denseLayout = itemCount > 10;
-      const headerHeight = denseLayout ? 32 : 36;
+      // The compact two-column item grid now kicks in from 3 items instead
+      // of 6 — waiting until 6 meant every booking with 3, 4 or 5 items used
+      // the tall single-row layout, which is exactly the case that was
+      // pushing the Terms & Conditions section too low on the page.
+      const useItemColumns = itemCount > 2;
+      const denseLayout = itemCount > 6;
+      const headerHeight = denseLayout ? 30 : 33;
       let y = 18;
-      // The invoice is intentionally composed as a single A4 page. Sections
-      // below use compact, content-aware spacing instead of page breaks.
+      // Sections above the terms use compact, content-aware spacing rather
+      // than a page break — the terms section below is the one place with a
+      // real page-break safety net, since it is the section most likely to
+      // run out of room once items and payment/validity details are drawn.
       const ensureSpace = (_height: number) => undefined;
 
       // ---- Header banner ----
       drawBrandBanner(doc, 10, 10, width - 20, headerHeight);
       // The crown artwork already carries the full "Safawala.com by Ronak"
       // wordmark baked into the image, so it is the ONLY brand mark drawn
-      // here — a separate "SAFAWALA" text used to be printed right next to
-      // it, which read as the name appearing twice in the header.
+      // here — a separate "SAFAWALA" text next to it would read as the name
+      // appearing twice, and with no tagline line underneath any more the
+      // logo is centered in the header for a cleaner, more minimal banner.
       if (logo) {
-        const logoH = denseLayout ? 13 : 15.5;
+        const logoH = denseLayout ? 14 : 16.5;
         const logoW = logoH * logo.ratio;
-        doc.addImage(logo.dataUrl, 'PNG', left, denseLayout ? 14 : 16, logoW, logoH);
+        doc.addImage(logo.dataUrl, 'PNG', left, 10 + (headerHeight - logoH) / 2, logoW, logoH);
       } else {
         // Fallback text mark for the rare case the logo image fails to load.
-        doc.setTextColor(...SAND);
-        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...GOLD_DEEP);
+        doc.setFont(displayFont, 'bold');
         doc.setFontSize(17);
-        doc.text('SAFAWALA', left, 24);
+        doc.text('SAFAWALA', left, 10 + headerHeight / 2 + 3);
       }
-      doc.setTextColor(...CREAM);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.text('Premium Wedding Accessories', left, 10 + headerHeight - 4.5);
 
-      doc.setTextColor(...CREAM);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14.5);
-      doc.text(booking.booking_number, right, denseLayout ? 20 : 22, { align: 'right' });
-      doc.setTextColor(...SAND);
+      doc.setTextColor(...BRAND_DARK);
+      doc.setFont(displayFont, 'bold');
+      doc.setFontSize(15.5);
+      doc.text(booking.booking_number, right, denseLayout ? 18.5 : 20, { align: 'right' });
+      doc.setTextColor(...GOLD_DEEP);
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'bold');
-      doc.text(docLabel, right, denseLayout ? 26.5 : 29.5, { align: 'right' });
+      doc.setFont(displayFont, 'bold');
+      doc.text(docLabel, right, denseLayout ? 25 : 27, { align: 'right' });
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...CREAM);
+      doc.setFont(bodyFont, 'normal');
+      doc.setTextColor(...MUTED);
       doc.text(
         `Date: ${friendlyDate(new Date().toISOString().slice(0, 10))}`,
         right,
-        denseLayout ? 32.5 : 35.5,
+        denseLayout ? 30.5 : 33,
         { align: 'right' },
       );
 
@@ -353,21 +444,21 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       sectionDot(doc, left + 6, by - 1.5);
       sectionDot(doc, eventX + 3, by - 1.5);
       doc.setTextColor(...GOLD);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(displayFont, 'bold');
       doc.setFontSize(8.5);
       doc.text('CUSTOMER', left + 9, by);
       doc.text('EVENT & DELIVERY', eventX + 6, by);
       by += 6;
       // Customer name and event occasion are the two facts a glance at the
       // invoice should land on first, so they're set apart from every other
-      // line here — larger, bold, in the brand accent color.
-      doc.setFontSize(12);
+      // line here — larger, bold serif, in the brand accent color.
+      doc.setFontSize(13);
       doc.setTextColor(...GOLD_DEEP);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(displayFont, 'bold');
       doc.text(booking.customers?.name || 'Not added', left + 5, by);
       doc.text(booking.event_name, eventX + 2, by);
       by += 5;
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(bodyFont, 'bold');
       doc.setFontSize(9);
       doc.setTextColor(...BRAND_DARK);
       doc.text(booking.customers?.phone || 'Phone not added', left + 5, by);
@@ -377,7 +468,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         by,
       );
       by += 4.8;
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(bodyFont, 'normal');
       doc.setTextColor(...MUTED);
       doc.text(addressLines, left + 5, by);
       doc.text(locationLines, eventX + 2, by);
@@ -388,16 +479,16 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         doc.setLineWidth(0.25);
         doc.line(left + 5, by - 3, right - 5, by - 3);
         doc.setTextColor(...GOLD_DEEP);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(bodyFont, 'bold');
         doc.setFontSize(8.5);
         doc.text('Pickup:', left + 5, by + 1.5);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setTextColor(...BRAND_DARK);
         doc.text(friendlyDate(booking.pickup_date), left + 20, by + 1.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(bodyFont, 'bold');
         doc.setTextColor(...GOLD_DEEP);
         doc.text('Return due:', eventX + 2, by + 1.5);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setTextColor(...BRAND_DARK);
         doc.text(
           friendlyDate(booking.due_date),
@@ -426,7 +517,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           doc.setLineWidth(0.35);
           doc.rect(columnX, y, gridWidth, gridHeaderHeight, 'FD');
           doc.setTextColor(...GOLD_DEEP);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(bodyFont, 'bold');
           doc.setFontSize(denseLayout ? 7.2 : 8);
           doc.text(
             `PRODUCTS ${columnIndex * rowsPerColumn + 1}-${columnIndex * rowsPerColumn + items.length}`,
@@ -464,7 +555,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
               }
             }
 
-            doc.setFont('helvetica', 'bold');
+            doc.setFont(bodyFont, 'bold');
             doc.setFontSize(rowHeight < 8 ? 6.3 : 7.3);
             doc.setTextColor(...BRAND_DARK);
             doc.text(
@@ -476,7 +567,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
               align: 'right',
             });
 
-            doc.setFont('helvetica', 'normal');
+            doc.setFont(bodyFont, 'normal');
             doc.setFontSize(rowHeight < 8 ? 5.8 : 6.5);
             doc.setTextColor(...MUTED);
             doc.text(
@@ -504,7 +595,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         doc.setLineWidth(0.35);
         doc.rect(left, y, right - left, 7.5, 'S');
         doc.setTextColor(...GOLD_DEEP);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(bodyFont, 'bold');
         doc.setFontSize(8.5);
         doc.text('Item', nameX, y + 5.1);
         doc.text('Barcode', 112, y + 5.1, { align: 'right' });
@@ -512,7 +603,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         doc.text('Rate', 160, y + 5.1, { align: 'right' });
         doc.text('Amount', right - 3, y + 5.1, { align: 'right' });
         y += 7.5;
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         for (const item of booking.booking_items) {
           const thumbUrl = item.products?.image_urls?.[0];
           const thumb = thumbUrl ? imageByUrl.get(thumbUrl) : null;
@@ -540,10 +631,10 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
             }
           }
           doc.setTextColor(...BRAND_DARK);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(bodyFont, 'bold');
           doc.setFontSize(8.5);
           doc.text(itemName, nameX, textBaseline);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(bodyFont, 'normal');
           doc.setTextColor(...MUTED);
           doc.setFontSize(7.4);
           doc.text(item.products?.barcode || '-', 112, textBaseline, { align: 'right' });
@@ -563,7 +654,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
 
       ensureSpace(42);
       y += 5;
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(displayFont, 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(...GOLD);
       doc.text('AMOUNT SUMMARY', 124, y);
@@ -580,12 +671,16 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           : []),
       ];
       for (const [label, value] of plainSummary) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setTextColor(...MUTED);
         doc.text(label, 124, y);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(bodyFont, 'bold');
         doc.setTextColor(...BRAND_DARK);
-        doc.text(amount(value), right, y, { align: 'right' });
+        // Right-aligned to right - 3, matching the item table's own Amount
+        // column above (also right - 3) so every number in this right-hand
+        // column — item totals down through the summary — sits on one
+        // continuous vertical line instead of jogging 3mm right of it.
+        doc.text(amount(value), right - 3, y, { align: 'right' });
         y += 5.4;
       }
 
@@ -596,42 +691,53 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         y += 1;
         doc.setFillColor(...ESPRESSO);
         doc.rect(left, y - 4.6, right - left, 8, 'F');
-        doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(...SAND);
+        doc.setFont(displayFont, 'bold');
         doc.text('Estimated Total', 124, y);
-        doc.text(amount(booking.total), right, y, { align: 'right' });
+        doc.setFont(bodyFont, 'bold');
+        doc.text(amount(booking.total), right - 3, y, { align: 'right' });
         y += 8.5;
       } else {
         // Total — soft gold fill bar, matching the "Total" chip on the card.
         y += 1;
         doc.setFillColor(...SAND);
         doc.rect(left, y - 4.2, right - left, 7.2, 'F');
-        doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(...GOLD_DEEP);
+        doc.setFont(displayFont, 'bold');
         doc.text('Total', 124, y);
         doc.setTextColor(...BRAND_DARK);
-        doc.text(amount(booking.total), right, y, { align: 'right' });
+        doc.setFont(bodyFont, 'bold');
+        doc.text(amount(booking.total), right - 3, y, { align: 'right' });
         y += 6.2;
 
-        doc.setFont('helvetica', 'normal');
+        // Paid — a pale champagne band (lighter than Total's, darker than
+        // the page) so Total → Paid → Balance due reads as one continuous,
+        // graduated block instead of a plain unstyled row breaking the
+        // color rhythm between the two accent bars around it.
+        doc.setFillColor(...SAND_LIGHT);
+        doc.rect(left, y - 3.2, right - left, 5.1, 'F');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(8.5);
-        doc.setTextColor(...MUTED);
+        doc.setTextColor(...GOLD_DEEP);
         doc.text('Paid', 124, y);
         doc.setTextColor(...BRAND_DARK);
-        doc.text(amount(booking.paid_amount), right, y, { align: 'right' });
+        doc.setFont(bodyFont, 'bold');
+        doc.text(amount(booking.paid_amount), right - 3, y, { align: 'right' });
         y += 6.5;
 
-        // Balance due — dark espresso bar with cream text, the one accent the
-        // reference invoice uses to make the number that matters unmissable.
+        // Balance due — dark wine-black bar with champagne text, the one
+        // accent the reference invoice uses to make the number that matters
+        // unmissable.
         doc.setFillColor(...ESPRESSO);
         doc.rect(left, y - 4.6, right - left, 8, 'F');
-        doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(...SAND);
+        doc.setFont(displayFont, 'bold');
         doc.text('Balance due', 124, y);
-        doc.text(amount(booking.balance_amount), right, y, { align: 'right' });
+        doc.setFont(bodyFont, 'bold');
+        doc.text(amount(booking.balance_amount), right - 3, y, { align: 'right' });
         y += 8.5;
       }
 
@@ -646,19 +752,19 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
         sectionBox(doc, left, y, right - left, validBoxH);
         let vy = y + 8;
         sectionDot(doc, left + 6, vy - 1.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(displayFont, 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...GOLD);
         doc.text('QUOTATION VALIDITY', left + 9, vy);
         vy += 6;
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + 7);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(displayFont, 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(...GOLD_DEEP);
         doc.text(`Valid until ${friendlyDate(validUntil.toISOString().slice(0, 10))}`, left + 5, vy);
         vy += 5.6;
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(...INK_SOFT);
         const validityNote = doc.splitTextToSize(
@@ -682,12 +788,12 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
 
         let py = y + 8;
         sectionDot(doc, left + 6, py - 1.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(displayFont, 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...GOLD);
         doc.text('PAYMENT DETAILS', left + 9, py);
         py += 5.5;
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(8.5);
         const paymentRows: [string, string][] = [
           ['Bank', bankDetails.bank],
@@ -698,15 +804,19 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           ['UPI', bankDetails.upi],
         ].filter((row): row is [string, string] => Boolean(row[1]));
         for (const [label, value] of paymentRows) {
-          doc.setFont('helvetica', 'bold');
+          // Bold label, plain-weight muted value — matching every other
+          // label:value pair in the document (customer/event details,
+          // summary rows) so this box reads as part of the same system
+          // instead of every line competing for attention in bold gold.
+          doc.setFont(bodyFont, 'bold');
           doc.setTextColor(...BRAND_DARK);
           doc.text(`${label}`, left + 5, py);
           doc.setTextColor(...BORDER_SOFT);
           doc.text(':', left + 27, py);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(...GOLD_DEEP);
+          doc.setFont(bodyFont, 'normal');
+          doc.setTextColor(...INK_SOFT);
           doc.text(fitText(doc, value, payDividerX - (left + 31) - 3), left + 31, py);
-          py += 4.3;
+          py += 4.5;
         }
 
         // QR and signature sit in their own half of the right column and
@@ -731,7 +841,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           doc.setLineWidth(0.35);
           doc.roundedRect(qrX - 1.5, qrY - 1.5, qrSize + 3, qrSize + 3, 1.5, 1.5, 'S');
           doc.addImage(qrDataUrl, qrFormat, qrX, qrY, qrSize, qrSize);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(bodyFont, 'bold');
           doc.setFontSize(6.8);
           doc.setTextColor(...GOLD_DEEP);
           doc.text('Scan to Pay', qrCenterX, capsY, { align: 'center' });
@@ -753,7 +863,7 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           doc.setDrawColor(...BORDER);
           doc.setLineWidth(0.3);
           doc.line(sigCenterX - 12, signatureLineY, sigCenterX + 12, signatureLineY);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(bodyFont, 'normal');
           doc.setFontSize(6.8);
           doc.setTextColor(...MUTED);
           doc.text('Authorized Signature', sigCenterX, capsY, { align: 'center' });
@@ -762,37 +872,22 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       }
 
       // ---- Terms (clean numbered list with a hanging indent) ----
-      ensureSpace(16);
-      sectionDot(doc, left + 1.4, y - 1.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...GOLD_DEEP);
-      doc.text('TERMS & CONDITIONS', left + 4, y);
-      y += 2.8;
-      doc.setDrawColor(...BORDER);
-      doc.setLineWidth(0.35);
-      doc.line(left, y, right, y);
-      y += 4.6;
       const termIndent = 6.5;
       const termColumnGap = 7;
       // Terms always use two balanced columns. This keeps the legal copy
       // comfortably above the fixed footer even when payment details and a
-      // longer amount summary are present on the same single-page invoice.
+      // longer amount summary are present above it.
       const termColumnCount = 2;
       const termsPerColumn = Math.ceil(BOOKING_TERMS.length / termColumnCount);
       const termColumnWidth =
         (right - left - termColumnGap * (termColumnCount - 1)) / termColumnCount;
-      const availableTermsHeight = Math.max(1, 280 - y);
-      let termFontSize = useItemColumns ? 6.7 : 7.2;
-      let termLineHeight = useItemColumns ? 3.05 : 3.35;
-      const measuredTerms = () =>
-        BOOKING_TERMS.map((term) =>
-          doc.splitTextToSize(
-            term.replaceAll('₹', 'Rs.'),
-            termColumnWidth - termIndent,
-          ),
+      const measureTerms = (fontSize: number) => {
+        doc.setFontSize(fontSize);
+        return BOOKING_TERMS.map((term) =>
+          doc.splitTextToSize(term.replaceAll('₹', 'Rs.'), termColumnWidth - termIndent),
         );
-      const tallestTermColumn = (lines: string[][]) => {
+      };
+      const tallestTermColumn = (lines: string[][], lineHeight: number) => {
         let tallest = 0;
         for (let column = 0; column < termColumnCount; column += 1) {
           const columnLines = lines.slice(
@@ -802,24 +897,61 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
           tallest = Math.max(
             tallest,
             columnLines.reduce(
-              (sum, itemLines) => sum + itemLines.length * termLineHeight + 0.6,
+              (sum, itemLines) => sum + itemLines.length * lineHeight + 0.6,
               0,
             ),
           );
         }
         return tallest;
       };
-      doc.setFontSize(termFontSize);
-      let termLines = measuredTerms();
+
+      // Measured from where the term list itself starts (below the "TERMS &
+      // CONDITIONS" heading and its rule), not from the heading's own
+      // position — the earlier version measured from the heading, which
+      // quietly overstated how much room was actually left for the list.
+      const HEADING_BLOCK_HEIGHT = 7.4;
+      let termFontSize = useItemColumns ? 6.7 : 7.2;
+      let termLineHeight = useItemColumns ? 3.05 : 3.35;
+      let termLines = measureTerms(termFontSize);
+      let availableTermsHeight = Math.max(1, 280 - (y + HEADING_BLOCK_HEIGHT));
       while (
-        tallestTermColumn(termLines) > availableTermsHeight &&
+        tallestTermColumn(termLines, termLineHeight) > availableTermsHeight &&
         termFontSize > 5.8
       ) {
         termFontSize -= 0.2;
         termLineHeight -= 0.08;
-        doc.setFontSize(termFontSize);
-        termLines = measuredTerms();
+        termLines = measureTerms(termFontSize);
       }
+
+      // Safety net: a booking with several items plus a full payment box can
+      // still leave too little room for the terms even at the smallest
+      // readable size. Rather than let that overlap the footer or run off
+      // the page — the exact "arrangement breaks with more products"
+      // problem — Terms & Conditions moves to a fresh page with full room
+      // and a comfortable font size, instead of shrinking further.
+      if (tallestTermColumn(termLines, termLineHeight) > availableTermsHeight) {
+        doc.addPage();
+        doc.setFillColor(...CREAM_SOFT);
+        doc.rect(0, 0, width, doc.internal.pageSize.getHeight(), 'F');
+        y = 20;
+        termFontSize = useItemColumns ? 7.2 : 7.6;
+        termLineHeight = useItemColumns ? 3.3 : 3.6;
+        termLines = measureTerms(termFontSize);
+        availableTermsHeight = Math.max(1, 280 - (y + HEADING_BLOCK_HEIGHT));
+      }
+
+      sectionDot(doc, left + 1.4, y - 1.5);
+      doc.setFont(displayFont, 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(...GOLD_DEEP);
+      doc.text('TERMS & CONDITIONS', left + 4, y);
+      y += 2.8;
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.35);
+      doc.line(left, y, right, y);
+      y += 4.6;
+
+      doc.setFontSize(termFontSize);
       const termStartY = y;
       let termEndY = termStartY;
       for (let column = 0; column < termColumnCount; column += 1) {
@@ -833,11 +965,10 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
             termLines[index] ??
             doc.splitTextToSize(safeTerm, termColumnWidth - termIndent);
           const blockHeight = lines.length * termLineHeight + 0.6;
-          ensureSpace(blockHeight);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(bodyFont, 'bold');
           doc.setTextColor(...GOLD);
           doc.text(`${index + 1}.`, termX, termY);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(bodyFont, 'normal');
           doc.setTextColor(...INK_SOFT);
           doc.text(lines, termX + termIndent, termY);
           termY += blockHeight;
@@ -846,15 +977,24 @@ export function BookingPdfButton({ booking, label = 'PDF' }: { booking: PdfBooki
       }
       y = termEndY;
 
-      doc.setDrawColor(...BORDER);
-      doc.setLineWidth(0.35);
-      doc.line(left, 285, right, 285);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(...MUTED);
-      doc.text('Thank you for choosing Safawala.', left, 291);
-      doc.setFontSize(7);
-      doc.text('Page 1 of 1', right, 291, { align: 'right' });
+      // Footer is stamped on every page the document ended up using (almost
+      // always just one) so a booking that overflowed onto a second page for
+      // its terms still gets a correct, real page count instead of a
+      // hardcoded "Page 1 of 1".
+      const totalPages = doc.getNumberOfPages();
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+        doc.setPage(pageNumber);
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.35);
+        doc.line(left, 285, right, 285);
+        doc.setFont(displayFont, 'italic');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...MUTED);
+        doc.text('Thank you for choosing Safawala.', left, 291);
+        doc.setFont(bodyFont, 'normal');
+        doc.setFontSize(7);
+        doc.text(`Page ${pageNumber} of ${totalPages}`, right, 291, { align: 'right' });
+      }
       doc.save(`${booking.booking_number}.pdf`);
     } catch (error) {
       console.error('Could not generate booking PDF', error);

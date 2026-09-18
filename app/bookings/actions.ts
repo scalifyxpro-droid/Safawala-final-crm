@@ -1,6 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/session';
+import { validateModificationFittings } from '@/lib/modifications';
 import { withUserContext } from '@/lib/db/client';
 import { assertStaffPortalWriteAccess } from '@/lib/staff-portal/write-access';
 import { notifyBookingConfirmed, notifyPaymentReceived, maybeNotifyThankYou } from '@/lib/whatsapp/notify';
@@ -130,6 +131,12 @@ export async function createBookingAction(
       error: 'Every selected product or package needs a name and quantity of at least 1.',
       stage: 'booking',
     };
+  }
+
+  try {
+    validateModificationFittings(typeof payload.notes === 'string' ? payload.notes : null, items);
+  } catch (error) {
+    return { id: null, bookingNumber: null, error: error instanceof Error ? error.message : 'Invalid modification details.', stage: 'booking' };
   }
 
   for (const item of items) {

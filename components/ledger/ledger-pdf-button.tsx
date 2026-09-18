@@ -34,6 +34,37 @@ const time = (value: string) =>
     timeZone: 'Asia/Kolkata',
   }).format(new Date(value));
 
+// Same font pairing as the sale/rental invoice: Lora (an elegant serif) for
+// brand-voice moments — the document title, the customer's name, the
+// summary totals — paired with Poppins (a clean geometric sans) for the
+// dense, functional parts: the transaction table, contact details, the
+// footer. Both are embedded from /public/fonts at generation time; if a
+// font file fails to load for any reason the document falls back to the
+// built-in Times/Helvetica rather than failing to generate.
+const FALLBACK_DISPLAY_FONT = 'times';
+const FALLBACK_BODY_FONT = 'helvetica';
+
+// Fetches a font file from /public and returns raw base64 (no "data:"
+// prefix) — the form jsPDF's addFileToVFS expects for embedding a custom
+// font. Returns null on any failure so the caller can fall back to a
+// built-in PDF font rather than breaking PDF generation.
+async function loadFontBase64(src: string): Promise<string | null> {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  } catch {
+    return null;
+  }
+}
+
 export function LedgerPdfButton({
   customer,
   transactions,
@@ -50,7 +81,14 @@ export function LedgerPdfButton({
   async function download() {
     setBusy(true);
     try {
-      const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadBrandLogo()]);
+      const [{ jsPDF }, logo, loraRegular, loraBold, poppinsRegular, poppinsBold] = await Promise.all([
+        import('jspdf'),
+        loadBrandLogo(),
+        loadFontBase64('/fonts/Lora-Regular.ttf'),
+        loadFontBase64('/fonts/Lora-Bold.ttf'),
+        loadFontBase64('/fonts/Poppins-Regular.ttf'),
+        loadFontBase64('/fonts/Poppins-Bold.ttf'),
+      ]);
       const doc = new jsPDF({
         unit: 'mm',
         format: 'a4',
@@ -61,6 +99,33 @@ export function LedgerPdfButton({
           userPermissions: ['print', 'copy'],
         },
       });
+
+      // Embed Lora (display/brand-voice serif) and Poppins (body/data sans)
+      // if both weights of each fetched successfully; otherwise fall back to
+      // the built-in Times/Helvetica so PDF generation never fails outright
+      // over a missing font file.
+      let displayFont: string = FALLBACK_DISPLAY_FONT;
+      let bodyFont: string = FALLBACK_BODY_FONT;
+      try {
+        if (loraRegular && loraBold) {
+          doc.addFileToVFS('Lora-Regular.ttf', loraRegular);
+          doc.addFont('Lora-Regular.ttf', 'Lora', 'normal');
+          doc.addFileToVFS('Lora-Bold.ttf', loraBold);
+          doc.addFont('Lora-Bold.ttf', 'Lora', 'bold');
+          displayFont = 'Lora';
+        }
+        if (poppinsRegular && poppinsBold) {
+          doc.addFileToVFS('Poppins-Regular.ttf', poppinsRegular);
+          doc.addFont('Poppins-Regular.ttf', 'Poppins', 'normal');
+          doc.addFileToVFS('Poppins-Bold.ttf', poppinsBold);
+          doc.addFont('Poppins-Bold.ttf', 'Poppins', 'bold');
+          bodyFont = 'Poppins';
+        }
+      } catch {
+        displayFont = FALLBACK_DISPLAY_FONT;
+        bodyFont = FALLBACK_BODY_FONT;
+      }
+
       const width = doc.internal.pageSize.getWidth();
       const height = doc.internal.pageSize.getHeight();
       const left = 12;
@@ -87,7 +152,7 @@ export function LedgerPdfButton({
         doc.setLineWidth(0.16);
         doc.line(left, y, right, y);
         doc.line(left, y + 8, right, y + 8);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(bodyFont, 'bold');
         doc.setFontSize(7.2);
         doc.setTextColor(...BRAND_DARK);
         columns.forEach((column) =>
@@ -109,17 +174,19 @@ export function LedgerPdfButton({
           docNumber: 'CUSTOMER LEDGER',
           docLabel: 'Statement of Account',
           dateLabel: period,
+          displayFont,
+          bodyFont,
         });
 
         y = 48;
         const boxHeight = 26;
         sectionBox(doc, left, y, right - left, boxHeight);
         const infoY = y + 8;
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(displayFont, 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(...BRAND_DARK);
         doc.text(customer.name, left + 5, infoY);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(8.5);
         doc.setTextColor(...MUTED);
         doc.text(`Customer ID: ${customer.id}   Mobile: ${customer.phone}`, left + 5, infoY + 5.5);
@@ -135,11 +202,11 @@ export function LedgerPdfButton({
         const tileWidth = (right - 5 - tilesX) / summary.length;
         summary.forEach(([label, value], index) => {
           const x = tilesX + index * tileWidth;
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(bodyFont, 'bold');
           doc.setTextColor(...MUTED);
           doc.setFontSize(6.8);
           doc.text(label.toUpperCase(), x, infoY);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(displayFont, 'bold');
           doc.setTextColor(...BRAND_DARK);
           doc.setFontSize(10.5);
           doc.text(value, x, infoY + 7);
@@ -155,11 +222,11 @@ export function LedgerPdfButton({
         if (y + rowHeight > height - 10) {
           doc.addPage('a4', 'landscape');
           y = 11;
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(displayFont, 'bold');
           doc.setFontSize(8.5);
           doc.setTextColor(...BRAND_DARK);
           doc.text(`CUSTOMER LEDGER - ${customer.name}`, left, y);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(bodyFont, 'normal');
           doc.setFontSize(7.5);
           doc.setTextColor(...MUTED);
           doc.text(period, right, y, { align: 'right' });
@@ -183,7 +250,7 @@ export function LedgerPdfButton({
           doc.setFillColor(251, 250, 248);
           doc.rect(left, y, right - left, rowHeight, 'F');
         }
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(7.4);
         doc.setTextColor(...BRAND_DARK);
         columns.forEach((column, index) => {
@@ -201,7 +268,7 @@ export function LedgerPdfButton({
         y += rowHeight;
       }
       if (!transactions.length) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(bodyFont, 'normal');
         doc.setFontSize(9);
         doc.setTextColor(...MUTED);
         doc.text('No transactions match the selected ledger period.', left + 2, y + 8);
@@ -217,6 +284,7 @@ export function LedgerPdfButton({
         right,
         y: height - 10,
         note: `Generated ${generated} - Computer generated statement`,
+        bodyFont,
       });
 
       const safeName = customer.name.trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');

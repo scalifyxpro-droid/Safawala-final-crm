@@ -339,6 +339,11 @@ export function ModificationQueue({
                 <span className="mt-1 block line-clamp-2 text-xs leading-5 text-muted-foreground">
                   {row.details.instructions}
                 </span>
+                {row.details.productFittings.map((fitting, index) => (
+                  <span key={index} className="mt-2 block text-xs">
+                    {fitting.product} · Hat Size: {fitting.hatSize} · Pickup: {friendlyDate(fitting.pickupDate)}
+                  </span>
+                ))}
                 <span className="mt-3 block text-[11px] font-medium text-primary">
                   {row.booking.booking_number} ·{' '}
                   {row.booking.booking_items.length} items
@@ -555,6 +560,11 @@ function ModificationRow({
         <p className="line-clamp-2 text-xs leading-5">
           {row.details.instructions}
         </p>
+        {row.details.productFittings.map((fitting, index) => (
+          <p key={index} className="mt-1 text-xs">
+            {fitting.product} · Hat Size: {fitting.hatSize} · Pickup: {friendlyDate(fitting.pickupDate)}
+          </p>
+        ))}
         <p className="mt-1 text-[11px] text-muted-foreground">
           {row.booking.booking_items.reduce(
             (sum, item) => sum + item.quantity,
@@ -708,6 +718,13 @@ function ModificationDialog({
                 {details.instructions}
               </p>
               <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
+                {details.productFittings.map((fitting, index) => (
+                  <div key={index} className="rounded-lg border p-3 sm:col-span-2">
+                    <p className="font-medium">{fitting.product}</p>
+                    <p className="mt-1 text-sm">Hat Size: {fitting.hatSize}</p>
+                    <p className="text-sm">Pickup Date: {friendlyDate(fitting.pickupDate)}</p>
+                  </div>
+                ))}
                 <Info
                   icon={<CalendarClock />}
                   label="Modification schedule"

@@ -98,6 +98,8 @@ type Item = {
   package_variant_id?: number;
   additional_safa?: boolean;
   override_price?: boolean;
+  modification_hat_size?: string;
+  modification_pickup_date?: string;
 };
 
 const inputClass =
@@ -937,6 +939,7 @@ export function BookingForm({
             'SALE MODIFICATION REQUIRED',
             `Type: ${readText('modification_type')}`,
             `Details: ${readText('modification_details')}`,
+            ...items.map((item) => `Product fitting: ${JSON.stringify({ product: item.item_name.trim(), hatSize: item.modification_hat_size?.trim() || '', pickupDate: item.modification_pickup_date || '' })}`),
           ].join('\n')
         : '';
     const payload = {
@@ -2664,6 +2667,27 @@ export function BookingForm({
                               className="w-full rounded-lg border border-input bg-white dark:bg-card p-3 text-sm outline-none transition placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/20"
                             />
                           </label>
+                          {items.map((item) => (
+                            <fieldset key={item.key} className="rounded-lg border p-3 space-y-3 lg:col-span-2">
+                              <legend className="px-1 text-sm font-medium">{item.item_name}</legend>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="block text-sm">
+                                  <span className="mb-1.5 block font-medium">Hat Size *</span>
+                                  <input required maxLength={80} name={`hat_size_${item.key}`} value={item.modification_hat_size || ''}
+                                    placeholder="e.g. 58 cm or 22.5 inches"
+                                    onChange={(event) => setItems((current) => current.map((row) => row.key === item.key ? { ...row, modification_hat_size: event.target.value } : row))}
+                                    className={inputClass} />
+                                  <span className="mt-1 block text-xs text-muted-foreground">Include the measurement unit.</span>
+                                </label>
+                                <label className="block text-sm">
+                                  <span className="mb-1.5 block font-medium">Pickup Date *</span>
+                                  <input required type="date" name={`modification_pickup_${item.key}`} value={item.modification_pickup_date || ''}
+                                    onChange={(event) => setItems((current) => current.map((row) => row.key === item.key ? { ...row, modification_pickup_date: event.target.value } : row))}
+                                    className={inputClass} />
+                                </label>
+                              </div>
+                            </fieldset>
+                          ))}
                           {customerOwnedModification ? (
                             <label className="block text-sm lg:col-span-2">
                               <span className="mb-1.5 block font-medium">

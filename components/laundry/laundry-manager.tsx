@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Archive,
@@ -78,6 +78,9 @@ export function LaundryManager({
 }) {
   const router = useRouter();
   const [batches, setBatches] = useState(initialBatches);
+  useEffect(() => {
+    setBatches(initialBatches);
+  }, [initialBatches]);
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [status, setStatus] = useState('all');
@@ -349,6 +352,9 @@ export function LaundryManager({
             setBusy(true);
             try {
               await createLaundryBatchAction(form);
+              setSearch('');
+              setSearchDraft('');
+              setStatus('all');
               setModal(null);
               router.refresh();
             } catch (e) {
@@ -455,21 +461,20 @@ function BatchModal({
   const [condition, setCondition] = useState('dirty');
   const [cost, setCost] = useState(0);
   const [itemNote, setItemNote] = useState('');
+  const product = products.find((item) => String(item.id) === productId);
+  const name = product?.name ?? other.trim();
+  const pendingItem: Item | null = name ? {
+    product_id: product?.id ?? null,
+    product_name: name,
+    quantity: Math.max(1, quantity),
+    condition_before: condition,
+    unit_cost: Math.max(0, cost),
+    notes: itemNote || null,
+  } : null;
+  const visibleItems = pendingItem ? [...items, pendingItem] : items;
   function addItem() {
-    const product = products.find((item) => String(item.id) === productId);
-    const name = product?.name ?? other.trim();
-    if (!name) return;
-    setItems((list) => [
-      ...list,
-      {
-        product_id: product?.id ?? null,
-        product_name: name,
-        quantity: Math.max(1, quantity),
-        condition_before: condition,
-        unit_cost: Math.max(0, cost),
-        notes: itemNote || null,
-      },
-    ]);
+    if (!pendingItem) return;
+    setItems((list) => [...list, pendingItem]);
     setProductId('');
     setOther('');
     setQuantity(1);
@@ -479,7 +484,7 @@ function BatchModal({
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    form.set('items_json', JSON.stringify(items));
+    form.set('items_json', JSON.stringify(visibleItems));
     await submit(form);
   }
   return (
@@ -567,7 +572,7 @@ function BatchModal({
                   <span className="mb-1.5 block">Product</span>
                   <select
                     value={productId}
-                    onChange={(e) => setProductId(e.target.value)}
+                    onChange={(e) => { setProductId(e.target.value); setOther(''); }}
                     className={input}
                   >
                     <option value="">Select product</option>
@@ -596,7 +601,7 @@ function BatchModal({
                     <span className="mb-1.5 block">Other Product</span>
                     <input
                       value={other}
-                      onChange={(e) => setOther(e.target.value)}
+                      onChange={(e) => { setOther(e.target.value); setProductId(''); }}
                       placeholder="Custom item name"
                       className={input}
                     />
@@ -653,12 +658,13 @@ function BatchModal({
                 variant="outline"
                 className="mt-3"
                 onClick={addItem}
+                disabled={busy || !pendingItem}
               >
                 <Plus /> Add Item
               </Button>
-              {items.length ? (
+              {visibleItems.length ? (
                 <div className="mt-4 divide-y rounded-lg border">
-                  {items.map((item, index) => (
+                  {visibleItems.map((item, index) => (
                     <div
                       key={`${item.product_name}-${index}`}
                       className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"
@@ -675,13 +681,18 @@ function BatchModal({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() =>
+                          onClick={() => {
+                            if (index === items.length) {
+                              setProductId('');
+                              setOther('');
+                              return;
+                            }
                             setItems((list) =>
                               list.filter(
                                 (_, itemIndex) => itemIndex !== index,
                               ),
-                            )
-                          }
+                            );
+                          }}
                           aria-label="Remove item"
                         >
                           <X />
